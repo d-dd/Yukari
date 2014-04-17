@@ -64,8 +64,9 @@ class Connections:
     def recIrcMsg(self, user, channel, msg):
         if self.cy is True:
             user = user.split('!', 1)[0] # takes out the extra info in the name
-            msg = '(%s) %s' % (user, msg)
-            self.wsFactory.prot.sendf({'name':'chatMsg', 'args': {'msg': msg}})
+            msgf = '(%s) %s' % (user, msg)
+            self.wsFactory.prot.sendChat(msgf)
+        self.processCommand(user, msg)
 
     def recCyMsg(self, user, msg):
         if self.irc is True:
@@ -73,8 +74,32 @@ class Connections:
             s.feed(msg)
             cleanMsg = s.get_text()
             cleanMsg = '(%s) %s' % (user, cleanMsg)
-            self.ircFactory.prot.sendm(str(config['irc']['channel']), cleanMsg)
-            
+            self.sendToIrc(cleanMsg)
+        self.processCommand(user, msg)
+
+    def processCommand(self, user, msg):
+        if msg.startswith('$'):
+            command = msg.split('$')[1]
+            thunk = getattr(self, '_com_%s' % (command,), None)
+            if thunk is not None:
+                thunk(user, msg)
+
+    def _com_greet(self, user, msg):
+        msg = 'Nice to meet you, %s!' % user
+        reactor.callLater(0.05, self.sendChats, msg)
+
+    def sendToCy(self, msg, modflair=False):
+        if self.cy:
+            self.wsFactory.prot.sendChat(msg, modflair)
+
+    def sendToIrc(self, msg):
+        if self.irc:
+            self.ircFactory.prot.sendChat(str(config['irc']['channel']), msg)
+
+    def sendChats(self, msg, modflair=False):
+        self.sendToIrc(msg)
+        self.sendToCy(msg, modflair)
+
     def cleanup(self):
         """ Prepares for shutdown """
         print 'Cleaning up for shutdown!'

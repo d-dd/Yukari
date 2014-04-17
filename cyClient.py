@@ -24,8 +24,6 @@ class CyProtocol(WebSocketClientProtocol):
          self.isReady = True
 
     def initialize(self):
-        # login before joining the channel. Otherwise server will send another
-        # userlist (with meta  data(ips/aliases)) if mod +
         self.sendf({'name': 'initChannelCallbacks'})
         name = config['Cytube']['username']
         pw = config['Cytube']['password']
@@ -42,8 +40,6 @@ class CyProtocol(WebSocketClientProtocol):
             self.joinRoom()
 
     def joinRoom(self):
-            #self.sendf({'name': 'joinChannel', 'args': {'name': 'teto'}})
-            #self.sendf({'name': 'joinChannel', 'args': {'name': 'teto'}})
             channel = config['Cytube']['channel']
             self.sendf({'name': 'joinChannel', 'args': {'name':channel}})
 
@@ -143,7 +139,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def sendChat(self, msg, modflair=False):
         if modflair is True:
-            modflair = 3
+            modflair = 3 ### TODO remove hardcode rank
         self.sendf({'name': 'chatMsg',
                    'args': {'msg': msg, 'meta': {'modflair': modflair}}})
 
