@@ -1,8 +1,9 @@
-import database, apiClient
+import database, apiClient, tools
 from conf import config
 import json, time, re
+from collections import deque
 from sqlite3 import IntegrityError
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 from twisted.enterprise import adbapi
 from twisted.python.util import InsensitiveDict
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
@@ -10,18 +11,49 @@ from autobahn.twisted.websocket import WebSocketClientProtocol,\
 
 class CyProtocol(WebSocketClientProtocol):
 
+    def __init__(self):
+        self.unloggedChat = deque()
+        self.unloggedChatUsers = []
+        self.testan = ''
+        self.receivedChatBuffer = False
+        ### Need to imporve this regex, it matches non-videos
+        # ie https://www.youtube.com/feed/subscriptions
+        self.ytUrl = re.compile(
+                (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
+                  '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
+
     def onOpen(self):
         print "Connected to Cytube!"
         self.connectedTime = time.time()
-        self.isReady = False # wait 3 seconds for chat buffer
-        reactor.callLater(3, self.doneReady)
         self.lastUserlist = 0
         self.factory.prot = self
-        self.factory.handle.cy = True # put this in room join later
+        self.factory.handle.cy = True
         self.initialize()
 
-    def doneReady(self):
-         self.isReady = True
+    def onMessage(self, msg, binary):
+        if msg == '2::':
+            self.sendMessage(msg) # return heartbeat
+        elif msg.startswith('5:::{'):
+            fstr = msg[4:]
+            fdict = json.loads(fstr)
+            if fdict['name'] in ('chatMsg', 'userlist', 'addUser', 'userLeave'):
+                print fstr
+            self.processFrame(fdict)
+
+    def onClose(self, wasClean, code, reason):
+        print 'Closed Protocol connection: %s' % reason
+
+    def sendf(self, dict): # 'sendFrame' is a WebSocket method name
+        frame = json.dumps(dict)
+        frame = '5:::' + frame
+        print '[->] %s' % frame
+        self.sendMessage(frame)
+
+    def sendChat(self, msg, modflair=False):
+        if modflair:
+            modflair = 3 ### TODO remove hardcode rank
+        self.sendf({'name': 'chatMsg',
+                   'args': {'msg': msg, 'meta': {'modflair': modflair}}})
 
     def initialize(self):
         self.sendf({'name': 'initChannelCallbacks'})
@@ -29,30 +61,6 @@ class CyProtocol(WebSocketClientProtocol):
         pw = config['Cytube']['password']
         self.sendf({'name': 'login',
                     'args': {'name': name, 'pw': pw}})
-        ### Need to imporve this regex, it matches non-videos
-        # ie https://www.youtube.com/feed/subscriptions
-        self.ytUrl = re.compile(
-                (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
-                  '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
-
-    def _cyCall_login(self, fdict):
-        if fdict['args'][0]['success'] is True:
-            self.joinRoom()
-
-    def joinRoom(self):
-            channel = config['Cytube']['channel']
-            self.sendf({'name': 'joinChannel', 'args': {'name':channel}})
-
-    def onMessage(self, msg, binary):
-        # return heartbeat
-        if msg == '2::':
-            self.sendMessage(msg)
-        elif msg.startswith('5:::{'):
-            fstr = msg[4:]
-            fdict = json.loads(fstr)
-            if fdict['name'] in ('userlist', 'addUser', 'userLeave'):
-                print fstr
-            self.processFrame(fdict)
 
     def processFrame(self, fdict):
         name = fdict['name']
@@ -64,25 +72,45 @@ class CyProtocol(WebSocketClientProtocol):
             pass
             #print 'No method defined for %s.' % name
 
-    def _cyCall_chatMsg(self, fdict):
-        username = fdict['args'][0]['username']
-        msg = fdict['args'][0]['msg']
-        if self.isReady is not True:
-            return
-        if username != config['Cytube']['username']:
-            self.factory.handle.recCyMsg(username, msg)
+    def joinRoom(self):
+        channel = config['Cytube']['channel']
+        self.sendf({'name': 'joinChannel', 'args': {'name':channel}})
+
+    def searchYoutube(self, msg):
         m = self.ytUrl.search(msg)
         if m:
             ytId = m.group(6)
+            print ytId
             d = apiClient.requestApi(ytId)
             d.addCallbacks(self.sendChat, self.errYtInfo)
 
-    def errYtInfo(self, err):
-        print err
+    def _cyCall_login(self, fdict):
+        if fdict['args'][0]['success']:
+            self.joinRoom()
+
+    def _cyCall_setMotd(self, fdict):
+        # setMotd comes after the chat buffer when joining a channel
+        self.receivedChatBuffer = True
+
+    def _cyCall_chatMsg(self, fdict):
+        if not self.receivedChatBuffer:
+            return
+        timeNow = round(time.time(), 2)
+        username = fdict['args'][0]['username']
+        msg = fdict['args'][0]['msg']
+        isRegistered = self.checkRegistered(username)
+        if username != config['Cytube']['username'] and username != '[server]':
+            self.factory.handle.recCyMsg(username, msg)
+            self.searchYoutube(msg)
+        # log everything, even the chat relays
+        self.logChatnew(username, isRegistered, fdict, timeNow)
 
     def _cyCall_addUser(self, fdict):
-        d = self.dbAddCyUser(fdict['args'][0], int(time.time()))
-        d.addBoth(self.dbAddCyUserResult)
+        user = fdict['args'][0]
+        user['timeJoined'] = int(time.time())
+        self.userdict[user['name']] = user
+        d = self.dbAddCyUser(user, user['timeJoined'])
+        d.addBoth(self.dbAddCyUserResultadd, user['name'])
 
     def _cyCall_userLeave(self, fdict):
         username = fdict['args'][0]['name']
@@ -112,18 +140,70 @@ class CyProtocol(WebSocketClientProtocol):
             d = self.dbAddCyUser(user, timeNow)
             d.addBoth(self.dbAddCyUserResult)
 
-    def dbAddCyUser(self, user, timeNow):
-        registered = self.isRegistered(user)
-        self.user = user
-        user['timeJoined'] = timeNow
-        name = user['name']
-        rank = user['rank']
-        self.userdict[name] = user
+    def logChatnew(self, username, isRegistered, fdict, timeNow):
+        dlog = self.queryUserId(username, isRegistered)
+        dlog.addCallback(self.logChat, username, isRegistered, fdict, timeNow)
 
+    def queryUserId(self, username, isRegistered):
+        """ Query UserId to log chat to database """
+        sql = 'SELECT userId FROM cyUser WHERE nameLower=? AND registered=?'
+        binds = (username.lower()+self.testan, isRegistered)
+        return database.query(sql, binds)
+    
+    def logChat(self, result, username, isRegistered, fdict, timeNow):
+        args = fdict['args'][0]
+        msg = args['msg']
+        msg = tools.unescapeMsg(msg)
+        chatCyTime = round((args['time'])/1000.0, 2)
+        try:
+            modflair = args['meta']['modflair']
+        except KeyError:
+            modflair = None
+
+        # userId query returned nothing
+        if not result:
+            print "User isn't in the database yet. Putting aside msg for later."
+            self.unloggedChat.append((username, isRegistered, fdict, timeNow))
+            self.unloggedChatUsers.append(username)
+
+        elif result:
+            flag = None
+            if 'addClass' in args['meta']: # seldom happens
+                flag = args['meta']['addClass']
+            #print 'user ID %s' % result[0]
+            sql = 'INSERT INTO CyChat Values(?, ?, ?, ?, ?, ?, ?)'
+            binds = (None, result[0][0], timeNow, chatCyTime, msg, modflair, flag)
+            return database.operate(sql, binds)
+    
+    def errYtInfo(self, err):
+        print err
+
+    def dbAddCyUser(self, user, timeNow):
+        user['timeJoined'] = timeNow
+        username = user['name']
+        isRegistered = self.checkRegistered(username)
         sql = 'INSERT INTO CyUser VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        binds = (None, name.lower(), registered, name,
+        binds = (None, username.lower(), isRegistered, username,
                  0, 0, timeNow, timeNow, 0)
         return database.operate(sql, binds)
+
+    def dbAddCyUserResultadd(self, outcome, username):
+        if outcome is None:
+            print '[DB] cyUserAdd successful!'
+            if username in self.unloggedChatUsers: # add unlogged chat
+                self.logUnloggedChat()
+                    
+        elif outcome.type == IntegrityError: # row already exists
+            print '[DB] cyUserAdd failed. Already in table: %s' % outcome.value
+        else:
+            print '[DB] AddCyUser: some other error: %s' % outcome
+    
+    def logUnloggedChat(self):
+        for i in range(len(self.unloggedChat)):
+            print 'attempting to save old chat!'
+            args = self.unloggedChat.popleft()
+            self.logChatnew(*args)
+        self.unloggedChatUsers = []
 
     def dbAddCyUserResult(self, outcome):
         self.outcome = outcome
@@ -136,18 +216,6 @@ class CyProtocol(WebSocketClientProtocol):
 
     def dbQueryCyUserErr(self, err):
         print '[DB] QueryCyUser Error: %s' % err.value
-
-    def sendChat(self, msg, modflair=False):
-        if modflair is True:
-            modflair = 3 ### TODO remove hardcode rank
-        self.sendf({'name': 'chatMsg',
-                   'args': {'msg': msg, 'meta': {'modflair': modflair}}})
-
-    def sendf(self, dict):
-        frame = json.dumps(dict)
-        frame = '5:::%s' % frame
-        print '[->] %s' % frame
-        self.sendMessage(frame)
 
     def cleanUp(self):
         # set restart to False
@@ -177,8 +245,21 @@ class CyProtocol(WebSocketClientProtocol):
             return 0
         return 1
 
-    def onClose(self, wasClean, code, reason):
-        print 'Closed Protocol connection: %s' % reason
+    def checkRegistered(self, username):
+        """ Return wether a Cytube user is registered (1) or a guest (0) given
+        a username. Checks self.userdict for rank information."""
+        if username == '[server]':
+            return 1
+        else:
+            try:
+                user = self.userdict[username]
+            except KeyError as e:
+                print e
+                raise
+            if user['rank'] == 0:
+                return 0
+            else:
+                return 1
 
 class WsFactory(WebSocketClientFactory):
     protocol = CyProtocol
@@ -188,11 +269,11 @@ class WsFactory(WebSocketClientFactory):
 
     def clientConnectionLost(self, connector, reason):
         print 'Connection lost to Cyutbe. Reason: %s' % reason
-        if self.handle.cyRestart is False:
+        if not self.handle.cyRestart:
             self.handle.doneCleanup('cy')
         else:
-            self.handle.cyPost() # reconnect
+            #self.handle.cyPost() # reconnect
+            self.handle.doneCleanup('cy')
 
     def clientConnectionFailed(self, connector, reason):
         print 'Connection failed to Cytube. Reason: %s' % reason
-        

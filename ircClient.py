@@ -1,7 +1,9 @@
+import database
+import time
 from conf import config
 from collections import deque
 from twisted.words.protocols import irc
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 from twisted.internet.protocol import ClientFactory
 
 # on Rizon networks, the optional part/quit message rarely works.
@@ -20,7 +22,7 @@ class IrcProtocol(irc.IRCClient):
         if self.underSpam is False and self.bucketToken != 0:
             self.chatQueue.append(msg)
             self.popQueue()
-        elif self.underSpam is True:# and self.bucketToken <= 6:
+        elif self.underSpam:# and self.bucketToken <= 6:
             print 'throttled'
             return
 
@@ -32,10 +34,10 @@ class IrcProtocol(irc.IRCClient):
             self.underSpam = True
 
     def addToken(self):
-        if self.bucketToken < 10:
+        if self.bucketToken < 13:
             print "adding 1 token, token: %s" % self.bucketToken
             self.bucketToken += 1
-        if self.underSpam is True and self.bucketToken > 10:
+        if self.underSpam and self.bucketToken > 10:
             self.underSpam = False
             self.say(self.channelName, 
                     '[Resuming relay from Cytube.]')
@@ -45,8 +47,40 @@ class IrcProtocol(irc.IRCClient):
     def popQueue(self):
         print 'running POP QUEUE'
         self.bucketToken -= 1
-        self.say(self.channelName, self.chatQueue.popleft())
-        reactor.callLater(13-self.bucketToken, self.addToken)
+        self.logSay(self.channelName, self.chatQueue.popleft())
+        reactor.callLater(17-self.bucketToken, self.addToken)
+
+    def logSay(self, channel, msg):
+        """ Log and send out message """
+        sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
+        msgd = msg.decode('utf-8')
+        binds = (None, 1, 3, round(time.time(), 2), msgd, 1)
+        d = database.operate(sql, binds) # must be in unicode
+        self.say(channel, msg) # must not be in unicode
+        
+    def names(self, channel):
+        d = defer.Deferred()
+        self.sendLine('NAMES %s' % channel)
+        return d
+
+    def irc_RPL_NAMREPLY(self, prefix, params):
+        channel = params[2]
+        nicklist = params[3].split(' ')
+        print nicklist
+        #print prefix
+        #print params
+
+    #def irc_RPL_ENDOFNAMES(self, prefix, params):
+    #     print prefix, params
+
+    #def getNames(self):
+    #     d = self.names(self.channelName)
+    #   d.addCallback(self.gotNames)
+
+    #def gotNames(self, response):
+    #     print 'gotnames response: %s' % response
+
+
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
@@ -56,6 +90,15 @@ class IrcProtocol(irc.IRCClient):
     def signedOn(self):
         self.join(self.channelName)
         self.factory.prot = self
+
+    def userJoined(self, user, channel):
+        print "%s has joined %s" % (user, channel)
+
+    def userLeft(self, user, channel):
+        print '%s has left the %s' % (user, channel)
+        
+    def userRenamed(self, oldname, newname):
+        print '%s is now known as %s' % (oldname, newname)
 
     def nickChanaged(self, nick):
         self.nickname = nick
@@ -69,8 +112,9 @@ class IrcProtocol(irc.IRCClient):
         self.factory.handle.irc = False
 
     def privmsg(self, user, channel, msg):
-        if user != self.nickname:
-            self.factory.handle.recIrcMsg(user, channel, msg)
+        print 'priv message from %s' % user
+        self.factory.handle.recIrcMsg(user, channel, msg)
+        self.logProcess(user, msg)
 
     def sendChat(self, channel, msg):
         if isinstance(msg, unicode):
@@ -81,6 +125,43 @@ class IrcProtocol(irc.IRCClient):
         self.leave(self.channelName, reason)
         self.quit(message='Shutting down...!')
 
+    def logProcess(self, user, msg):
+        timeNow = round(time.time(), 2)
+        nickname = user.split('!')[0]
+        i = user.find('~')
+        j = user.find('@')
+        username = user[i+1:j]
+        host = user[j+1:]
+        d = self.logIrcUser(nickname, username, host)
+        d.addCallback(self.queryUser, nickname, username, host)
+        d.addCallback(self.logChat, 3, timeNow, msg)
+
+    def logIrcUser(self, nickname, username, host):
+        """ logs IRC chat to IrcChat table """
+        ### Since we're only interested in logging chat, it is sufficient to
+        ### insert users to the IRC users table only after a message has been
+        ### received. Users who join but do not chat will never be logged.
+        ### STATUS (if user has identified) is only checked during join, but 
+        ### users can logout, so the value may not be accuate, but the it
+        ### is okay since it will always be the same user.
+        ### STATUS works on Rizon, but may not be available on other networks.
+        # add user to IrcUser
+        sql = 'INSERT OR IGNORE INTO IrcUser VALUES(?, ?, ?, ?, ?, ?)'
+        binds = (None, nickname.lower(), username, host, nickname, 0)
+        return database.operate(sql, binds)
+
+    def queryUser(self, response, nickname, username, host):
+        sql = 'SELECT userId FROM IrcUser WHERE nickLower=? AND username=? AND host=?'
+        binds = (nickname.lower(), username, host)
+        return database.query(sql, binds)
+
+    def logChat(self, result, status, timeNow, msg):
+        # use 3 for status for now
+        msg = msg.decode('utf-8')
+        sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
+        binds = (None, result[0][0], 3, timeNow, msg, None)
+        return database.operate(sql, binds)
+    
 class IrcFactory(ClientFactory):
     protocol = IrcProtocol
 

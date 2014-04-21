@@ -1,6 +1,8 @@
 from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
 from conf import config
+import database
+import tools
 
 import time, sys
 import ConfigParser
@@ -62,17 +64,21 @@ class Connections:
                            self.ircFactory)
 
     def recIrcMsg(self, user, channel, msg):
-        if self.cy is True:
+        if self.cy:
             user = user.split('!', 1)[0] # takes out the extra info in the name
             msgf = '(%s) %s' % (user, msg)
             self.wsFactory.prot.sendChat(msgf)
         self.processCommand(user, msg)
 
     def recCyMsg(self, user, msg):
-        if self.irc is True:
-            s = TagStrip()
-            s.feed(msg)
-            cleanMsg = s.get_text()
+        if self.irc:
+            #s = TagStrip()
+            tools.chatFormat.feed(msg)
+            cleanMsg = tools.chatFormat.get_text()
+            # reset so we can use the same instance
+            tools.chatFormat.close()
+            tools.chatFormat.result = []
+            tools.chatFormat.reset()
             cleanMsg = '(%s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
         self.processCommand(user, msg)
