@@ -1,14 +1,9 @@
 from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
 from conf import config
-import database
-import tools
-
+import database, tools
 import time, sys
-import ConfigParser
-import htmlentitydefs
-from HTMLParser import HTMLParser
-from twisted.internet import reactor, protocol
+from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
 from twisted.python import log
@@ -128,24 +123,6 @@ class Connections:
             print 'Done shutting down Cy.'
         if self.irc is not True and self.cy is not True:
             self.done.callback(None)
-
-class TagStrip(HTMLParser):
-    def __init__(self):
-        HTMLParser.__init__(self)
-        self.result = []
-    def handle_data(self, d):
-        self.result.append(d)
-    def handle_charref(self, number):
-        if number[0] in (u'x', u'X'):
-            codepoint = int(number[1:], 16)
-        else:
-            codepoint = int(number)
-        self.result.append(unichr(codepoint))
-    def handle_entityref(self, name):
-        codepoint = htmlentitydefs.name2codepoint[name]
-        self.result.append(unichr(codepoint))
-    def get_text(self):
-        return ''.join(self.result)
 
 def createShellServer(obj):
     """ Creates an interactive shell interface to send and receive output 

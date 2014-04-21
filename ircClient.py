@@ -142,8 +142,8 @@ class IrcProtocol(irc.IRCClient):
         ### insert users to the IRC users table only after a message has been
         ### received. Users who join but do not chat will never be logged.
         ### STATUS (if user has identified) is only checked during join, but 
-        ### users can logout, so the value may not be accuate, but the it
-        ### is okay since it will always be the same user.
+        ### users can logout, so the value may not be accuate, but this is fine 
+        ### for our purposes since it will still be the same user.
         ### STATUS works on Rizon, but may not be available on other networks.
         # add user to IrcUser
         sql = 'INSERT OR IGNORE INTO IrcUser VALUES(?, ?, ?, ?, ?, ?)'

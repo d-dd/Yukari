@@ -3,8 +3,6 @@ from conf import config
 import json, time, re
 from collections import deque
 from sqlite3 import IntegrityError
-from twisted.internet import reactor, defer
-from twisted.enterprise import adbapi
 from twisted.python.util import InsensitiveDict
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
@@ -230,20 +228,15 @@ class CyProtocol(WebSocketClientProtocol):
 
     def clockUser(self, leftUser, timeNow):
         """ Clock out a user, by updating their accessTime """
-        name = leftUser['name']
-        print 'Clocking out %s!' % name
+        username = leftUser['name']
+        print 'Clocking out %s!' % username
         timeJoined = leftUser['timeJoined']
         timeStayed = timeNow - timeJoined
-        registered = self.isRegistered(leftUser)
+        registered = self.checkRegistered(username)
         sql = ('UPDATE CyUser SET lastSeen=?, accessTime=accessTime+? '
                'WHERE nameLower=? AND registered=?')
-        binds = (timeNow, timeStayed, name.lower(), registered)
+        binds = (timeNow, timeStayed, username.lower(), registered)
         return database.operate(sql, binds)
-
-    def isRegistered(self, user):
-        if user['rank'] == 0 or user['rank'] == 1.5:
-            return 0
-        return 1
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given
