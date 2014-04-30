@@ -106,6 +106,7 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_addUser(self, fdict):
         user = fdict['args'][0]
         user['timeJoined'] = int(time.time())
+        user['keyId'] = None
         self.userdict[user['name']] = user
         d = self.dbAddCyUser(user, user['timeJoined'])
         d.addBoth(self.dbAddCyUserResultadd, user['name'])
@@ -177,7 +178,7 @@ class CyProtocol(WebSocketClientProtocol):
         print err
 
     def dbAddCyUser(self, user, timeNow):
-        user['timeJoined'] = timeNow
+        #user['timeJoined'] = timeNow
         username = user['name']
         isRegistered = self.checkRegistered(username)
         sql = 'INSERT INTO CyUser VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -232,10 +233,10 @@ class CyProtocol(WebSocketClientProtocol):
         print 'Clocking out %s!' % username
         timeJoined = leftUser['timeJoined']
         timeStayed = timeNow - timeJoined
-        registered = self.checkRegistered(username)
+        isRegistered = self.checkRegistered(username)
         sql = ('UPDATE CyUser SET lastSeen=?, accessTime=accessTime+? '
                'WHERE nameLower=? AND registered=?')
-        binds = (timeNow, timeStayed, username.lower(), registered)
+        binds = (timeNow, timeStayed, username.lower(), isRegistered)
         return database.operate(sql, binds)
 
     def checkRegistered(self, username):

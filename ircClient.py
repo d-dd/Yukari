@@ -17,6 +17,8 @@ class IrcProtocol(irc.IRCClient):
         self.chatQueue = deque()
         self.bucketToken = int(config['irc']['bucket'])
         self.underSpam = False
+        self.nicklist = []
+        self.nickdict = []
 
     def addQueue(self, msg):
         if self.underSpam is False and self.bucketToken != 0:
@@ -65,22 +67,12 @@ class IrcProtocol(irc.IRCClient):
 
     def irc_RPL_NAMREPLY(self, prefix, params):
         channel = params[2]
-        nicklist = params[3].split(' ')
-        print nicklist
-        #print prefix
-        #print params
+        nicks = params[3].split(' ')
+        self.nicklist.extend(nicks)
+        print self.nicklist
 
-    #def irc_RPL_ENDOFNAMES(self, prefix, params):
-    #     print prefix, params
-
-    #def getNames(self):
-    #     d = self.names(self.channelName)
-    #   d.addCallback(self.gotNames)
-
-    #def gotNames(self, response):
-    #     print 'gotnames response: %s' % response
-
-
+    def irc_RPL_ENDOFNAMES(self, prefix, params):
+        print "end of names prefix::%s, params %s." % (prefix, params)
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
@@ -134,6 +126,7 @@ class IrcProtocol(irc.IRCClient):
         host = user[j+1:]
         d = self.logIrcUser(nickname, username, host)
         d.addCallback(self.queryUser, nickname, username, host)
+        #d.addCallback(self.checkStatus, nickname)
         d.addCallback(self.logChat, 3, timeNow, msg)
 
     def logIrcUser(self, nickname, username, host):
@@ -142,7 +135,7 @@ class IrcProtocol(irc.IRCClient):
         ### insert users to the IRC users table only after a message has been
         ### received. Users who join but do not chat will never be logged.
         ### STATUS (if user has identified) is only checked during join, but 
-        ### users can logout, so the value may not be accuate, but this is fine 
+        ### users can logout, so the value may not be accurate, but this is fine 
         ### for our purposes since it will still be the same user.
         ### STATUS works on Rizon, but may not be available on other networks.
         # add user to IrcUser
@@ -151,10 +144,16 @@ class IrcProtocol(irc.IRCClient):
         return database.operate(sql, binds)
 
     def queryUser(self, response, nickname, username, host):
+        if nickname in nickdict:
+            pass
         sql = 'SELECT userId FROM IrcUser WHERE nickLower=? AND username=? AND host=?'
         binds = (nickname.lower(), username, host)
         return database.query(sql, binds)
 
+    def checkStatus(self, response, nickname):
+        msg = 'STATUS %s' % nickname
+        self.msg('NickServ', msg)
+        
     def logChat(self, result, status, timeNow, msg):
         # use 3 for status for now
         msg = msg.decode('utf-8')
