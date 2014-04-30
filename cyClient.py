@@ -7,6 +7,9 @@ from twisted.python.util import InsensitiveDict
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 
+class NoRowException(Exception):
+    pass
+
 class CyProtocol(WebSocketClientProtocol):
 
     def __init__(self):
@@ -103,7 +106,7 @@ class CyProtocol(WebSocketClientProtocol):
         # log everything, even the chat relays
         self.logChatnew(username, isRegistered, fdict, timeNow)
 
-    def _cyCall_addUser(self, fdict):
+    def a__cyCall_addUser(self, fdict):
         user = fdict['args'][0]
         user['timeJoined'] = int(time.time())
         user['keyId'] = None
@@ -111,17 +114,48 @@ class CyProtocol(WebSocketClientProtocol):
         d = self.dbAddCyUser(user, user['timeJoined'])
         d.addBoth(self.dbAddCyUserResultadd, user['name'])
 
+    def _cyCall_addUser(self, fdict):
+        user = fdict['args'][0]
+        timeNow = int(time.time())
+        if user['name'] not in self.userdict:
+            self.userJoin(user, timeNow)
+        self.userdict[user['name']]['inChannel'] = True
+
+    def userJoin(self, user, timeNow):
+        user['keyId'] = None
+        user['timeJoined'] = timeNow
+        self.userdict[user['name']] = user
+        reg = self.checkRegistered(user['name'])
+        d = database.dbQuery(('userId', 'flag', 'lastSeen'), 'cyUser',
+                         nameLower=user['name'].lower(), registered=reg)
+        d.addCallback(database.queryResult)
+        values = (None, user['name'].lower(), reg, user['name'], 0, 0,
+                 timeNow, timeNow, 0)
+        d.addErrback(database.dbInsertReturnLastRow, 'cyUser', *values)
+        d.addCallback(self.cacheKey, user)
+        # add a reference to the deferred to the userdict
+        self.userdict[user['name']]['deferred'] = d
+        
+    def cacheKey(self, res, user):
+        assert res, 'no res at cacheKey'
+        if res:
+            print "cached %s's key %s" % (user['name'], res[0])
+            self.userdict[user['name']]['keyId'] = res[0]
+        #d = self.dbAddCyUser(user, user['timeJoined'])
+        #d.addBoth(self.dbAddCyUserResultadd, user['name'])
+
     def _cyCall_userLeave(self, fdict):
         username = fdict['args'][0]['name']
         #leftUser = self.userdict.pop(username)InsensitiveDict has no pop method
+        leftUser = self.userdict[username]
+        d = self.clockUser(leftUser, int(time.time()))
+        d.addBoth(self.dbAddCyUserResult)
         try:
-            leftUser = self.userdict[username]
+           # leftUser = self.userdict[username]
             del self.userdict[username]
         except KeyError as e:
             print type(e), e
             return
-        d = self.clockUser(leftUser, int(time.time()))
-        d.addBoth(self.dbAddCyUserResult)
 
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlist < 3: # most likely the same userlist
@@ -136,8 +170,7 @@ class CyProtocol(WebSocketClientProtocol):
         for user in userlist:
             user['timeJoined'] = timeNow
             self.userdict[user['name']] = user
-            d = self.dbAddCyUser(user, timeNow)
-            d.addBoth(self.dbAddCyUserResult)
+            self.userJoin(user, timeNow)
 
     def logChatnew(self, username, isRegistered, fdict, timeNow):
         dlog = self.queryUserId(username, isRegistered)
@@ -249,7 +282,7 @@ class CyProtocol(WebSocketClientProtocol):
                 user = self.userdict[username]
             except KeyError as e:
                 print e
-                raise
+                #raise
             if user['rank'] == 0:
                 return 0
             else:
