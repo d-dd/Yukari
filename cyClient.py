@@ -106,14 +106,6 @@ class CyProtocol(WebSocketClientProtocol):
         # log everything, even the chat relays
         self.logChatnew(username, isRegistered, fdict, timeNow)
 
-    def a__cyCall_addUser(self, fdict):
-        user = fdict['args'][0]
-        user['timeJoined'] = int(time.time())
-        user['keyId'] = None
-        self.userdict[user['name']] = user
-        d = self.dbAddCyUser(user, user['timeJoined'])
-        d.addBoth(self.dbAddCyUserResultadd, user['name'])
-
     def _cyCall_addUser(self, fdict):
         user = fdict['args'][0]
         timeNow = int(time.time())
@@ -141,21 +133,30 @@ class CyProtocol(WebSocketClientProtocol):
         if res:
             print "cached %s's key %s" % (user['name'], res[0])
             self.userdict[user['name']]['keyId'] = res[0]
-        #d = self.dbAddCyUser(user, user['timeJoined'])
-        #d.addBoth(self.dbAddCyUserResultadd, user['name'])
 
     def _cyCall_userLeave(self, fdict):
         username = fdict['args'][0]['name']
-        #leftUser = self.userdict.pop(username)InsensitiveDict has no pop method
+        self.userdict[username]['inChannel'] = False
+        d = self.userdict[username]['deferred']
+        print 'user %s left. adding callbacks' % username
         leftUser = self.userdict[username]
-        d = self.clockUser(leftUser, int(time.time()))
-        d.addBoth(self.dbAddCyUserResult)
+        d.addCallback(self.clockUser, leftUser,
+                      int(time.time()))
+        d.addErrback(self.dbQueryCyUserErr)
+        d.addCallback(self.removeUser, username)
+        d.addErrback(self.dbQueryCyUserErr)
+
+    def removeUser(self, res, username):
+        print 'removing user'
         try:
-           # leftUser = self.userdict[username]
-            del self.userdict[username]
-        except KeyError as e:
-            print type(e), e
-            return
+            if not self.userdict[username]['inChannel']:
+                del self.userdict[username]
+                print 'deleted %s' % username
+            else:
+                print 'skipping removeUser: user in channel'
+        except(KeyError):
+            print 'failed removeUser: user %s not in userdict' % username
+            return KeyError
 
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlist < 3: # most likely the same userlist
@@ -166,7 +167,7 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = int(time.time())
 
         # make a dictonary of users
-        self.userdict = InsensitiveDict() # Case insensitive
+        self.userdict = {}
         for user in userlist:
             user['timeJoined'] = timeNow
             self.userdict[user['name']] = user
@@ -257,19 +258,19 @@ class CyProtocol(WebSocketClientProtocol):
         # log everyone's access time before shutting down
         timeNow = int(time.time())
         for name, user in self.userdict.iteritems():
-            self.clockUser(user, timeNow)
+            user['deferred'].addCallback(self.clockUser, user, timeNow)
         self.cyRestart = False
 
-    def clockUser(self, leftUser, timeNow):
+    def clockUser(self, res, leftUser, timeNow):
         """ Clock out a user, by updating their accessTime """
         username = leftUser['name']
         print 'Clocking out %s!' % username
         timeJoined = leftUser['timeJoined']
         timeStayed = timeNow - timeJoined
-        isRegistered = self.checkRegistered(username)
+        userId = leftUser['keyId']
         sql = ('UPDATE CyUser SET lastSeen=?, accessTime=accessTime+? '
-               'WHERE nameLower=? AND registered=?')
-        binds = (timeNow, timeStayed, username.lower(), isRegistered)
+               'WHERE userId=?')
+        binds = (timeNow, timeStayed, userId)
         return database.operate(sql, binds)
 
     def checkRegistered(self, username):
