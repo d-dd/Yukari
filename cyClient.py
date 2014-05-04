@@ -4,6 +4,8 @@ import json, time, re
 from collections import deque
 from sqlite3 import IntegrityError
 from twisted.python.util import InsensitiveDict
+from twisted.internet import reactor
+from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 
@@ -13,8 +15,8 @@ class NoRowException(Exception):
 class CyProtocol(WebSocketClientProtocol):
 
     def __init__(self):
-        self.unloggedChat = deque()
-        self.unloggedChatUsers = []
+        self.unloggedChat = []
+        self.lastChatLogTime = 0
         self.testan = ''
         self.receivedChatBuffer = False
         ### Need to imporve this regex, it matches non-videos
@@ -96,15 +98,54 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_chatMsg(self, fdict):
         if not self.receivedChatBuffer:
             return
+        args = fdict['args'][0]
         timeNow = round(time.time(), 2)
-        username = fdict['args'][0]['username']
-        msg = fdict['args'][0]['msg']
-        isRegistered = self.checkRegistered(username)
+        username = args['username']
+        msg = args['msg']
+        chatCyTime = round((args['time'])/1000.0, 2)
+        if 'modflair' in args['meta']:
+            modflair = args['meta']['modflair']
+        else:
+            modflair = None
+        print username
+        if username in self.userdict or username == '[server]':
+            if username == '[server]':
+                keyId = 2
+            else:
+                keyId = self.userdict[username]['keyId']
+            print '%s has id %s, says %s' % (username, keyId, msg)
+            self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
+                                      modflair, 0))
+            if time.time() - self.lastChatLogTime < 3:
+                self.cancelChatLog()
+                self.dChat = reactor.callLater(3, self.bulkLogChat,
+                                               self.unloggedChat)
+            else:
+                self.cancelChatLog()
+                self.bulkLogChat(self.unloggedChat)
+                self.lastChatLogTime = time.time()
         if username != config['Cytube']['username'] and username != '[server]':
             self.factory.handle.recCyMsg(username, msg)
             self.searchYoutube(msg)
-        # log everything, even the chat relays
-        self.logChatnew(username, isRegistered, fdict, timeNow)
+
+    def cancelChatLog(self):
+        try:
+            self.dChat.cancel()
+            print '[cancelChatLog] cancelled log timer'
+        except(AttributeError):
+            print '[cancelChatLog] no defered'
+        except(AlreadyCancelled):
+            print '[cancelChatLog] already cancelled'
+        except(AlreadyCalled):
+            print '[cancelChatLog] already called'
+        except(NameError):
+            print '[cancelChatLog] deferred doesnt exist'
+
+    def bulkLogChat(self, chatlist):
+        assert self.unloggedChat == chatlist
+        self.unloggedChat = []
+        print 'Logging %s !!' % chatlist
+        return database.bulkLogChat('cyChat', chatlist)
 
     def _cyCall_addUser(self, fdict):
         user = fdict['args'][0]
@@ -142,9 +183,9 @@ class CyProtocol(WebSocketClientProtocol):
         leftUser = self.userdict[username]
         d.addCallback(self.clockUser, leftUser,
                       int(time.time()))
-        d.addErrback(self.dbQueryCyUserErr)
+        d.addErrback(self.dbErr)
         d.addCallback(self.removeUser, username)
-        d.addErrback(self.dbQueryCyUserErr)
+        d.addErrback(self.dbErr)
 
     def removeUser(self, res, username):
         print 'removing user'
@@ -173,40 +214,12 @@ class CyProtocol(WebSocketClientProtocol):
             self.userdict[user['name']] = user
             self.userJoin(user, timeNow)
 
-    def logChatnew(self, username, isRegistered, fdict, timeNow):
-        dlog = self.queryUserId(username, isRegistered)
-        dlog.addCallback(self.logChat, username, isRegistered, fdict, timeNow)
 
     def queryUserId(self, username, isRegistered):
         """ Query UserId to log chat to database """
         sql = 'SELECT userId FROM cyUser WHERE nameLower=? AND registered=?'
         binds = (username.lower()+self.testan, isRegistered)
         return database.query(sql, binds)
-    
-    def logChat(self, result, username, isRegistered, fdict, timeNow):
-        args = fdict['args'][0]
-        msg = args['msg']
-        msg = tools.unescapeMsg(msg)
-        chatCyTime = round((args['time'])/1000.0, 2)
-        try:
-            modflair = args['meta']['modflair']
-        except KeyError:
-            modflair = None
-
-        # userId query returned nothing
-        if not result:
-            print "User isn't in the database yet. Putting aside msg for later."
-            self.unloggedChat.append((username, isRegistered, fdict, timeNow))
-            self.unloggedChatUsers.append(username)
-
-        elif result:
-            flag = None
-            if 'addClass' in args['meta']: # seldom happens
-                flag = args['meta']['addClass']
-            #print 'user ID %s' % result[0]
-            sql = 'INSERT INTO CyChat Values(?, ?, ?, ?, ?, ?, ?)'
-            binds = (None, result[0][0], timeNow, chatCyTime, msg, modflair, flag)
-            return database.operate(sql, binds)
     
     def errYtInfo(self, err):
         print err
@@ -231,13 +244,6 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             print '[DB] AddCyUser: some other error: %s' % outcome
     
-    def logUnloggedChat(self):
-        for i in range(len(self.unloggedChat)):
-            print 'attempting to save old chat!'
-            args = self.unloggedChat.popleft()
-            self.logChatnew(*args)
-        self.unloggedChatUsers = []
-
     def dbAddCyUserResult(self, outcome):
         self.outcome = outcome
         if outcome is None:
@@ -247,8 +253,8 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             print '[DB] AddCyUser: some other error: %s' % outcome
 
-    def dbQueryCyUserErr(self, err):
-        print '[DB] QueryCyUser Error: %s' % err.value
+    def dbErr(self, err):
+        print '[DB] Database Error: %s' % err.value
 
     def cleanUp(self):
         # set restart to False
@@ -268,10 +274,7 @@ class CyProtocol(WebSocketClientProtocol):
         timeJoined = leftUser['timeJoined']
         timeStayed = timeNow - timeJoined
         userId = leftUser['keyId']
-        sql = ('UPDATE CyUser SET lastSeen=?, accessTime=accessTime+? '
-               'WHERE userId=?')
-        binds = (timeNow, timeStayed, userId)
-        return database.operate(sql, binds)
+        return database.updateCyUser(timeNow, timeStayed, userId)
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given
