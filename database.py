@@ -48,3 +48,33 @@ def _dbInsert(txn, table, *args):
     sql, args = _makeInsert(table, *args)
     txn.execute(sql, args)
     return [txn.lastrowid]
+
+def updateRow(table, setd, whered):
+    sql = 'UPDATE ' + table + 'SET '
+    set, where, binds = [], [], []
+    for key, value in setd.iteritems():
+        if key.endswith('+?'):
+            key = key[:-2]
+            set.append('%s=%s+?' % (key, key))
+        else:
+            set.append('%s=?' % key)
+        binds.append(value)
+    sql += ','.join(set)
+    sql += 'WHERE'
+    sql += ','.join(where)
+    return sql, tuple(binds)
+        
+    
+def updateCyUser(timeNow, timeStayed, userId):
+    sql = ('UPDATE CyUser SET lastSeen=?, accessTime=accessTime+? '
+           'WHERE userId=?')
+    binds = (timeNow, timeStayed, userId)
+    return operate(sql, binds)
+
+def bulkLogChat(table, chatList):
+    return dbpool.runInteraction(_bulkLogChat, table, chatList)
+
+def _bulkLogChat(txn, table, chatList):
+    #TODO generalize
+    sql = 'INSERT INTO %s VALUES (?, ?, ?, ?, ?, ?, ?)' % table
+    txn.executemany(sql, chatList)
