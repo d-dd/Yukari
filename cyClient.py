@@ -4,7 +4,7 @@ import json, time, re
 from collections import deque
 from sqlite3 import IntegrityError
 from twisted.python.util import InsensitiveDict
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
@@ -114,19 +114,27 @@ class CyProtocol(WebSocketClientProtocol):
             else:
                 keyId = self.userdict[username]['keyId']
             print '%s has id %s, says %s' % (username, keyId, msg)
-            self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
-                                      modflair, 0))
-            if time.time() - self.lastChatLogTime < 3:
-                self.cancelChatLog()
-                self.dChat = reactor.callLater(3, self.bulkLogChat,
-                                               self.unloggedChat)
+            if keyId:
+                self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
+                                          modflair, 0))
+                if time.time() - self.lastChatLogTime < 3:
+                    self.cancelChatLog()
+                    self.dChat = reactor.callLater(3, self.bulkLogChat,
+                                                   self.unloggedChat)
+                else:
+                    self.cancelChatLog()
+                    self.bulkLogChat(self.unloggedChat)
+                    self.lastChatLogTime = time.time()
             else:
-                self.cancelChatLog()
-                self.bulkLogChat(self.unloggedChat)
-                self.lastChatLogTime = time.time()
-        if username != config['Cytube']['username'] and username != '[server]':
-            self.factory.handle.recCyMsg(username, msg)
-            self.searchYoutube(msg)
+                assert keyId is None
+                chatArgs = (timeNow, chatCyTime, msg, modflair, 0)
+                self.userdict[username]['deferred'].addCallback(self.deferredChat,
+                                                                chatArgs)
+                
+            if username != config['Cytube']['username'] and username != '[server]':
+                # comment line below for test. #TODO make proper test
+                self.factory.handle.recCyMsg(username, msg)
+                self.searchYoutube(msg)
 
     def cancelChatLog(self):
         try:
@@ -146,6 +154,26 @@ class CyProtocol(WebSocketClientProtocol):
         self.unloggedChat = []
         print 'Logging %s !!' % chatlist
         return database.bulkLogChat('cyChat', chatlist)
+
+    def deferredChat(self, res, chatArgs):
+        """ Logs chat to database. Since this will be added to the userAdd
+        deferred chain, we ensure that the user is given a keyId before database
+        insert. This will rarely be triggered since a user must join and
+        immediatly chat before they are queried or written to the user database.
+        res is the key id from lastrowid or itself"""
+        keyId = res
+        dd = database.insertChat(None, keyId, *chatArgs)
+        # this inner deferred ensures that the outer deferred's response
+        # is always a keyId, in case we need to keep chaining more chat log
+        # callbacks.
+        dd.addCallback(self.deferredChatRes, keyId)
+
+    def deferredChatRes(self, res, key):
+        if not res:
+            print '[deferredChatRes]: wrote to db'
+            return defer.succeed(key)
+        else:
+            return defer.fail(key)
 
     def _cyCall_addUser(self, fdict):
         user = fdict['args'][0]

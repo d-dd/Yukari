@@ -78,3 +78,7 @@ def _bulkLogChat(txn, table, chatList):
     #TODO generalize
     sql = 'INSERT INTO %s VALUES (?, ?, ?, ?, ?, ?, ?)' % table
     txn.executemany(sql, chatList)
+
+def insertChat(*args):
+    sql = 'INSERT INTO cyChat VALUES(?, ?, ?, ?, ?, ?, ?)'
+    return dbpool.runOperation(sql, args)
