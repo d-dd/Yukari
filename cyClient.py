@@ -1,4 +1,5 @@
 import database, apiClient, tools
+from tools import clog
 from conf import config
 import json, time, re
 from collections import deque
@@ -9,6 +10,7 @@ from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 
+sys = 'CytubeClient'
 class NoRowException(Exception):
     pass
 
@@ -26,7 +28,7 @@ class CyProtocol(WebSocketClientProtocol):
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
 
     def onOpen(self):
-        print "Connected to Cytube!"
+        clog.info('(onOpen) Connected to Cytube!', sys)
         self.connectedTime = time.time()
         self.lastUserlist = 0
         self.factory.prot = self
@@ -39,17 +41,17 @@ class CyProtocol(WebSocketClientProtocol):
         elif msg.startswith('5:::{'):
             fstr = msg[4:]
             fdict = json.loads(fstr)
-            if fdict['name'] in ('chatMsg', 'userlist', 'addUser', 'userLeave'):
-                print fstr
+            #if fdict['name'] in ('chatMsg', 'userlist', 'addUser', 'userLeave'):
+                #print fstr
             self.processFrame(fdict)
 
     def onClose(self, wasClean, code, reason):
-        print 'Closed Protocol connection: %s' % reason
+        clog.info('(onClose) Closed Protocol connection: %s' % reason, sys)
 
     def sendf(self, dict): # 'sendFrame' is a WebSocket method name
         frame = json.dumps(dict)
         frame = '5:::' + frame
-        print '[->] %s' % frame
+        clog.debug('(sendf) [->] %s' % frame, sys)
         self.sendMessage(frame)
 
     def sendChat(self, msg, modflair=False):
@@ -83,7 +85,7 @@ class CyProtocol(WebSocketClientProtocol):
         m = self.ytUrl.search(msg)
         if m:
             ytId = m.group(6)
-            print ytId
+            clog.debug('(searchYoutube) matched: %s' % ytId, sys)
             d = apiClient.requestApi(ytId)
             d.addCallbacks(self.sendChat, self.errYtInfo)
 
@@ -107,13 +109,13 @@ class CyProtocol(WebSocketClientProtocol):
             modflair = args['meta']['modflair']
         else:
             modflair = None
-        print username
+        #print username
         if username in self.userdict or username == '[server]':
             if username == '[server]':
                 keyId = 2
             else:
                 keyId = self.userdict[username]['keyId']
-            print '%s has id %s, says %s' % (username, keyId, msg)
+            #print '%s has id %s, says %s' % (username, keyId, msg)
             if keyId:
                 self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
                                           modflair, 0))
@@ -139,20 +141,20 @@ class CyProtocol(WebSocketClientProtocol):
     def cancelChatLog(self):
         try:
             self.dChat.cancel()
-            print '[cancelChatLog] cancelled log timer'
-        except(AttributeError):
-            print '[cancelChatLog] no defered'
-        except(AlreadyCancelled):
-            print '[cancelChatLog] already cancelled'
-        except(AlreadyCalled):
-            print '[cancelChatLog] already called'
-        except(NameError):
-            print '[cancelChatLog] deferred doesnt exist'
+            clog.debug('(cancelChatLog) Cancelled log timer', sys)
+        except AttributeError as e:
+            clog.debug('(cancelChatLog): %s' % e, sys)
+        except AlreadyCancelled as e:
+            clog.debug('(cancelChatLog): %s' % e, sys)
+        except AlreadyCalled as e:
+            clog.debug('(cancelChatLog): %s' % e, sys)
+        except NameError as e:
+            clog.error('(cancelChatLog): %s' % e, sys)
 
     def bulkLogChat(self, chatlist):
         assert self.unloggedChat == chatlist
         self.unloggedChat = []
-        print 'Logging %s !!' % chatlist
+        #print 'Logging %s !!' % chatlist
         return database.bulkLogChat('cyChat', chatlist)
 
     def deferredChat(self, res, chatArgs):
@@ -170,9 +172,10 @@ class CyProtocol(WebSocketClientProtocol):
 
     def deferredChatRes(self, res, key):
         if not res:
-            print '[deferredChatRes]: wrote to db'
+            clog.info('(deferredChatRes): wrote chat to database!', sys)
             return defer.succeed(key)
         else:
+            clog.err('(deferredChatRes): error writing to database!', sys)
             return defer.fail(key)
 
     def _cyCall_addUser(self, fdict):
@@ -200,14 +203,16 @@ class CyProtocol(WebSocketClientProtocol):
     def cacheKey(self, res, user):
         assert res, 'no res at cacheKey'
         if res:
-            print "cached %s's key %s" % (user['name'], res[0])
+            clog.info("(cacheKey) cached %s's key %s" % (user['name'], res[0]),
+                      sys)
             self.userdict[user['name']]['keyId'] = res[0]
 
     def _cyCall_userLeave(self, fdict):
         username = fdict['args'][0]['name']
         self.userdict[username]['inChannel'] = False
         d = self.userdict[username]['deferred']
-        print 'user %s left. adding callbacks' % username
+        clog.debug('_cyCall_userLeave) user %s has left. Adding callbacks' 
+                   % username, sys)
         leftUser = self.userdict[username]
         d.addCallback(self.clockUser, leftUser,
                       int(time.time()))
@@ -216,20 +221,20 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.dbErr)
 
     def removeUser(self, res, username):
-        print 'removing user'
+        clog.debug('(removeUser) Removing user', sys)
         try:
             if not self.userdict[username]['inChannel']:
                 del self.userdict[username]
-                print 'deleted %s' % username
+                clog.debug('(removeUser) deleted %s' % username, sys)
             else:
-                print 'skipping removeUser: user in channel'
+                clog.error('(removeUser) skipping: user %s in channel' % username, sys)
         except(KeyError):
-            print 'failed removeUser: user %s not in userdict' % username
+            clog.error('(removeUser) Failed: user %s not in userdict' % username, sys)
             return KeyError
 
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlist < 3: # most likely the same userlist
-            print "Duplicate userlist detected" # but with ip/aliases if mod+
+            clog.info('(_cy_userlist) Duplicate userlist detected', sys) # but with ip/aliases if mod+
             return
         self.lastUserlist = time.time()
         userlist = fdict['args'][0]
@@ -250,39 +255,10 @@ class CyProtocol(WebSocketClientProtocol):
         return database.query(sql, binds)
     
     def errYtInfo(self, err):
-        print err
-
-    def dbAddCyUser(self, user, timeNow):
-        #user['timeJoined'] = timeNow
-        username = user['name']
-        isRegistered = self.checkRegistered(username)
-        sql = 'INSERT INTO CyUser VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)'
-        binds = (None, username.lower(), isRegistered, username,
-                 0, 0, timeNow, timeNow, 0)
-        return database.operate(sql, binds)
-
-    def dbAddCyUserResultadd(self, outcome, username):
-        if outcome is None:
-            print '[DB] cyUserAdd successful!'
-            if username in self.unloggedChatUsers: # add unlogged chat
-                self.logUnloggedChat()
-                    
-        elif outcome.type == IntegrityError: # row already exists
-            print '[DB] cyUserAdd failed. Already in table: %s' % outcome.value
-        else:
-            print '[DB] AddCyUser: some other error: %s' % outcome
-    
-    def dbAddCyUserResult(self, outcome):
-        self.outcome = outcome
-        if outcome is None:
-            print '[DB] cyUserAdd successful!'
-        elif outcome.type == IntegrityError: # row already exists
-            print '[DB] cyUserAdd failed. Already in table: %s' % outcome.value
-        else:
-            print '[DB] AddCyUser: some other error: %s' % outcome
+        clog.error('(errYtInfo) %s' % err, sys)
 
     def dbErr(self, err):
-        print '[DB] Database Error: %s' % err.value
+        clog.error('(dbErr): %s' % err.value, sys)
 
     def cleanUp(self):
         # set restart to False
@@ -298,7 +274,7 @@ class CyProtocol(WebSocketClientProtocol):
     def clockUser(self, res, leftUser, timeNow):
         """ Clock out a user, by updating their accessTime """
         username = leftUser['name']
-        print 'Clocking out %s!' % username
+        clog.info('(clockUser) Clocking out %s!' % username, sys)
         timeJoined = leftUser['timeJoined']
         timeStayed = timeNow - timeJoined
         userId = leftUser['keyId']
@@ -313,7 +289,7 @@ class CyProtocol(WebSocketClientProtocol):
             try:
                 user = self.userdict[username]
             except KeyError as e:
-                print e
+                clog.error('(checkRegistered): %s' % e, sys)
                 #raise
             if user['rank'] == 0:
                 return 0
@@ -327,7 +303,7 @@ class WsFactory(WebSocketClientFactory):
         WebSocketClientFactory.__init__(self, arg)
 
     def clientConnectionLost(self, connector, reason):
-        print 'Connection lost to Cyutbe. Reason: %s' % reason
+        clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s' % reason, sys)
         if not self.handle.cyRestart:
             self.handle.doneCleanup('cy')
         else:
@@ -335,4 +311,4 @@ class WsFactory(WebSocketClientFactory):
             self.handle.doneCleanup('cy')
 
     def clientConnectionFailed(self, connector, reason):
-        print 'Connection failed to Cytube. Reason: %s' % reason
+        clog.error('(clientConnectionFailed) Connection failed to Cytube. %s' % reason, sys)

@@ -24,7 +24,7 @@ def dbQuery(columns, table, **kwargs):
         binds.append(value)
     sql += ' AND '.join(where)
     binds = tuple(binds)
-    print 'dbquery', sql, binds
+#    print 'dbquery', sql, binds
     return query(sql, binds)
 
 def queryResult(res):
@@ -37,7 +37,6 @@ def queryResult(res):
         return defer.succeed(res[0])
 
 def _makeInsert(table, *args):
-    print len(args)
     sql = 'INSERT INTO %s VALUES (' + ('?,' * (len(args)-1)) + '?)'
     return sql % table, args
 

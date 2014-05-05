@@ -2,15 +2,15 @@ from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
 from conf import config
 import database, tools
+from tools import clog
 import time, sys
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
-from twisted.python import log
-import logging
 from twisted.manhole import telnet
 from autobahn.twisted.websocket import connectWS
 
+sys = 'Yukari'
 class Connections:
     """ Handles connections to a Cytube server and IRC, as well as
         any communication between them."""
@@ -36,10 +36,10 @@ class Connections:
         d.addCallback(self.cySocketIo)
 
     def cyPostErr(self, err):
-        print err 
+        clog.error(err, sys)
 
     def processBody(self, body):
-        print "RECEIVED %s " % body 
+        clog.debug('(processBody) Received session string %s ' % body, sys)
 
         msg = body.split(',')
         sid = msg[0][:msg[0].find(':')]
@@ -48,7 +48,7 @@ class Connections:
         return ws
 
     def cySocketIo(self, url):
-        print "cySocketIo %s" % url
+        clog.debug('(cySocketIo) Cytube ws uri: %s' % url, sys)
         self.wsFactory = WsFactory(url)
         self.wsFactory.handle = self
         connectWS(self.wsFactory)
@@ -87,8 +87,9 @@ class Connections:
                 thunk(user, msg)
 
     def _com_greet(self, user, msg):
-        msg = 'Nice to meet you, %s!' % user
-        reactor.callLater(0.05, self.sendChats, msg)
+        #msg = 'Nice to meet you, %s!' % user
+        #reactor.callLater(0.05, self.sendChats, msg)
+        pass
 
     def sendToCy(self, msg, modflair=False):
         if self.cy:
@@ -104,7 +105,7 @@ class Connections:
 
     def cleanup(self):
         """ Prepares for shutdown """
-        print 'Cleaning up for shutdown!'
+        clog.info('(cleanup) Cleaning up for shutdown!', sys)
         self.done = Deferred()
         if self.irc:
             self.ircFactory.prot.partLeave('Shutting down.')
@@ -118,10 +119,10 @@ class Connections:
         # use telnet(manhole) to manually fire the 'done' deferred.
         if protocol == 'irc':
             self.irc = None
-            print 'Done shutting down IRC.'
+            clog.info('(doneCleanup) Done shutting down IRC.', sys)
         elif protocol == 'cy':
             self.cy = None
-            print 'Done shutting down Cy.'
+            clog.info('(doneCleanup) Done shutting down Cy.', sys)
         if self.irc is not True and self.cy is not True:
             self.done.callback(None)
 
@@ -130,7 +131,7 @@ def createShellServer(obj):
     while the program is running. Connection's instance yukari is named y.
     e.g. dir(y), will list all of yukari's names"""
 
-    print 'Creating shell server instance...'
+    clog.info('Creating shell server instance...', sys)
     factory = telnet.ShellFactory()
     port = reactor.listenTCP(int(config['telnet']['port']), factory)
     factory.namespace['y'] = obj
@@ -140,53 +141,7 @@ def createShellServer(obj):
     return port
 
 
-class LevelFileLogObserver(log.FileLogObserver):
-    def __init__(self, f, level=logging.INFO):
-        log.FileLogObserver.__init__(self, f)
-        self.logLevel = level
-
-    def emit(self, eventDict):
-        # Reset text color
-        if eventDict['isError']:
-            level = logging.ERROR
-            self.write("\033[91m")
-            log.FileLogObserver.emit(self, eventDict)
-            self.write('\033[0m')
-            return
-        elif 'level' in eventDict:
-            level = eventDict['level']
-        else:
-            level = logging.INFO
-        if level > self.logLevel and level == logging.ERROR:
-            self.write("\033[91m")
-            log.FileLogObserver.emit(self, eventDict)
-            self.write('\033[0m')
-        else:
-            log.FileLogObserver.emit(self, eventDict)
-
-
-class CustomLog():
-    """ logging shortcut """
-    def debug(self, msg, sys=None):
-        log.msg(msg, level=logging.DEBUG, system=sys)
-    def info(self, msg, sys=None):
-        log.msg(msg, level=logging.INFO, system=sys)
-    def warning(self, msg, sys=None):
-        log.msg(msg, level=logging.WARNING, system=sys)
-    def error(self, msg, sys=None):
-        log.msg(msg, level=logging.ERROR, system=sys)
-    # using log.err emits the error message twice. :?
-    def errorm(self, msg, sys=None):
-        log.err(msg, level=logging.ERROR, system=sys)
-    def critical(self, msg, sys=None):
-        log.msg(msg, level=logging.CRITICAL, system=sys)
-
-clog = CustomLog()
-# only debug will show Twisted-produced messages
-logger = LevelFileLogObserver(sys.stdout, level=logging.DEBUG)
-log.addObserver(logger.emit)
 clog.error('test custom log', 'cLog tester')
-        
 yukari = Connections()
 yukari.cyPost()
 yukari.ircConnect()
