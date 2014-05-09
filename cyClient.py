@@ -17,6 +17,7 @@ class NoRowException(Exception):
 class CyProtocol(WebSocketClientProtocol):
 
     def __init__(self):
+        self.votes = 0
         self.unloggedChat = []
         self.lastChatLogTime = 0
         self.testan = ''
@@ -97,6 +98,25 @@ class CyProtocol(WebSocketClientProtocol):
         # setMotd comes after the chat buffer when joining a channel
         self.receivedChatBuffer = True
 
+    def _cyCall_pm(self, fdict):
+        return # TODO
+        clog.info(fdict, sys)
+        username = fdict['args'][0]['username']
+        msg = fdict['args'][0]['msg']
+        if msg == '$down':
+            self.votes -= 1
+        elif msg == '$up':
+            self.votes += 1
+        else:
+            return
+        self.sendCss()
+
+    def sendCss(self):
+        return # TODO
+        hor = -16 * self.votes
+        css = '#votebg{background-position: %spx 0px;}' % hor
+        self.sendf({'name':'setChannelCSS', 'args':{'css':css}})
+
     def _cyCall_chatMsg(self, fdict):
         if not self.receivedChatBuffer:
             return
@@ -104,18 +124,17 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = round(time.time(), 2)
         username = args['username']
         msg = args['msg']
+        msg = tools.unescapeMsg(msg)
         chatCyTime = round((args['time'])/1000.0, 2)
         if 'modflair' in args['meta']:
             modflair = args['meta']['modflair']
         else:
             modflair = None
-        #print username
         if username in self.userdict or username == '[server]':
             if username == '[server]':
                 keyId = 2
             else:
                 keyId = self.userdict[username]['keyId']
-            #print '%s has id %s, says %s' % (username, keyId, msg)
             if keyId:
                 self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
                                           modflair, 0))
@@ -234,7 +253,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlist < 3: # most likely the same userlist
-            clog.info('(_cy_userlist) Duplicate userlist detected', sys) # but with ip/aliases if mod+
+             # with ip/aliases if mod+
+            clog.info('(_cy_userlist) Duplicate userlist detected', sys)
             return
         self.lastUserlist = time.time()
         userlist = fdict['args'][0]
@@ -303,7 +323,8 @@ class WsFactory(WebSocketClientFactory):
         WebSocketClientFactory.__init__(self, arg)
 
     def clientConnectionLost(self, connector, reason):
-        clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s' % reason, sys)
+        clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s'
+                     % reason, sys)
         if not self.handle.cyRestart:
             self.handle.doneCleanup('cy')
         else:
@@ -311,4 +332,5 @@ class WsFactory(WebSocketClientFactory):
             self.handle.doneCleanup('cy')
 
     def clientConnectionFailed(self, connector, reason):
-        clog.error('(clientConnectionFailed) Connection failed to Cytube. %s' % reason, sys)
+        clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
+                    % reason, sys)

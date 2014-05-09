@@ -1,5 +1,6 @@
 import database
 import time
+from tools import clog
 from conf import config
 from collections import deque
 from twisted.words.protocols import irc
@@ -8,8 +9,12 @@ from twisted.internet.protocol import ClientFactory
 
 # on Rizon networks, the optional part/quit message rarely works.
 
+class NoRowException(Exception):
+    pass
+
+sys = 'IrcClient'
 class IrcProtocol(irc.IRCClient):
-    lineRate = None
+    lineRate = None # use our own throttle methods
     nickname = str(config['irc']['nick'])
 
     def __init__(self):
@@ -18,18 +23,18 @@ class IrcProtocol(irc.IRCClient):
         self.bucketToken = int(config['irc']['bucket'])
         self.underSpam = False
         self.nicklist = []
-        self.nickdict = []
+        self.nickdict = {} # {('nick','user','host'): id}
 
     def addQueue(self, msg):
-        if self.underSpam is False and self.bucketToken != 0:
+        if not self.underSpam and self.bucketToken != 0:
             self.chatQueue.append(msg)
             self.popQueue()
-        elif self.underSpam:# and self.bucketToken <= 6:
-            print 'throttled'
+        elif self.underSpam:
+            clog.warning('(addQueue) chat is throttled', sys)
             return
 
         elif self.bucketToken == 0:
-            print "TOO FAST. Turning on spam block."
+            clog.warning('(addQueue) blocking messages from CyTube', sys)
             msg = '[Hit throttle: Dropping messages %s.]'
             self.say(self.channelName, msg % 'from Cytube')
             self.factory.handle.sendToCy(msg % 'to IRC', modflair=True)
@@ -37,7 +42,7 @@ class IrcProtocol(irc.IRCClient):
 
     def addToken(self):
         if self.bucketToken < 13:
-            print "adding 1 token, token: %s" % self.bucketToken
+            clog.debug('(addToken) +1, token: %s' % self.bucketToken, sys)
             self.bucketToken += 1
         if self.underSpam and self.bucketToken > 10:
             self.underSpam = False
@@ -47,7 +52,7 @@ class IrcProtocol(irc.IRCClient):
                                   modflair=True)
 
     def popQueue(self):
-        print 'running POP QUEUE'
+        clog.debug('(popQueue) sending chat from IRC chat queue', sys)
         self.bucketToken -= 1
         self.logSay(self.channelName, self.chatQueue.popleft())
         reactor.callLater(17-self.bucketToken, self.addToken)
@@ -60,19 +65,15 @@ class IrcProtocol(irc.IRCClient):
         d = database.operate(sql, binds) # must be in unicode
         self.say(channel, msg) # must not be in unicode
         
-    def names(self, channel):
-        d = defer.Deferred()
-        self.sendLine('NAMES %s' % channel)
-        return d
-
     def irc_RPL_NAMREPLY(self, prefix, params):
         channel = params[2]
         nicks = params[3].split(' ')
         self.nicklist.extend(nicks)
-        print self.nicklist
+        clog.debug('(irc_RPL_NAMREPLY) nicklist:%s' % self.nicklist, sys)
 
     def irc_RPL_ENDOFNAMES(self, prefix, params):
-        print "end of names prefix::%s, params %s." % (prefix, params)
+        clog.debug('(irc_RPL_ENDOFNAMES) prefix::%s, params %s.' 
+                    % (prefix, params), sys)
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
@@ -84,27 +85,29 @@ class IrcProtocol(irc.IRCClient):
         self.factory.prot = self
 
     def userJoined(self, user, channel):
-        print "%s has joined %s" % (user, channel)
+        clog.info('%s has joined %s' % (user, channel), sys)
 
     def userLeft(self, user, channel):
-        print '%s has left the %s' % (user, channel)
+        clog.info('%s has left the %s' % (user, channel), sys)
         
     def userRenamed(self, oldname, newname):
-        print '%s is now known as %s' % (oldname, newname)
+        clog.info('%s is now known as %s' % (oldname, newname), sys)
 
     def nickChanaged(self, nick):
         self.nickname = nick
 
     def joined(self, channel):
-        print 'Joined IRC channel: %s' % channel
+        clog.info('Joined IRC channel: %s' % channel, sys)
         self.factory.handle.irc = True
 
     def left(self, channel):
-        print 'Left IRC channel: %s' % channel
+        clog.info('Left IRC channel: %s' % channel, sys)
         self.factory.handle.irc = False
 
     def privmsg(self, user, channel, msg):
-        print 'priv message from %s' % user
+        clog.info('priv message from %s' % user, sys)
+        if msg == '$test':
+            self.test_module()
         self.factory.handle.recIrcMsg(user, channel, msg)
         self.logProcess(user, msg)
 
@@ -124,27 +127,60 @@ class IrcProtocol(irc.IRCClient):
         j = user.find('@')
         username = user[i+1:j]
         host = user[j+1:]
-        d = self.logIrcUser(nickname, username, host)
-        d.addCallback(self.queryUser, nickname, username, host)
-        #d.addCallback(self.checkStatus, nickname)
-        d.addCallback(self.logChat, 3, timeNow, msg)
+        if nickname in self.nickdict:
+            keyId = self.nickdict[nickname]['keyId']
+            if keyId is None:
+                # a callback for the keyId must already be registered
+                clog.error('(logProcess) key None for user %s' % nickname, sys)
+                dd = self.nickdict[nickname]['deferred']
+                dd.addCallback(self.logChat, 3, timeNow, msg)
+            if keyId:
+                d = self.logChat(keyId, 3, timeNow, msg)
+                
+        else:
+            self.nickdict[nickname] = {'keyId': None, 'deferred': None}
+            clog.debug('(logProcess) added %s to nickdict' % nickname, sys)
+            dd = self.queryOrAddUser(nickname, username, host)
+            dd.addCallback(self.logChat, 3, timeNow, msg)
+            self.nickdict[nickname]['deferred'] = dd
+
+    def queryOrAddUser(self, nickname, username, host):
+        clog.debug('(queryOrAddUser) Quering %s:%s:%s' % (nickname, username, host), sys)
+        d = database.dbQuery(('userId', 'flag'), 'ircUser',
+               nickLower=nickname.lower(), username=username, host=host)
+        d.addCallback(database.queryResult)
+        values = (None, nickname.lower(), username, host, nickname, 0)
+        d.addErrback(database.dbInsertReturnLastRow, 'ircUser', *values)
+        clog.debug('(queryOrAddUser) Adding %s' % username, sys)
+        d.addErrback(self.dbErr)
+        d.addCallback(self.cacheKey, nickname)
+        d.addErrback(self.dbErr)
+        return d
+        
+    def dbErr(self, err):
+        clog.error('(dbErr): %s' % err.value, sys)
+        clog.error('(dbErr): %s' % dir(err), sys)
+        clog.error('(dbErr): %s' % err.printTraceback(), sys)
+
+    def returnKey(self, key):
+        return defer.succeed(key)
+
+    def cacheKey(self, res, nickname):
+        clog.error('the key is %s:' % res[0], sys)
+        assert res, 'no res at cacheKey'
+        if res:
+            clog.info("(cacheKey) cached %s's key %s" % (nickname, res[0]))
+            self.nickdict[nickname]['keyId'] = res[0]
+            return defer.succeed(res[0])
 
     def logIrcUser(self, nickname, username, host):
         """ logs IRC chat to IrcChat table """
-        ### Since we're only interested in logging chat, it is sufficient to
-        ### insert users to the IRC users table only after a message has been
-        ### received. Users who join but do not chat will never be logged.
-        ### STATUS (if user has identified) is only checked during join, but 
-        ### users can logout, so the value may not be accurate, but this is fine 
-        ### for our purposes since it will still be the same user.
-        ### STATUS works on Rizon, but may not be available on other networks.
-        # add user to IrcUser
         sql = 'INSERT OR IGNORE INTO IrcUser VALUES(?, ?, ?, ?, ?, ?)'
         binds = (None, nickname.lower(), username, host, nickname, 0)
         return database.operate(sql, binds)
 
     def queryUser(self, response, nickname, username, host):
-        if nickname in nickdict:
+        if nickname in self.nickdict:
             pass
         sql = 'SELECT userId FROM IrcUser WHERE nickLower=? AND username=? AND host=?'
         binds = (nickname.lower(), username, host)
@@ -155,11 +191,24 @@ class IrcProtocol(irc.IRCClient):
         self.msg('NickServ', msg)
         
     def logChat(self, result, status, timeNow, msg):
-        # use 3 for status for now
+        status = 0 # we don't really need this
         msg = msg.decode('utf-8')
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, result[0][0], 3, timeNow, msg, None)
+        binds = (None, result, status, timeNow, msg, None)
         return database.operate(sql, binds)
+
+    def test_makeChat(self, i):
+        """ Test user + chat logging functionality """
+        user = 'testo%s!~dd@pon.pon.pata.pon' % i
+        channel = '#mikumonday'
+        msg = '%s_test' % i
+        self.privmsg(user, channel, msg)
+
+    def test_module(self):
+       self.test_makeChat(1)
+       self.test_makeChat(2)
+       self.test_makeChat(3)
+       self.test_makeChat(4)
     
 class IrcFactory(ClientFactory):
     protocol = IrcProtocol
@@ -168,9 +217,8 @@ class IrcFactory(ClientFactory):
         self.channel = channel
 
     def clientConnectionLost(self, connector, reason):
-        print 'Connection Lost to IRC. Reason: %s' % reason
+        clog.warning('Connection Lost to IRC. Reason: %s' % reason, sys)
         self.handle.doneCleanup('irc')
 
     def clientConnectionFailed(self, connector, reason):
-        print 'Connection Failed to IRC. Reason: %s' % reason
-
+        clog.warning('Connection Failed to IRC. Reason: %s' % reason, sys)

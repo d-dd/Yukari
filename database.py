@@ -1,8 +1,12 @@
 from twisted.internet import defer
 from twisted.enterprise import adbapi
+from tools import clog
+sys = 'database'
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
+class NoRowException(Exception):
+    pass
 
 def operate(sql, binds):
     return dbpool.runOperation(sql, binds)
@@ -32,8 +36,10 @@ def queryResult(res):
     Returns single row (list) from a query. If None, returns NoRowException.
     """
     if not res:
-        return NoRowException
+        clog.error('(queryResult) No match found', sys)
+        return defer.fail(NoRowException)
     else:
+        clog.error('(queryResult) match found %s' % res, sys)
         return defer.succeed(res[0])
 
 def _makeInsert(table, *args):
@@ -41,10 +47,12 @@ def _makeInsert(table, *args):
     return sql % table, args
 
 def dbInsertReturnLastRow(err, table, *args):
+    clog.error('(dbInsertReturnLastRow) %s' % err, sys)
     return dbpool.runInteraction(_dbInsert, table, *args)
 
 def _dbInsert(txn, table, *args):
     sql, args = _makeInsert(table, *args)
+    clog.debug('(_dbInsert) %s' % sql, sys)
     txn.execute(sql, args)
     return [txn.lastrowid]
 
