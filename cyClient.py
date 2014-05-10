@@ -27,6 +27,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.ytUrl = re.compile(
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
+        self.playlist = []
 
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', sys)
@@ -267,6 +268,19 @@ class CyProtocol(WebSocketClientProtocol):
             self.userdict[user['name']] = user
             self.userJoin(user, timeNow)
 
+    def _cyCall_playlist(self, fdict):
+        """ Cache the playlist in memory, and write them to the media table """
+        # Don't add this to the queue table, since it'll cause wrong duplicates
+        pl = fdict['args'][0]
+        clog.debug('(_cyCall_playlist) received playlist from Cytube', sys)
+        dbpl = []
+        for entry in pl:
+            self.playlist.append(entry)
+            if entry['media']['type'] != 'cu': # custom embed
+                dbpl.append((None, entry['media']['type'], entry['media']['id'],
+                            entry['media']['seconds'], entry['media']['title'],
+                            1, None)) # 'introduced by' Yukari
+        database.bulkLogMedia(dbpl)
 
     def queryUserId(self, username, isRegistered):
         """ Query UserId to log chat to database """

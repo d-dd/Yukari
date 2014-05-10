@@ -10,7 +10,7 @@ cyName = config['Cytube']['username']
 # User table
 con.execute("""
         CREATE TABLE CyUser(
-        userId INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER PRIMARY KEY,
         nameLower TEXT NOT NULL,
         registered INTEGER TEXT NOT NULL,
         nameOriginal TEXT NOT NULL,
@@ -31,7 +31,7 @@ con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 # IRC User table
 con.execute("""
         CREATE TABLE IrcUser(
-        userId INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER PRIMARY KEY,
         nickLower TEXT NOT NULL,
         username TEXT,
         host TEXT NOT NULL,
@@ -43,7 +43,7 @@ con.execute("INSERT INTO IrcUser VALUES (?, ?, ?, ?, ?, ?)",
 # Cy Chat table
 con.execute("""
         CREATE TABLE CyChat(
-        chatId INTEGER PRIMARY KEY AUTOINCREMENT,
+        chatId INTEGER PRIMARY KEY,
         userId INTEGER,
         chatTime INTEGER,
         chatCyTime INTEGER,
@@ -55,13 +55,33 @@ con.execute("""
 # IRC Chat table
 con.execute("""
         CREATE TABLE IrcChat(
-        chatId INTEGER PRIMARY KEY AUTOINCREMENT,
+        chatId INTEGER PRIMARY KEY,
         userId INTEGER,
         status INTEGER,
         chatTime INTEGER,
         chatMsg TEXT,
         flag INTEGER,
         FOREIGN KEY(userId) REFERENCES IrcUser(userId));""")
+
+# media table
+con.execute("""
+        CREATE TABLE media(
+        mediaId INTEGER PRIMARY KEY,
+        type TEXT NOT NULL,
+        id TEXT NOT NULL,
+        dur INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        by TEXT NOT NULL,
+        flag INTEGER,
+        UNIQUE (type, id),
+        FOREIGN KEY(by) REFERENCES CyUser(userId));""")
+
+title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
+         '\x82\x8a\xe3\x80\x91Mahou \xe9\xad\x94\xe6\xb3\x95\xe3\x80\x90\xe3'
+         '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
+title = title.decode('utf-8')
+con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
+           (None, 'yt', '01uN4MCsrCE', 248, title, 1, None))
 
 con.commit()
 print "Tables created."

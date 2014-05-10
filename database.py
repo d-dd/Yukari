@@ -36,7 +36,7 @@ def queryResult(res):
     Returns single row (list) from a query. If None, returns NoRowException.
     """
     if not res:
-        clog.error('(queryResult) No match found', sys)
+        clog.info('(queryResult) No match found', sys)
         return defer.fail(NoRowException)
     else:
         clog.error('(queryResult) match found %s' % res, sys)
@@ -47,7 +47,7 @@ def _makeInsert(table, *args):
     return sql % table, args
 
 def dbInsertReturnLastRow(err, table, *args):
-    clog.error('(dbInsertReturnLastRow) %s' % err, sys)
+    clog.info('(dbInsertReturnLastRow) %s' % err, sys)
     return dbpool.runInteraction(_dbInsert, table, *args)
 
 def _dbInsert(txn, table, *args):
@@ -89,3 +89,11 @@ def _bulkLogChat(txn, table, chatList):
 def insertChat(*args):
     sql = 'INSERT INTO cyChat VALUES(?, ?, ?, ?, ?, ?, ?)'
     return dbpool.runOperation(sql, args)
+
+def bulkLogMedia(playlist):
+    return dbpool.runInteraction(_bulkLogMedia, playlist)    
+
+def _bulkLogMedia(txn, playlist):
+    sql = 'INSERT OR IGNORE INTO media VALUES (?, ?, ?, ?, ?, ?, ?)'
+    txn.executemany(sql, playlist)
+
