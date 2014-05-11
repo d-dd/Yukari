@@ -1,7 +1,7 @@
 import database, apiClient, tools
 from tools import clog
 from conf import config
-import json, time, re
+import json, time, re, operator
 from collections import deque
 from twisted.internet import reactor, defer
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -24,7 +24,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.ytUrl = re.compile(
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
-        self.playlist = []
 
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', sys)
@@ -267,7 +266,9 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_playlist(self, fdict):
         """ Cache the playlist in memory, and write them to the media table """
-        # Don't add this to the queue table, since it'll cause wrong duplicates
+        # Don't add this to the queue table, since it'll end up adding
+        # multiple times each join/restart and also during shuffle and clear.
+        self.playlist = []
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', sys)
         dbpl = []
@@ -279,12 +280,38 @@ class CyProtocol(WebSocketClientProtocol):
                             1, 1)) # 'introduced by' Yukari, flag 1 for pl add
         database.bulkLogMedia(dbpl)
 
+    def alterPlaylist(self, queue, afterUid, beforeUid=None):
+        if beforeUid is None:
+            if afterUid == 'prepend':
+                index = 0
+            else:
+                index = self.getIndexFromUid(afterUid)
+            self.playlist.insert(index + 1, queue)
+            # I want to print media['title'] but depending on the terminal
+            # it fails to encode some characters (usually symbols)
+            clog.debug('(alterPlaylist) Inserting id %s after index %s' %
+                       (queue['uid'], index), sys)
+        elif beforeUid:
+            pass
+
+
+    def getIndexFromUid(self, uid):
+        """ Return video index of self.playlist given an UID """
+        clog.debug('(getIndexFromUid) Looking up uid %s' % uid, sys)
+        try:
+            media = (i for i in self.playlist if i['uid'] == uid).next()
+            return self.playlist.index(media)
+        except StopIteration as e:
+            clog.error('(getIndexFromUid) media UID %s not found' % uid, sys)
+
     def _cyCall_queue(self, fdict):
         timeNow = time.time()
-        queue = fdict['args'][0]['item']
-        isTemp = queue['temp']
-        media = queue['media']
-        queueby = queue['queueby']
+        item = fdict['args'][0]['item']
+        isTemp = item['temp']
+        media = item['media']
+        queueby = item['queueby']
+        afterUid = fdict['args'][0]['after']
+        self.alterPlaylist(item, afterUid)
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
         else:
@@ -301,6 +328,14 @@ class CyProtocol(WebSocketClientProtocol):
             flag = None
         d.addCallback(self.writeQueue, userId, timeNow, flag)
         d.addErrback(self.dbErr)
+
+    def _cyCall_delete(self, fdict):
+        uid = fdict['args'][0]['uid']
+        index = self.getIndexFromUid(uid)
+        deletedMedia = self.playlist.pop(index)
+        clog.info('(_cyCall_delete) Removed uid %s, index %s from my playlist' %
+                  (uid, index), sys)
+        assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
     def queryOrInsertMedia(self, media, userId):
         """ Returns the mediaId of media by query or insert """
@@ -325,6 +360,12 @@ class CyProtocol(WebSocketClientProtocol):
 
     def dbErr(self, err):
         clog.error('(dbErr): %s' % err.value, sys)
+
+    def _cyCall_moveVideo(self, fdict):
+        return
+        frompos = fdict['args'][0]['from']
+        afterpos = fdict['args'][0]['after']
+        self.playlist.insert(afterpos, self.playlist.pop(frompos))
 
     def cleanUp(self):
         # set restart to False
@@ -361,6 +402,14 @@ class CyProtocol(WebSocketClientProtocol):
                 return 0
             else:
                 return 1
+
+    def doAdd(self, quantity=5): # $add
+        """ Adds quantity number of media to the playlist """
+        pass
+
+    def doQueueMedia(self, media, isTemp):
+        """ Queues media to CyTube """
+        pass
 
 class WsFactory(WebSocketClientFactory):
     protocol = CyProtocol
