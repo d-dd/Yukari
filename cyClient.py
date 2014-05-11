@@ -3,8 +3,6 @@ from tools import clog
 from conf import config
 import json, time, re
 from collections import deque
-from sqlite3 import IntegrityError
-from twisted.python.util import InsensitiveDict
 from twisted.internet import reactor, defer
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
@@ -20,7 +18,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.votes = 0
         self.unloggedChat = []
         self.lastChatLogTime = 0
-        self.testan = ''
         self.receivedChatBuffer = False
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
@@ -323,13 +320,6 @@ class CyProtocol(WebSocketClientProtocol):
         clog.info('(printRes) %s' % res, sys)
         return defer.suceed(res)
         
-
-    def queryUserId(self, username, isRegistered):
-        """ Query UserId to log chat to database """
-        sql = 'SELECT userId FROM cyUser WHERE nameLower=? AND registered=?'
-        binds = (username.lower()+self.testan, isRegistered)
-        return database.query(sql, binds)
-    
     def errYtInfo(self, err):
         clog.error('(errYtInfo) %s' % err, sys)
 

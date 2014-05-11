@@ -36,10 +36,10 @@ def queryResult(res):
     Returns single row (list) from a query. If None, returns NoRowException.
     """
     if not res:
-        clog.info('(queryResult) No match found', sys)
+        #clog.debug('(queryResult) No match found', sys)
         return defer.fail(NoRowException)
     else:
-        clog.error('(queryResult) match found %s' % res, sys)
+        clog.debug('(queryResult) match found %s' % res, sys)
         return defer.succeed(res[0])
 
 def _makeInsert(table, *args):
@@ -47,12 +47,12 @@ def _makeInsert(table, *args):
     return sql % table, args
 
 def dbInsertReturnLastRow(err, table, *args):
-    clog.info('(dbInsertReturnLastRow) %s' % err, sys)
+    #clog.debug('(dbInsertReturnLastRow) %s' % err, sys)
     return dbpool.runInteraction(_dbInsert, table, *args)
 
 def _dbInsert(txn, table, *args):
     sql, args = _makeInsert(table, *args)
-    clog.debug('(_dbInsert) %s' % sql, sys)
+    #clog.debug('(_dbInsert) %s' % sql, sys)
     txn.execute(sql, args)
     return [txn.lastrowid]
 
@@ -109,6 +109,7 @@ def _insertMedia(txn, media):
 def insertQueue(mediaId, userId, timeNow, flag):
     sql = 'INSERT INTO Queue VALUES (?, ?, ?, ?, ?)'
     binds = (None, mediaId, userId, timeNow, flag)
-    clog.debug('(insertQueue) binds: %s, %s, %s, %s' % (mediaId, userId, timeNow, flag), sys)
+    clog.debug('(insertQueue) binds: %s, %s, %s, %s' % 
+               (mediaId, userId, timeNow, flag), sys)
     return operate(sql, binds)
 
