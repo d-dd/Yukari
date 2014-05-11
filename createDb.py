@@ -26,7 +26,9 @@ t = int(time.time())
 con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (1, cyName.lower(), 1, cyName, 3, 1, t, t, 0))
 con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (None, '[server]', 1, '[server]', 0, 2, t, t, 0))
+        (2, '[server]', 1, '[server]', 0, 2, t, t, 0))
+con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (3, '[anonymous]', 1, '[anonymous]', 0, 4, t, t, 0))
 
 # IRC User table
 con.execute("""
@@ -65,7 +67,7 @@ con.execute("""
 
 # media table
 con.execute("""
-        CREATE TABLE media(
+        CREATE TABLE Media(
         mediaId INTEGER PRIMARY KEY,
         type TEXT NOT NULL,
         id TEXT NOT NULL,
@@ -83,6 +85,18 @@ title = title.decode('utf-8')
 con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
            (None, 'yt', '01uN4MCsrCE', 248, title, 1, None))
 
+# queue table
+con.execute("""
+        CREATE TABLE Queue(
+        queueId INTEGER PRIMARY KEY,
+        mediaId INTEGER NOT NULL,
+        userId INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        flag INTEGER,
+        FOREIGN KEY (userId) REFERENCES CyUser(userId),
+        FOREIGN KEY (mediaId) REFERENCES media(mediaId));""")
+
 con.commit()
 print "Tables created."
+
 con.close()

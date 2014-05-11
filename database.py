@@ -87,13 +87,28 @@ def _bulkLogChat(txn, table, chatList):
     txn.executemany(sql, chatList)
 
 def insertChat(*args):
-    sql = 'INSERT INTO cyChat VALUES(?, ?, ?, ?, ?, ?, ?)'
+    sql = 'INSERT INTO CyChat VALUES(?, ?, ?, ?, ?, ?, ?)'
     return dbpool.runOperation(sql, args)
 
 def bulkLogMedia(playlist):
-    return dbpool.runInteraction(_bulkLogMedia, playlist)    
+    return dbpool.runInteraction(_bulkLogMedia, playlist)
 
 def _bulkLogMedia(txn, playlist):
-    sql = 'INSERT OR IGNORE INTO media VALUES (?, ?, ?, ?, ?, ?, ?)'
+    sql = 'INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?)'
     txn.executemany(sql, playlist)
+
+def insertMedia(media):
+    return dbpool.runInteraction(_insertMedia, media)
+
+def _insertMedia(txn, media):
+    sql = ('INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?);'
+           'UPDATE Media SET mediaId=mediaId WHERE type=? AND id=?')
+    txn.executemany(sql, media)
+    return [txn.lastrowid]
+
+def insertQueue(mediaId, userId, timeNow, flag):
+    sql = 'INSERT INTO Queue VALUES (?, ?, ?, ?, ?)'
+    binds = (None, mediaId, userId, timeNow, flag)
+    clog.debug('(insertQueue) binds: %s, %s, %s, %s' % (mediaId, userId, timeNow, flag), sys)
+    return operate(sql, binds)
 

@@ -279,8 +279,50 @@ class CyProtocol(WebSocketClientProtocol):
             if entry['media']['type'] != 'cu': # custom embed
                 dbpl.append((None, entry['media']['type'], entry['media']['id'],
                             entry['media']['seconds'], entry['media']['title'],
-                            1, None)) # 'introduced by' Yukari
+                            1, 1)) # 'introduced by' Yukari, flag 1 for pl add
         database.bulkLogMedia(dbpl)
+
+    def _cyCall_queue(self, fdict):
+        timeNow = time.time()
+        queue = fdict['args'][0]['item']
+        isTemp = queue['temp']
+        media = queue['media']
+        queueby = queue['queueby']
+        if queueby: # anonymous add is an empty string
+            userId = self.userdict[queueby]['keyId']
+        else:
+            userId = 3
+        if userId:
+            d = self.queryOrInsertMedia(media, userId)
+        else:
+            clog.error('(_cyCall_queue) user id not cached.', sys)
+
+        d.addErrback(self.dbErr)
+        if isTemp:
+            flag = 1
+        else:
+            flag = None
+        d.addCallback(self.writeQueue, userId, timeNow, flag)
+        d.addErrback(self.dbErr)
+
+    def queryOrInsertMedia(self, media, userId):
+        """ Returns the mediaId of media by query or insert """
+        d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
+        d.addCallback(database.queryResult)
+        values = (None, media['type'], media['id'], media['seconds'],
+                  media['title'], userId, None)
+        d.addErrback(database.dbInsertReturnLastRow, 'Media', *values)
+        return d
+
+    def writeQueue(self, res, userId, timeNow, flag):
+        """ Insert queue into Queue. """
+        # res is the [mediaId]
+        return database.insertQueue(res[0], userId, timeNow, flag)
+        
+    def printRes(self, res):
+        clog.info('(printRes) %s' % res, sys)
+        return defer.suceed(res)
+        
 
     def queryUserId(self, username, isRegistered):
         """ Query UserId to log chat to database """
