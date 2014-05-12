@@ -1,5 +1,6 @@
 from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
+from ext.rinception import Messenger, MessengerFactory
 from conf import config
 import database, tools
 from tools import clog
@@ -19,10 +20,12 @@ class Connections:
         # False = Offline, True = Online, None = has shutdown
         self.irc = False
         self.cy = False
+        self.rin = False
 
         # Wether to restart when disconnected
         self.ircRestart = True
         self.cyRestart = True
+        self.rinRestart = True
 
     def cyPost(self):
         """ Send a POST request to Cytube for a server session id
@@ -58,6 +61,12 @@ class Connections:
         self.ircFactory.handle = self
         reactor.connectTCP(config['irc']['url'], int(config['irc']['port']),
                            self.ircFactory)
+
+    def rinstantiate(self, port):
+        """ Start server for Rin (steam-bot) """
+        clog.info('(rinstantiate) Starting server for Rin', sys)
+        self.rinFactory = MessengerFactory()
+        reactor.listenTCP(18914, self.rinFactory)
 
     def recIrcMsg(self, user, channel, msg):
         if self.cy:
@@ -145,6 +154,7 @@ clog.error('test custom log', 'cLog tester')
 yukari = Connections()
 yukari.cyPost()
 yukari.ircConnect()
+yukari.rinstantiate(39393939)
 reactor.callWhenRunning(createShellServer, yukari)
 reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
 reactor.run()
