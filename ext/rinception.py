@@ -20,4 +20,4 @@ class MessengerFactory(protocol.Factory):
 
     def buildProtocol(self, addr):
         clog.info('(buildProtocol) Building protocol', sys)
-        return Messenger()
+        return Messenger(self)
