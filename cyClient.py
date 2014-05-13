@@ -280,29 +280,45 @@ class CyProtocol(WebSocketClientProtocol):
                             1, 1)) # 'introduced by' Yukari, flag 1 for pl add
         database.bulkLogMedia(dbpl)
 
-    def alterPlaylist(self, queue, afterUid, beforeUid=None):
-        if beforeUid is None:
-            if afterUid == 'prepend':
-                index = 0
-            else:
-                index = self.getIndexFromUid(afterUid)
-            self.playlist.insert(index + 1, queue)
-            # I want to print media['title'] but depending on the terminal
-            # it fails to encode some characters (usually symbols)
-            clog.debug('(alterPlaylist) Inserting id %s after index %s' %
-                       (queue['uid'], index), sys)
-        elif beforeUid:
-            pass
+    def addToPlaylist(self, item, afterUid):
+        if afterUid == 'prepend':
+            index = 0
+        else:
+            index = self.getIndexFromUid(afterUid)
+        self.playlist.insert(index + 1, item)
+        # I want to print media['title'] but depending on the terminal
+        # it fails to encode some characters (usually symbols)
+        clog.debug('(addToPlaylist) Inserting uid %s %s after index %s' %
+                   (item['uid'], item['media']['title'].encode('utf-8'),
+                     index), sys)
 
+    def movePlaylistItems(self, beforeUid, afterUid):
+        # 'before' is just the uid of the video that is going to move
+        clog.info('(movePlaylistItems) move uid:%s, after uid%s' %
+                  (beforeUid, afterUid), sys)
+        if afterUid == 'prepend':
+            indexAfter = 0
+        else:
+            indexAfter = self.getIndexFromUid(afterUid)
+        indexBefore = self.getIndexFromUid(beforeUid)
+        if indexBefore > indexAfter and afterUid != 'prepend':
+            indexAfter += 1
+        self.playlist.insert(indexAfter, self.playlist.pop(indexBefore))
 
     def getIndexFromUid(self, uid):
         """ Return video index of self.playlist given an UID """
-        clog.debug('(getIndexFromUid) Looking up uid %s' % uid, sys)
         try:
             media = (i for i in self.playlist if i['uid'] == uid).next()
-            return self.playlist.index(media)
+            index =  self.playlist.index(media)
+            clog.debug('(getIndexFromUid) Looking up uid %s, index is %s' % (uid, index), sys)
+            return index
+
         except StopIteration as e:
             clog.error('(getIndexFromUid) media UID %s not found' % uid, sys)
+
+    def displaypl(self):
+        for item in self.playlist:
+            print item['media']['title'].encode('utf-8')
 
     def _cyCall_queue(self, fdict):
         timeNow = time.time()
@@ -311,7 +327,7 @@ class CyProtocol(WebSocketClientProtocol):
         media = item['media']
         queueby = item['queueby']
         afterUid = fdict['args'][0]['after']
-        self.alterPlaylist(item, afterUid)
+        self.addToPlaylist(item, afterUid)
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
         else:
@@ -362,10 +378,10 @@ class CyProtocol(WebSocketClientProtocol):
         clog.error('(dbErr): %s' % err.value, sys)
 
     def _cyCall_moveVideo(self, fdict):
-        return
-        frompos = fdict['args'][0]['from']
-        afterpos = fdict['args'][0]['after']
-        self.playlist.insert(afterpos, self.playlist.pop(frompos))
+        beforeUid = fdict['args'][0]['from']
+        afterUid = fdict['args'][0]['after']
+        self.movePlaylistItems(beforeUid, afterUid)
+        #self.moveTwo(beforeUid, afterUid)
 
     def cleanUp(self):
         # set restart to False
