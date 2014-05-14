@@ -2,6 +2,7 @@
 import sqlite3, time
 from conf import config
 con = sqlite3.connect('data.db')
+con.execute('pragma foreign_keys=ON')
 
 ircNick = config['irc']['nick']
 cyName = config['Cytube']['username']
@@ -65,6 +66,16 @@ con.execute("""
         flag INTEGER,
         FOREIGN KEY(userId) REFERENCES IrcUser(userId));""")
 
+# VocaDB table
+con.execute("""
+        CREATE TABLE VocaDB(
+        songId INTEGER PRIMARY KEY,
+        userId INTEGER NOT NULL,
+        method INTEGER NOT NULL,
+        data TEXT NOT NULL,
+        time INTEGER NOT NULL,
+        FOREIGN KEY (userId) REFERENCES CyUser(userId));""")
+
 # media table
 con.execute("""
         CREATE TABLE Media(
@@ -75,15 +86,17 @@ con.execute("""
         title TEXT NOT NULL,
         by TEXT NOT NULL,
         flag INTEGER,
+        songId INTEGER,
         UNIQUE (type, id),
-        FOREIGN KEY(by) REFERENCES CyUser(userId));""")
+        FOREIGN KEY (songId) REFERENCES VocaDB(songId),
+        FOREIGN KEY (by) REFERENCES CyUser(userId));""")
 
 title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
          '\x82\x8a\xe3\x80\x91Mahou \xe9\xad\x94\xe6\xb3\x95\xe3\x80\x90\xe3'
          '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
 title = title.decode('utf-8')
-con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
-           (None, 'yt', '01uN4MCsrCE', 248, title, 1, None))
+con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+           (None, 'yt', '01uN4MCsrCE', 248, title, 1, None, None))
 
 # queue table
 con.execute("""

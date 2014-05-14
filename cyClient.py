@@ -1,7 +1,7 @@
 import database, apiClient, tools
 from tools import clog
 from conf import config
-import json, time, re, operator
+import json, time, re
 from collections import deque
 from twisted.internet import reactor, defer
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -277,7 +277,8 @@ class CyProtocol(WebSocketClientProtocol):
             if entry['media']['type'] != 'cu': # custom embed
                 dbpl.append((None, entry['media']['type'], entry['media']['id'],
                             entry['media']['seconds'], entry['media']['title'],
-                            1, 1)) # 'introduced by' Yukari, flag 1 for pl add
+                            1, 1, None))
+                            #'introduced by' Yukari, flag 1 for pl add
         database.bulkLogMedia(dbpl)
 
     def addToPlaylist(self, item, afterUid):
@@ -358,7 +359,7 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
         d.addCallback(database.queryResult)
         values = (None, media['type'], media['id'], media['seconds'],
-                  media['title'], userId, None)
+                  media['title'], userId, None, None)
         d.addErrback(database.dbInsertReturnLastRow, 'Media', *values)
         return d
 
@@ -381,7 +382,6 @@ class CyProtocol(WebSocketClientProtocol):
         beforeUid = fdict['args'][0]['from']
         afterUid = fdict['args'][0]['after']
         self.movePlaylistItems(beforeUid, afterUid)
-        #self.moveTwo(beforeUid, afterUid)
 
     def cleanUp(self):
         # set restart to False

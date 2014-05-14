@@ -3,8 +3,10 @@ from twisted.enterprise import adbapi
 from tools import clog
 sys = 'database'
 
-dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
-                               cp_max=1) # one thread max; avoids db locks
+
+def turnOnFK(txn):
+    txn.execute('pragma foreign_keys=ON')
+    
 class NoRowException(Exception):
     pass
 
@@ -94,14 +96,14 @@ def bulkLogMedia(playlist):
     return dbpool.runInteraction(_bulkLogMedia, playlist)
 
 def _bulkLogMedia(txn, playlist):
-    sql = 'INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?)'
+    sql = 'INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     txn.executemany(sql, playlist)
 
 def insertMedia(media):
     return dbpool.runInteraction(_insertMedia, media)
 
 def _insertMedia(txn, media):
-    sql = ('INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?);'
+    sql = ('INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
            'UPDATE Media SET mediaId=mediaId WHERE type=? AND id=?')
     txn.executemany(sql, media)
     return [txn.lastrowid]
@@ -113,3 +115,7 @@ def insertQueue(mediaId, userId, timeNow, flag):
                (mediaId, userId, timeNow, flag), sys)
     return operate(sql, binds)
 
+dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
+                               cp_max=1) # one thread max; avoids db locks
+
+dbpool.runInteraction(turnOnFK)
