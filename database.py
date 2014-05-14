@@ -96,14 +96,14 @@ def bulkLogMedia(playlist):
     return dbpool.runInteraction(_bulkLogMedia, playlist)
 
 def _bulkLogMedia(txn, playlist):
-    sql = 'INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    sql = 'INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?)'
     txn.executemany(sql, playlist)
 
 def insertMedia(media):
     return dbpool.runInteraction(_insertMedia, media)
 
 def _insertMedia(txn, media):
-    sql = ('INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?, ?);'
+    sql = ('INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?);'
            'UPDATE Media SET mediaId=mediaId WHERE type=? AND id=?')
     txn.executemany(sql, media)
     return [txn.lastrowid]

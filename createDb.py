@@ -8,7 +8,7 @@ ircNick = config['irc']['nick']
 cyName = config['Cytube']['username']
 
 #con.execute("DROP TABLE CyUser")
-# User table
+# CyUser table
 con.execute("""
         CREATE TABLE CyUser(
         userId INTEGER PRIMARY KEY,
@@ -70,11 +70,8 @@ con.execute("""
 con.execute("""
         CREATE TABLE VocaDB(
         songId INTEGER PRIMARY KEY,
-        userId INTEGER NOT NULL,
-        method INTEGER NOT NULL,
         data TEXT NOT NULL,
-        time INTEGER NOT NULL,
-        FOREIGN KEY (userId) REFERENCES CyUser(userId));""")
+        lastUpdate INTEGER NOT NULL);""")
 
 # media table
 con.execute("""
@@ -86,17 +83,33 @@ con.execute("""
         title TEXT NOT NULL,
         by TEXT NOT NULL,
         flag INTEGER,
-        songId INTEGER,
         UNIQUE (type, id),
-        FOREIGN KEY (songId) REFERENCES VocaDB(songId),
         FOREIGN KEY (by) REFERENCES CyUser(userId));""")
 
 title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
          '\x82\x8a\xe3\x80\x91Mahou \xe9\xad\x94\xe6\xb3\x95\xe3\x80\x90\xe3'
          '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
 title = title.decode('utf-8')
-con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-           (None, 'yt', '01uN4MCsrCE', 248, title, 1, None, None))
+con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
+           (None, 'yt', '01uN4MCsrCE', 248, title, 1, None))
+
+# MediaSong table
+# A junction table between Media and VocaDB. Although the relationship
+# between Media and VocaDB is Many-to-One, VocaDB data can get complex
+# and separating it from Media could be useful later when modularizing
+# the program, and usable for rooms that don't need the VocaDB feature.
+
+con.execute("""
+        CREATE TABLE MediaSong(
+        mediaId INTEGER NOT NULL,
+        songId INTEGER NOT NULL,
+        userId INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        method  INTEGER NOT NULL,
+        UNIQUE (mediaId),
+        FOREIGN KEY (mediaId) REFERENCES Media(mediaId),
+        FOREIGN KEY (songId) REFERENCES VocaDB(songId),
+        FOREIGN KEY (userId) REFERENCES CyUser(userId));""")
 
 # queue table
 con.execute("""

@@ -84,7 +84,7 @@ class CyProtocol(WebSocketClientProtocol):
         if m:
             ytId = m.group(6)
             clog.debug('(searchYoutube) matched: %s' % ytId, sys)
-            d = apiClient.requestApi(ytId)
+            d = apiClient.requestYtApi(ytId)
             d.addCallbacks(self.sendChat, self.errYtInfo)
 
     def _cyCall_login(self, fdict):
@@ -277,7 +277,7 @@ class CyProtocol(WebSocketClientProtocol):
             if entry['media']['type'] != 'cu': # custom embed
                 dbpl.append((None, entry['media']['type'], entry['media']['id'],
                             entry['media']['seconds'], entry['media']['title'],
-                            1, 1, None))
+                            1, 1))
                             #'introduced by' Yukari, flag 1 for pl add
         database.bulkLogMedia(dbpl)
 
@@ -359,7 +359,7 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
         d.addCallback(database.queryResult)
         values = (None, media['type'], media['id'], media['seconds'],
-                  media['title'], userId, None, None)
+                  media['title'], userId, None)
         d.addErrback(database.dbInsertReturnLastRow, 'Media', *values)
         return d
 

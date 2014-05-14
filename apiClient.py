@@ -2,7 +2,7 @@ import json
 from twisted.internet import reactor
 from twisted.web.client import Agent, readBody
 
-def processBody(body):
+def processYtBody(body):
     res = json.loads(body)
     entry = res['entry']
     title = entry['title']['$t']
@@ -26,7 +26,7 @@ def processBody(body):
     s = (title, dur, ratingRound, author)
     return '`[Youtube]`  Title: %s,  length: %s, rating: %s, uploader: %s' % s
 
-def requestApi(ytId):
+def requestYtApi(ytId):
     """ Request video information from Youtube API """
     # ytId is unicode, so needs to be changed to str/bytes
     agent = Agent(reactor)
@@ -36,5 +36,5 @@ def requestApi(ytId):
 
     d = agent.request('GET', url)
     d.addCallback(readBody)
-    d.addCallback(processBody)
+    d.addCallback(processYtBody)
     return d
