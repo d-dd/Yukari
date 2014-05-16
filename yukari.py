@@ -1,6 +1,8 @@
 from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
 from ext.rinception import Messenger, MessengerFactory
+from ext.apiserver import GetMedia
+from twisted.web.server import Site
 from conf import config
 import database, tools
 from tools import clog
@@ -157,4 +159,7 @@ yukari.ircConnect()
 yukari.rinstantiate(39393939)
 reactor.callWhenRunning(createShellServer, yukari)
 reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
+
+webRoot = GetMedia()
+reactor.listenTCP(39394, Site(webRoot))
 reactor.run()
