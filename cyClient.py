@@ -1,4 +1,4 @@
-import database, apiClient, tools
+import database, apiClient, tools, vdbapi
 from tools import clog
 from conf import config
 import json, time, re
@@ -154,6 +154,31 @@ class CyProtocol(WebSocketClientProtocol):
                 self.factory.handle.recCyMsg(username, msg)
                 self.searchYoutube(msg)
 
+            # check for commands
+            if msg.startswith('$'):
+                command = msg.split()[0][1:]
+                clog.debug('received command %s from %s' % (command, username), sys)
+                args = tuple(msg.split()[1:])
+                thunk = getattr(self, '_com_%s' % (command,), None)
+                if thunk is not None:
+                    thunk(username, msg)
+
+    def _com_vocadb(self, username, msg):
+        try:
+            songId = int(msg.split()[1])
+        except IndexError:
+            clog.error('(_com_vocadb) Index Error by %s' % username, sys)
+            return
+        except ValueError:
+            clog.error('(_com_vocadb) Value Error by %s' % username, sys)
+            return
+        userId = self.userdict[username]['keyId']
+        timeNow = round(time.time(), 2)
+        mType, mId, mTitle  = self.nowPlaying
+        d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
+        # method 4 = manual set
+
+                   
     def cancelChatLog(self):
         try:
             self.dChat.cancel()
@@ -377,6 +402,16 @@ class CyProtocol(WebSocketClientProtocol):
 
     def dbErr(self, err):
         clog.error('(dbErr): %s' % err.value, sys)
+
+    def _cyCall_changeMedia(self, fdict):
+        mType = fdict['args'][0]['type']
+        mId = fdict['args'][0]['id']
+        mTitle = fdict['args'][0]['title']
+        self.nowPlaying = (mType, mId, mTitle) # these are unicode
+        # everything has to be encoded to utf-8 or it errors
+        s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
+            mId.encode('utf-8'))
+        clog.info('(_cyCall_changeMedia) %s' % s, sys)
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']

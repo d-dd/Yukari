@@ -6,8 +6,6 @@ import json
 class GetMedia(Resource):
     isLeaf = True
     def _delayedRender(self, result, request):
-        j = json.dumps(result)
-        #request.write('<html><body>sorry to keep you waiting</body></html>')
         out = {'title': result[0][0].encode('UTF-8'), 'duration':result[0][1]}
         j = json.dumps(out)
         request.write(j)

@@ -66,9 +66,9 @@ con.execute("""
         flag INTEGER,
         FOREIGN KEY(userId) REFERENCES IrcUser(userId));""")
 
-# VocaDB table
+# Song (VocaDB) table
 con.execute("""
-        CREATE TABLE VocaDB(
+        CREATE TABLE Song(
         songId INTEGER PRIMARY KEY,
         data TEXT NOT NULL,
         lastUpdate INTEGER NOT NULL);""")
@@ -94,8 +94,8 @@ con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
            (None, 'yt', '01uN4MCsrCE', 248, title, 1, None))
 
 # MediaSong table
-# A junction table between Media and VocaDB. Although the relationship
-# between Media and VocaDB is Many-to-One, VocaDB data can get complex
+# A junction table between Media and Song. Although the relationship
+# between Media and Song is Many-to-One, VocaDB data can get complex
 # and separating it from Media could be useful later when modularizing
 # the program, and usable for rooms that don't need the VocaDB feature.
 
@@ -108,7 +108,7 @@ con.execute("""
         method  INTEGER NOT NULL,
         UNIQUE (mediaId),
         FOREIGN KEY (mediaId) REFERENCES Media(mediaId),
-        FOREIGN KEY (songId) REFERENCES VocaDB(songId),
+        FOREIGN KEY (songId) REFERENCES Song(songId),
         FOREIGN KEY (userId) REFERENCES CyUser(userId));""")
 
 # queue table

@@ -115,6 +115,19 @@ def insertQueue(mediaId, userId, timeNow, flag):
                (mediaId, userId, timeNow, flag), sys)
     return operate(sql, binds)
 
+def insertSong(res, songId, lastUpdate):
+    clog.debug('(insertSong)', sys)
+    sql = 'INSERT OR REPLACE INTO Song VALUES (?, ?, ?)'
+    binds = (songId, res, lastUpdate)
+    return operate(sql, binds)
+
+def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
+    clog.debug('(insertMediaSong)', sys)
+    sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
+           ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
+    binds = (mType, mId, songId, userId, timeNow, method)
+    return operate(sql, binds)
+    
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 
