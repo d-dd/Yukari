@@ -6,13 +6,13 @@ sys = 'database'
 
 def turnOnFK(txn):
     txn.execute('pragma foreign_keys=ON')
-    
+
 class NoRowException(Exception):
     pass
 
 def operate(sql, binds):
     return dbpool.runOperation(sql, binds)
-    
+
 def query(sql, binds):
     return dbpool.runQuery(sql, binds)
 
@@ -115,11 +115,19 @@ def insertQueue(mediaId, userId, timeNow, flag):
                (mediaId, userId, timeNow, flag), sys)
     return operate(sql, binds)
 
-def insertSong(res, songId, lastUpdate):
+def insertSong(res, lastUpdate):
+    if res == 0:
+        clog.error('(insertSong) VocaDB returned null. Skipping.', sys)
+        return defer.succeed([0])
+    return dbpool.runInteraction(_insertSong, res, lastUpdate)
+
+def _insertSong(txn, res, lastUpdate):
     clog.debug('(insertSong)', sys)
     sql = 'INSERT OR REPLACE INTO Song VALUES (?, ?, ?)'
-    binds = (songId, res, lastUpdate)
-    return operate(sql, binds)
+    data, songId = res
+    binds = (songId, data, lastUpdate)
+    txn.execute(sql, binds)
+    return [txn.lastrowid]
 
 def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
     clog.debug('(insertMediaSong)', sys)
@@ -128,7 +136,20 @@ def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
     binds = (mType, mId, songId, userId, timeNow, method)
     return operate(sql, binds)
     
+def insertMediaSongPv(songIdl, mType, mId, userId, timeNow, method):
+    clog.debug('(insertMediaSongPv)', sys)
+    sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
+           ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
+    binds = (mType, mId, songIdl[0], userId, timeNow, method)
+    return operate(sql, binds)
+
+def queryMediaSongRow(mType, mId):
+    clog.debug('(queryMediaSongData)', sys)
+    sql = ('SELECT * FROM MediaSong WHERE mediaId IS'
+           ' (SELECT mediaId FROM Media WHERE type=? AND id=?)')
+    binds = (mType, mId)
+    return query(sql, binds)
+
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
-
 dbpool.runInteraction(turnOnFK)

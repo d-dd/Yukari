@@ -73,6 +73,12 @@ con.execute("""
         data TEXT NOT NULL,
         lastUpdate INTEGER NOT NULL);""")
 
+# Put a row for -1 and 0
+# -1 is server (connection) error
+# 0 is null/invalid response
+con.execute('INSERT INTO Song VALUES (?, ?, ?)', (-1, 'connection error', 0))
+con.execute('INSERT INTO Song VALUES (?, ?, ?)', (0, 'null', 0))
+
 # media table
 con.execute("""
         CREATE TABLE Media(

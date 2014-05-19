@@ -304,7 +304,16 @@ class CyProtocol(WebSocketClientProtocol):
                             entry['media']['seconds'], entry['media']['title'],
                             1, 1))
                             #'introduced by' Yukari, flag 1 for pl add
-        database.bulkLogMedia(dbpl)
+        d = database.bulkLogMedia(dbpl)
+
+    def bulkCheckMedia(d, dbpl):
+        """Checks media validity and Vocadb info"""
+        #1 Check if video is valid on Youtube (let's do yt only for now)
+        #    if invalid flag the video and go to next one
+        #    if valid check Vocadb info
+        #TODO d.addCallback(self.BatchCheckYoutube, dbpl)
+        #d.addCallback()
+        pass
 
     def addToPlaylist(self, item, afterUid):
         if afterUid == 'prepend':
@@ -370,6 +379,11 @@ class CyProtocol(WebSocketClientProtocol):
             flag = None
         d.addCallback(self.writeQueue, userId, timeNow, flag)
         d.addErrback(self.dbErr)
+        mType = media['type']
+        mId = media['id']
+        if mType == 'yt':
+            timeNow = round(time.time(), 2)
+            d = vdbapi.requestSongByPv(mType, mId, 1, timeNow, 0)
 
     def _cyCall_delete(self, fdict):
         uid = fdict['args'][0]['uid']
@@ -395,7 +409,7 @@ class CyProtocol(WebSocketClientProtocol):
         
     def printRes(self, res):
         clog.info('(printRes) %s' % res, sys)
-        return defer.suceed(res)
+        return defer.succeed(res)
         
     def errYtInfo(self, err):
         clog.error('(errYtInfo) %s' % err, sys)
@@ -404,6 +418,7 @@ class CyProtocol(WebSocketClientProtocol):
         clog.error('(dbErr): %s' % err.value, sys)
 
     def _cyCall_changeMedia(self, fdict):
+        # set self.nowPlaying
         mType = fdict['args'][0]['type']
         mId = fdict['args'][0]['id']
         mTitle = fdict['args'][0]['title']
