@@ -143,12 +143,29 @@ def insertMediaSongPv(songIdl, mType, mId, userId, timeNow, method):
     binds = (mType, mId, songIdl[0], userId, timeNow, method)
     return operate(sql, binds)
 
+
 def queryMediaSongRow(mType, mId):
     clog.debug('(queryMediaSongData)', sys)
     sql = ('SELECT * FROM MediaSong WHERE mediaId IS'
            ' (SELECT mediaId FROM Media WHERE type=? AND id=?)')
     binds = (mType, mId)
     return query(sql, binds)
+
+def bulkQueryMediaSong(res, playlist):
+    return dbpool.runInteraction(_bulkQueryMediaSong, playlist)
+
+def _bulkQueryMediaSong(txn, playlist):
+    clog.debug('(_queryBulkMediaSong)', sys)
+    songlessMedia = []
+    for media in playlist:
+        sql = ('SELECT songId FROM MediaSong WHERE mediaId IS'
+               ' (SELECT mediaId FROM Media WHERE type=? AND id=?)')
+        txn.execute(sql, media)
+        row = txn.fetchone()
+        if not row:
+            songlessMedia.append(media)
+    clog.info(songlessMedia, sys)
+    return songlessMedia
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks

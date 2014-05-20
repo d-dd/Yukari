@@ -9,6 +9,7 @@ from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 
 sys = 'CytubeClient'
+vdb = config['UserAgent']['vocadb']
 
 class CyProtocol(WebSocketClientProtocol):
 
@@ -160,6 +161,8 @@ class CyProtocol(WebSocketClientProtocol):
                 thunk(username, msg)
 
     def _com_vocadb(self, username, msg):
+        if not vdb:
+            return
         try:
             songId = int(msg.split()[1])
         except IndexError:
@@ -292,7 +295,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.playlist = []
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', sys)
-        dbpl = []
+        dbpl, qpl = [], []
         for entry in pl:
             self.playlist.append(entry)
             if entry['media']['type'] != 'cu': # custom embed
@@ -300,7 +303,18 @@ class CyProtocol(WebSocketClientProtocol):
                             entry['media']['seconds'], entry['media']['title'],
                             1, 1))
                             #'introduced by' Yukari, flag 1 for pl add
+                if entry['media']['type'] == 'yt':
+                    qpl.append((entry['media']['type'], entry['media']['id']))
         d = database.bulkLogMedia(dbpl)
+        if vdb:
+            d.addCallback(database.bulkQueryMediaSong, qpl)
+            d.addCallback(self.bulkCheckVocaDb)
+
+    def bulkCheckVocaDb(self, songlessMedia):
+        timeNow = round(time.time(), 4)
+        clog.info('(bulkCheckVocaDb)', sys)
+        for mType, mId in songlessMedia:
+            vdbapi.requestSongByPv(mType, mId, 1, timeNow, 4)
 
     def bulkCheckMedia(d, dbpl):
         """Checks media validity and Vocadb info"""
@@ -377,7 +391,7 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.dbErr)
         mType = media['type']
         mId = media['id']
-        if mType == 'yt':
+        if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
             d = vdbapi.requestSongByPv(mType, mId, 1, timeNow, 0)
 
