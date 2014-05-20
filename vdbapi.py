@@ -1,10 +1,15 @@
 import json
 from twisted.internet import reactor, defer
 from twisted.web.client import Agent, readBody
+from twisted.web.http_headers import Headers
+from conf import config
 from tools import clog
 import database
 
+
 syst = 'vdbapi'
+UserAgentVdb = config['UserAgent']['vocadb'].encode('UTF-8')
+
 def processVdbJson(body):
     clog.info('(processVdbJson) Received reply from VocaDB', syst)
     clog.debug('(processVdbJson) %s' % body, syst)
@@ -44,7 +49,7 @@ def requestApiBySongId(res, songId, timeNow):
     url = 'http://vocadb.net/api/songs/%s?' % songId
     url += '&fields=artists,names&lang=romaji'
     clog.info('(requestApiBySongId) %s' % url, syst)
-    d = agent.request('GET', url)
+    d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
     d.addCallback(readBody)
     d.addCallbacks(processVdbJson, apiError)
     d.addCallback(database.insertSong, timeNow)
@@ -83,7 +88,7 @@ def requestApiByPv(mType, mId, timeNow):
     url = 'http://vocadb.net/api/songs?pvId=%s&pvService=%s' % (mId, service)
     url += '&fields=artists,names&lang=romaji'
     clog.info('(requestApiByPv) %s' % url, syst)
-    dd = agent.request('GET', str(url))
+    dd = agent.request('GET', str(url), Headers({'User-Agent':[UserAgentVdb]}))
     dd.addCallback(readBody)
     dd.addCallbacks(processVdbJson, apiError)
     dd.addCallback(database.insertSong, timeNow)
@@ -92,6 +97,7 @@ def requestApiByPv(mType, mId, timeNow):
 def apiError(err):
     clog.error('(apiError) There was a problem with VocaDB API. %s' %
                err.value, syst)
+    err.printDetailedTraceback()
     return err
 
 def dbErr(err):
@@ -101,5 +107,4 @@ def dbErr(err):
 def ignoreErr(err):
     'Consume error and return a success'
     clog.error('(ignoreErr) %s' % err.value, syst)
-
     return defer.succeed(None)

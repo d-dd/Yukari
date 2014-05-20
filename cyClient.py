@@ -9,8 +9,6 @@ from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 
 sys = 'CytubeClient'
-class NoRowException(Exception):
-    pass
 
 class CyProtocol(WebSocketClientProtocol):
 
@@ -28,7 +26,7 @@ class CyProtocol(WebSocketClientProtocol):
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', sys)
         self.connectedTime = time.time()
-        self.lastUserlist = 0
+        self.lastUserlistTime = 0
         self.factory.prot = self
         self.factory.handle.cy = True
         self.initialize()
@@ -120,48 +118,46 @@ class CyProtocol(WebSocketClientProtocol):
         args = fdict['args'][0]
         timeNow = round(time.time(), 2)
         username = args['username']
-        msg = args['msg']
-        msg = tools.unescapeMsg(msg)
+        msg = tools.unescapeMsg(args['msg'])
         chatCyTime = round((args['time'])/1000.0, 2)
         if 'modflair' in args['meta']:
             modflair = args['meta']['modflair']
         else:
             modflair = None
-        if username in self.userdict or username == '[server]':
-            if username == '[server]':
-                keyId = 2
-            else:
-                keyId = self.userdict[username]['keyId']
-            if keyId:
-                self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
+        if username == '[server]':
+            keyId = 2
+        elif username in self.userdict:
+            keyId = self.userdict[username]['keyId']
+        if keyId:
+            self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
                                           modflair, 0))
-                if time.time() - self.lastChatLogTime < 3:
-                    self.cancelChatLog()
-                    self.dChat = reactor.callLater(3, self.bulkLogChat,
-                                                   self.unloggedChat)
-                else:
-                    self.cancelChatLog()
-                    self.bulkLogChat(self.unloggedChat)
-                    self.lastChatLogTime = time.time()
+            if time.time() - self.lastChatLogTime < 3:
+                self.cancelChatLog()
+                self.dChat = reactor.callLater(3, self.bulkLogChat,
+                                               self.unloggedChat)
             else:
-                assert keyId is None
-                chatArgs = (timeNow, chatCyTime, msg, modflair, 0)
-                self.userdict[username]['deferred'].addCallback(self.deferredChat,
+                self.cancelChatLog()
+                self.bulkLogChat(self.unloggedChat)
+                self.lastChatLogTime = time.time()
+        else:
+            assert keyId is None
+            chatArgs = (timeNow, chatCyTime, msg, modflair, 0)
+            self.userdict[username]['deferred'].addCallback(self.deferredChat,
                                                                 chatArgs)
                 
-            if username != config['Cytube']['username'] and username != '[server]':
-                # comment line below for test. #TODO make proper test
-                self.factory.handle.recCyMsg(username, msg)
-                self.searchYoutube(msg)
+        if username != config['Cytube']['username'] and username != '[server]':
+            # comment line below for test. #TODO make proper test
+            self.factory.handle.recCyMsg(username, msg)
+            self.searchYoutube(msg)
 
-            # check for commands
-            if msg.startswith('$'):
-                command = msg.split()[0][1:]
-                clog.debug('received command %s from %s' % (command, username), sys)
-                args = tuple(msg.split()[1:])
-                thunk = getattr(self, '_com_%s' % (command,), None)
-                if thunk is not None:
-                    thunk(username, msg)
+        # check for commands
+        if msg.startswith('$'):
+            command = msg.split()[0][1:]
+            clog.debug('received command %s from %s' % (command, username), sys)
+            args = tuple(msg.split()[1:])
+            thunk = getattr(self, '_com_%s' % (command,), None)
+            if thunk is not None:
+                thunk(username, msg)
 
     def _com_vocadb(self, username, msg):
         try:
@@ -274,11 +270,11 @@ class CyProtocol(WebSocketClientProtocol):
             return KeyError
 
     def _cyCall_userlist(self, fdict):
-        if time.time() - self.lastUserlist < 3: # most likely the same userlist
+        if time.time() - self.lastUserlistTime < 3: # most likely the same userlist
              # with ip/aliases if mod+
             clog.info('(_cy_userlist) Duplicate userlist detected', sys)
             return
-        self.lastUserlist = time.time()
+        self.lastUserlistTime = time.time()
         userlist = fdict['args'][0]
         timeNow = int(time.time())
 
