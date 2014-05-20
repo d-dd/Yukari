@@ -313,8 +313,10 @@ class CyProtocol(WebSocketClientProtocol):
     def bulkCheckVocaDb(self, songlessMedia):
         timeNow = round(time.time(), 4)
         clog.info('(bulkCheckVocaDb)', sys)
-        for mType, mId in songlessMedia:
-            vdbapi.requestSongByPv(mType, mId, 1, timeNow, 4)
+        for i, (mType, mId) in enumerate(songlessMedia):
+            # 0.5s delay between each call
+            reactor.callLater(i * 0.5, vdbapi.requestSongByPv, mType, mId, 
+                              1, timeNow, 4)
 
     def bulkCheckMedia(d, dbpl):
         """Checks media validity and Vocadb info"""
