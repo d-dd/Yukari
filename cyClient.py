@@ -315,17 +315,8 @@ class CyProtocol(WebSocketClientProtocol):
         clog.info('(bulkCheckVocaDb)', sys)
         for i, (mType, mId) in enumerate(songlessMedia):
             # 0.5s delay between each call
-            reactor.callLater(i * 0.5, vdbapi.requestSongByPv, mType, mId, 
+            reactor.callLater(i * 0.5, vdbapi.requestSongByPv, None, mType, mId,
                               1, timeNow, 4)
-
-    def bulkCheckMedia(d, dbpl):
-        """Checks media validity and Vocadb info"""
-        #1 Check if video is valid on Youtube (let's do yt only for now)
-        #    if invalid flag the video and go to next one
-        #    if valid check Vocadb info
-        #TODO d.addCallback(self.BatchCheckYoutube, dbpl)
-        #d.addCallback()
-        pass
 
     def addToPlaylist(self, item, afterUid):
         if afterUid == 'prepend':
@@ -380,7 +371,8 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             userId = 3
         if userId:
-            d = self.queryOrInsertMedia(media, userId)
+            d = apiClient.requestYtApi(media['id'], 'check')
+            d.addCallback(self.queryOrInsertMedia, media, userId)
         else:
             clog.error('(_cyCall_queue) user id not cached.', sys)
 
@@ -395,7 +387,7 @@ class CyProtocol(WebSocketClientProtocol):
         mId = media['id']
         if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
-            d = vdbapi.requestSongByPv(mType, mId, 1, timeNow, 0)
+            d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
 
     def _cyCall_delete(self, fdict):
         uid = fdict['args'][0]['uid']
@@ -405,8 +397,13 @@ class CyProtocol(WebSocketClientProtocol):
                   (uid, index), sys)
         assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
-    def queryOrInsertMedia(self, media, userId):
+    def queryOrInsertMedia(self, res, media, userId):
         """ Returns the mediaId of media by query or insert """
+        if res == 'EmbedOk':
+            clog.info('all ok') #TODO
+        elif res == 'Status403':
+            clog.error('We should flag this! and delete this!') #TODO
+
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
         d.addCallback(database.queryResult)
         values = (None, media['type'], media['id'], media['seconds'],

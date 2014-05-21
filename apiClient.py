@@ -1,8 +1,10 @@
 import json
-from twisted.internet import reactor
+from tools import clog
+from twisted.internet import reactor, defer
 from twisted.web.client import Agent, readBody
+from twisted.web.http_headers import Headers
 
-def processYtBody(body):
+def processYtInfo(body):
     res = json.loads(body)
     entry = res['entry']
     title = entry['title']['$t']
@@ -26,15 +28,72 @@ def processYtBody(body):
     s = (title, dur, ratingRound, author)
     return '`[Youtube]`  Title: %s,  length: %s, rating: %s, uploader: %s' % s
 
-def requestYtApi(ytId):
+
+def requestYtApi(ytId, content):
     """ Request video information from Youtube API """
     # ytId is unicode, so needs to be changed to str/bytes
+    ytId = str(ytId)
     agent = Agent(reactor)
-    url = 'http://gdata.youtube.com/feeds/api/videos/%s' % str(ytId)
-    url += ('?v=2&alt=json&fields=title,author,media:group%28yt:duration%29'
-            ',gd:rating,yt:statistics')
+    url = 'http://gdata.youtube.com/feeds/api/videos/%s?v=2&alt=json' % ytId
+    if content == 'info':
+        url += ('&fields=title,author,media:group%28yt:duration%29,'
+                'gd:rating,yt:statistics')
+    elif content == 'check':
+        url += '&fields=yt:accessControl'
+    elif content == 'desc':
+        #url += '&fields=yt:accessControl'
+        pass
 
-    d = agent.request('GET', url)
-    d.addCallback(readBody)
-    d.addCallback(processYtBody)
+    clog.debug(url,'debug' )
+    d = agent.request('GET', url, Headers({'Content-type':['application/json']}))
+    d.addCallbacks(checkStatus, networkError, (ytId, content))
     return d
+
+def checkStatus(response, ytId, content):
+    clog.info('Response code: %s' % response.code)
+    d = readBody(response)
+    if response.code == 403:
+        d.addCallback(badVideo, ytId)
+        return d
+    if content == 'info':
+        d.addCallback(processYtInfo)
+    elif content == 'check':
+        d.addCallback(processYtCheck, ytId)
+    elif content == 'desc':
+        d.addCallback(processYtVideo)
+    return d
+
+def processYtCheck(body, ytId):
+    clog.info(body)
+    try:
+        res = json.loads(body)
+    except(ValueError): # not valid json
+        clog.error('(proccessYtCheck) Error processing JSON')
+        return 'BadResponse'
+    
+    accesses = res['entry']['yt$accessControl']
+    for access in accesses:
+        if access['action'] == 'embed':
+            embeddable = access['permission']
+    clog.info('(processYtInfo) embed allowed: %s' % embeddable)
+    if embeddable != 'allowed':
+        return 'NoEmbed'
+    return 'EmbedOk'
+
+def badVideo(res, ytId):
+    clog.info('(badVideo) %s: %s' % (ytId, res))
+    clog.info('This video needs to be deleted and flagged')
+    return 'Status403'
+
+def networkError(err):
+    clog.error('Network Error %s' % err.value)
+    return 'NetworkError'
+
+def printres(res):
+    clog.error(res)
+
+#d = requestYtApi('Dxt3OonUmFY', 'check')
+#d = requestYtApi('kMhBHBYHqus', 'check')
+#d.addCallback(printres)
+#from twisted.internet import reactor
+#reactor.run()

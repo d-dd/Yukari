@@ -55,7 +55,7 @@ def requestApiBySongId(res, songId, timeNow):
     d.addCallback(database.insertSong, timeNow)
     return d
 
-def requestSongByPv(mType, mId, userId, timeNow, method):
+def requestSongByPv(res, mType, mId, userId, timeNow, method):
     """ Returns a deferred of Vocadb data of Song songId"""
     # check mediaSong first
     # request data from VocaDB
