@@ -3,7 +3,7 @@ from tools import clog
 from conf import config
 import json, time, re
 from collections import deque
-from twisted.internet import reactor, defer
+from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
@@ -23,6 +23,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.ytUrl = re.compile(
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
+        self.ytq = deque()
 
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', sys)
@@ -51,7 +52,7 @@ class CyProtocol(WebSocketClientProtocol):
         clog.debug('(sendf) [->] %s' % frame, sys)
         self.sendMessage(frame)
 
-    def sendChat(self, msg, modflair=False):
+    def doSendChat(self, msg, modflair=False):
         if modflair:
             modflair = 3 ### TODO remove hardcode rank
         self.sendf({'name': 'chatMsg',
@@ -84,7 +85,7 @@ class CyProtocol(WebSocketClientProtocol):
             ytId = m.group(6)
             clog.debug('(searchYoutube) matched: %s' % ytId, sys)
             d = apiClient.requestYtApi(ytId)
-            d.addCallbacks(self.sendChat, self.errYtInfo)
+            d.addCallbacks(self.doSendChat, self.errYtInfo)
 
     def _cyCall_login(self, fdict):
         if fdict['args'][0]['success']:
@@ -249,6 +250,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_userLeave(self, fdict):
         username = fdict['args'][0]['name']
+        if not username:
+            return # when anon leaves, might be sync bug
         self.userdict[username]['inChannel'] = False
         d = self.userdict[username]['deferred']
         clog.debug('_cyCall_userLeave) user %s has left. Adding callbacks' 
@@ -354,6 +357,12 @@ class CyProtocol(WebSocketClientProtocol):
         except StopIteration as e:
             clog.error('(getIndexFromUid) media UID %s not found' % uid, sys)
 
+    def getUidFromTypeId(self, mType, mId):
+        for media in self.playlist:
+            if media['media']['id'] == mId:
+                if media['media']['type'] == mType:
+                    return media['uid']
+
     def displaypl(self):
         for item in self.playlist:
             print item['media']['title'].encode('utf-8')
@@ -371,12 +380,16 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             userId = 3
         if userId:
-            d = apiClient.requestYtApi(media['id'], 'check')
+            self.ytq.append(media['id'])
+            # delays successive api calls
+            d = task.deferLater(reactor, len(self.ytq)-1, self.collectQueue,
+                                media['id'])
+            clog.debug('(_cyCall_queue) Length of ytq %s' % len(self.ytq), sys)
             d.addCallback(self.queryOrInsertMedia, media, userId)
         else:
             clog.error('(_cyCall_queue) user id not cached.', sys)
 
-        d.addErrback(self.dbErr)
+       # d.addErrback(self.dbErr)
         if isTemp:
             flag = 1
         else:
@@ -389,6 +402,10 @@ class CyProtocol(WebSocketClientProtocol):
             timeNow = round(time.time(), 2)
             d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
 
+    def collectQueue(self, mId):
+        # need another function because popleft() evaluates immediatly
+        return apiClient.requestYtApi(self.ytq.popleft(), 'check')
+
     def _cyCall_delete(self, fdict):
         uid = fdict['args'][0]['uid']
         index = self.getIndexFromUid(uid)
@@ -398,11 +415,18 @@ class CyProtocol(WebSocketClientProtocol):
         assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
     def queryOrInsertMedia(self, res, media, userId):
+        clog.error('QoIM %s' % res, 'QoIM')
         """ Returns the mediaId of media by query or insert """
         if res == 'EmbedOk':
             clog.info('all ok') #TODO
         elif res == 'Status403':
-            clog.error('We should flag this! and delete this!') #TODO
+            clog.error('We should flag this!') #TODO
+            clog.error(media) #TODO
+            self.doDeleteMedia(media['type'], media['id'])
+            mediaTitle = media['title']
+            msg = 'Removing non-playable media %s' % mediaTitle
+            self.doSendChat(msg)
+            clog.info(msg)
 
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
         d.addCallback(database.queryResult)
@@ -485,6 +509,13 @@ class CyProtocol(WebSocketClientProtocol):
     def doQueueMedia(self, media, isTemp):
         """ Queues media to CyTube """
         pass
+
+    def doDeleteMedia(self, mType, mId):
+        """ Delete media """
+        uid = self.getUidFromTypeId(mType, mId)
+        clog.info('(doDeleteMedia) Deleting media uid %s' % uid)
+        self.sendf({'name': 'delete', 'args': uid})
+
 
 class WsFactory(WebSocketClientFactory):
     protocol = CyProtocol
