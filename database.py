@@ -167,6 +167,28 @@ def _bulkQueryMediaSong(txn, playlist):
     clog.info(songlessMedia, sys)
     return songlessMedia
 
+# media flags
+# 1<<0: invalid media
+# 1<<1: omitted media
+# 1<<2: blacklisted media
+
+def getMediaFlag(mType, mId):
+    sql = 'SELECT flag FROM media WHERE type=?, id=?'
+    binds = (mTYpe, mId)
+    return query(sql, binds)
+
+def flagMedia(flag, mType, mId):
+    clog.debug('Adding flag %s to %s, %s' % (bin(flag), mType, mId), sys)
+    sql = 'UPDATE media SET flag=(flag|?) WHERE type=? AND id=?'
+    binds = (flag, mType, mId)
+    return operate(sql, binds)
+            
+def unflagMedia(flag, mType, mId):
+    clog.debug('Removing flag %s to %s, %s' % (bin(flag), mType, mId), sys)
+    sql = 'UPDATE media SET flag=(flag&?) WHERE type=? AND id=?'
+    binds = (~flag, mType, mId)
+    return operate(sql, binds)
+
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 dbpool.runInteraction(turnOnFK)

@@ -304,8 +304,8 @@ class CyProtocol(WebSocketClientProtocol):
             if entry['media']['type'] != 'cu': # custom embed
                 dbpl.append((None, entry['media']['type'], entry['media']['id'],
                             entry['media']['seconds'], entry['media']['title'],
-                            1, 1))
-                            #'introduced by' Yukari, flag 1 for pl add
+                            1, 0))
+                            #'introduced by' Yukari
                 if entry['media']['type'] == 'yt':
                     qpl.append((entry['media']['type'], entry['media']['id']))
         d = database.bulkLogMedia(dbpl)
@@ -368,41 +368,60 @@ class CyProtocol(WebSocketClientProtocol):
             print item['media']['title'].encode('utf-8')
 
     def _cyCall_queue(self, fdict):
-        timeNow = time.time()
+        timeNow = round(time.time(), 2)
         item = fdict['args'][0]['item']
         isTemp = item['temp']
         media = item['media']
         queueby = item['queueby']
         afterUid = fdict['args'][0]['after']
+        mType = media['type']
+        mId = media['id']
         self.addToPlaylist(item, afterUid)
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
         else:
             userId = 3
         if userId:
-            self.ytq.append(media['id'])
-            # delays successive api calls
-            d = task.deferLater(reactor, len(self.ytq)-1, self.collectQueue,
-                                media['id'])
-            clog.debug('(_cyCall_queue) Length of ytq %s' % len(self.ytq), sys)
-            d.addCallback(self.queryOrInsertMedia, media, userId)
+            d = self.queryOrInsertMedia(media, userId)
         else:
             clog.error('(_cyCall_queue) user id not cached.', sys)
-
-       # d.addErrback(self.dbErr)
+            return
         if isTemp:
             flag = 1
         else:
             flag = None
         d.addCallback(self.writeQueue, userId, timeNow, flag)
-        d.addErrback(self.dbErr)
-        mType = media['type']
-        mId = media['id']
+        d.addCallback(self.checkMedia, mType, mId)
+        d.addCallback(self.flagOrDelete, media, mType, mId)
+
         if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
             d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
 
-    def collectQueue(self, mId):
+    def checkMedia(self, res, mType, mId):
+        if mType == 'yt':
+            self.ytq.append(mId)
+            d = task.deferLater(reactor, 3 * (len(self.ytq)-1), 
+                                self.collectYtQueue, mId)
+            clog.debug('(checkMedia) Length of ytq %s' % len(self.ytq), sys)
+            return d
+
+    def flagOrDelete(self, res, media, mType, mId):
+        if res == 'EmbedOk':
+            database.unflagMedia(0b1, mType, mId)
+
+        elif res == 'NetworkError':
+            clog.info('(flagOrDelete) There was a network error.', sys)
+
+        else:
+            self.doDeleteMedia(media['type'], media['id'])
+            mediaTitle = media['title'].encode('utf-8')
+            msg = 'Removing non-embeddable media %s' % mediaTitle
+            database.flagMedia(0b1, mType, mId)
+            self.doSendChat(msg)
+            clog.info(msg)
+
+    def collectYtQueue(self, mId):
         # need another function because popleft() evaluates immediatly
         return apiClient.requestYtApi(self.ytq.popleft(), 'check')
 
@@ -414,24 +433,11 @@ class CyProtocol(WebSocketClientProtocol):
                   (uid, index), sys)
         assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
-    def queryOrInsertMedia(self, res, media, userId):
-        clog.error('QoIM %s' % res, 'QoIM')
-        """ Returns the mediaId of media by query or insert """
-        if res == 'EmbedOk':
-            clog.info('all ok') #TODO
-        elif res == 'Status403':
-            clog.error('We should flag this!') #TODO
-            clog.error(media) #TODO
-            self.doDeleteMedia(media['type'], media['id'])
-            mediaTitle = media['title']
-            msg = 'Removing non-playable media %s' % mediaTitle
-            self.doSendChat(msg)
-            clog.info(msg)
-
+    def queryOrInsertMedia(self, media, userId):
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
         d.addCallback(database.queryResult)
         values = (None, media['type'], media['id'], media['seconds'],
-                  media['title'], userId, None)
+                  media['title'], userId, 0)
         d.addErrback(database.dbInsertReturnLastRow, 'Media', *values)
         return d
 
@@ -515,7 +521,6 @@ class CyProtocol(WebSocketClientProtocol):
         uid = self.getUidFromTypeId(mType, mId)
         clog.info('(doDeleteMedia) Deleting media uid %s' % uid)
         self.sendf({'name': 'delete', 'args': uid})
-
 
 class WsFactory(WebSocketClientFactory):
     protocol = CyProtocol
