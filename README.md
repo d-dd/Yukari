@@ -3,11 +3,11 @@
 **Dependencies:**  
 Python 2.x  
 Twisted  
-Twisted Autobahn 
+Twisted Autobahn
 
 **Requirements:**  
 Cytube server to connect to  
-An account with moderator or higher rank in the channel to connec to 
+An account with moderator or higher rank in a channel
 
 **Installation:**  
 python createDb.py  
@@ -17,3 +17,6 @@ python yukari.py
 
 **Telnet:**  
 telnet localhost [port] 
+
+Optional  
+Youtube v2 API key
