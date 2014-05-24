@@ -309,9 +309,18 @@ class CyProtocol(WebSocketClientProtocol):
                 if entry['media']['type'] == 'yt':
                     qpl.append((entry['media']['type'], entry['media']['id']))
         d = database.bulkLogMedia(dbpl)
+        d.addCallback(self.bulkCheckPlaylist, self.playlist)
+
         if vdb:
             d.addCallback(database.bulkQueryMediaSong, qpl)
             d.addCallback(self.bulkCheckVocaDb)
+
+    def bulkCheckPlaylist(self, res, playlist):
+        for media in playlist:
+            mType = media['media']['type']
+            mId = media['media']['id']
+            d = self.checkMedia(0, mType, mId)
+            d.addCallback(self.flagOrDelete, media['media'], mType, mId)
 
     def bulkCheckVocaDb(self, songlessMedia):
         timeNow = round(time.time(), 4)
@@ -396,6 +405,8 @@ class CyProtocol(WebSocketClientProtocol):
 
         if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
+            # since this callback is added after checkMedia which has a delay,
+            # this also gets delayed
             d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
 
     def checkMedia(self, res, mType, mId):
@@ -410,10 +421,13 @@ class CyProtocol(WebSocketClientProtocol):
         if res == 'EmbedOk':
             database.unflagMedia(0b1, mType, mId)
 
-        elif res == 'NetworkError':
-            clog.info('(flagOrDelete) There was a network error.', sys)
+        elif res == 'Status503':
+            clog.error('(flagOrDelete) Youtube service unavailable.', sys)
 
-        else:
+        elif res == 'NetworkError':
+            clog.error('(flagOrDelete) There was a network error.', sys)
+
+        elif res == 'NoEmbed' or res == 'Status403':
             self.doDeleteMedia(media['type'], media['id'])
             mediaTitle = media['title'].encode('utf-8')
             msg = 'Removing non-embeddable media %s' % mediaTitle
