@@ -1,7 +1,7 @@
 import database, apiClient, tools, vdbapi
 from tools import clog
 from conf import config
-import json, time, re
+import json, time, re, argparse
 from collections import deque
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -18,6 +18,9 @@ class CyProtocol(WebSocketClientProtocol):
         self.unloggedChat = []
         self.lastChatLogTime = 0
         self.receivedChatBuffer = False
+        self.queueMediaList = deque()
+        self.canBurst = False
+        self.lastQueueTime = time.time() - 20 #TODO
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
@@ -178,7 +181,42 @@ class CyProtocol(WebSocketClientProtocol):
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
 
-                   
+    def _com_add(self, username, msg):
+        clog.info(msg, sys)
+        arg = list(msg.split()[1:])
+
+        # shortcut in case people want to $add #
+        # of course this can't be combined with other args
+        try:
+            num = int(arg[0])
+            arg = ['-n', str(num)]
+
+        except(ValueError):
+            pass
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument('-s', '--sample', default='queue') # queue or add
+        parser.add_argument('-u', '--user', default='Anyone')
+        parser.add_argument('-n', '--number', default=3)
+        parser.add_argument('-t', '--title', default='') #TODO
+        parser.add_argument('-a', '--artist', default='') #TODO
+        parser.add_argument('-T', '--temporary', default=False, type=bool) #TODO
+        parser.add_argument('-p', '--position', default='end') #TODO
+
+        try:
+            args = parser.parse_args(arg)
+            reply = ('Quantity to add:%s, sample:%s, user:%s, temp:%s, pos:%s'
+                    % (args.number, args.sample, args.user, args.temporary,
+                       args.position))
+
+        except(SystemExit):
+            reply = 'Invalid arguments.'
+            return
+        self.doSendChat(reply)
+
+        self.getRandMediaQueue(args.number, args.user, args.temporary,
+                               args.position)
+
     def cancelChatLog(self):
         try:
             self.dChat.cancel()
@@ -412,7 +450,7 @@ class CyProtocol(WebSocketClientProtocol):
     def checkMedia(self, res, mType, mId):
         if mType == 'yt':
             self.ytq.append(mId)
-            d = task.deferLater(reactor, 3 * (len(self.ytq)-1), 
+            d = task.deferLater(reactor, 1 * (len(self.ytq)-1), 
                                 self.collectYtQueue, mId)
             clog.debug('(checkMedia) Length of ytq %s' % len(self.ytq), sys)
             return d
@@ -486,6 +524,10 @@ class CyProtocol(WebSocketClientProtocol):
         afterUid = fdict['args'][0]['after']
         self.movePlaylistItems(beforeUid, afterUid)
 
+    def _cyCall_queueFail(self, fdict):
+        msg = fdict['args'][0]['msg']
+        clog.error('(_cyCall_queueFail) %s' % msg, sys)
+
     def cleanUp(self):
         # set restart to False
         self.factory.handle.cyRestart = False
@@ -522,13 +564,46 @@ class CyProtocol(WebSocketClientProtocol):
             else:
                 return 1
 
-    def doAdd(self, quantity=5): # $add
-        """ Adds quantity number of media to the playlist """
-        pass
+    def doAddMedia(self, media, temp=False, pos='end'):
+        # Cytube has a throttle for queueing media
+        # burst: 10,
+        # sustained: 2
+        
+        lenBefore = len(self.queueMediaList)
+        clog.error('lenBefore %s' % lenBefore, 'LENBEFORE')
+        self.queueMediaList.extend(media)
+        if time.time() - self.lastQueueTime > 20:
+            self.canBurst = True
+        # burst!
+        bursted = 0
+        if self.canBurst and self.queueMediaList:
+            for i in range(min(len(self.queueMediaList), 10)):
+                mType, mId = self.queueMediaList.popleft()
+                self.sendf({'name': 'queue', 'args': {'type': mType, 
+                                    'id': mId, 'pos': pos, 'temp': temp}})
+                bursted += 1
+            self.canBurst = False
+            self.lastQueueTime = time.time()
 
-    def doQueueMedia(self, media, isTemp):
-        """ Queues media to CyTube """
-        pass
+        # sustain
+        # we can't use enumerate here; the list gets shorter each iteration
+        for i in range(len(media)-bursted):
+            # add a little slower than 2/sec to account for network latency
+            # and Twisted callLater time is not guaranteed
+            wait = (i + lenBefore + 3)/1.7 
+            d = reactor.callLater(wait, self.doAddSustained)
+    
+    def doAddSustained(self, pos='end', temp=False):
+        mType, mId = self.queueMediaList.popleft()
+        self.sendf({'name': 'queue', 'args': {'type': mType, 
+                                    'id': mId, 'pos': pos, 'temp': temp}})
+        self.lastQueueTime = time.time()
+
+    def getRandMediaQueue(self, quantity, user, temp=False, pos='end'): # $add
+        """ Adds quantity number of media to the playlist """
+        d = database.addByUserQueue(user, quantity)
+        #d.addCallback(lambda res: clog.info(res, 'Adding'))
+        d.addCallback(self.doAddMedia)
 
     def doDeleteMedia(self, mType, mId):
         """ Delete media """
