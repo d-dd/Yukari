@@ -203,14 +203,17 @@ class CyProtocol(WebSocketClientProtocol):
         parser.add_argument('-t', '--title', default='') #TODO
         parser.add_argument('-a', '--artist', default='') #TODO
         parser.add_argument('-T', '--temporary', default=False, type=bool)
-        parser.add_argument('-p', '--position', default='end', 
-                            choices=('end', 'next'))
+        parser.add_argument('-N', '--next', default=False, type=bool)
         try:
             args = parser.parse_args(arg)
             reply = ('Quantity:%s, sample:%s, user:%s, registered:%s, temp:%s, '
                      'pos:%s'
                     % (args.number, args.sample, args.user, args.registered,
-                       args.temporary, args.position))
+                       args.temporary, args.next))
+            if args.next:
+                args.next = 'next'
+            else:
+                args.next = 'end'
 
         except(SystemExit):
             reply = 'Invalid arguments.'
@@ -219,7 +222,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.doSendChat(reply)
 
         self.getRandMedia(args.sample, args.number, args.user,
-                               args.temporary, args.position)
+                               args.temporary, args.next)
 
     def cancelChatLog(self):
         try:
