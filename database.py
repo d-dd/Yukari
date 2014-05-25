@@ -189,7 +189,7 @@ def unflagMedia(flag, mType, mId):
     binds = (~flag, mType, mId)
     return operate(sql, binds)
 
-def addByUserQueue(nameLower, limit):
+def addByUserQueue(nameLower, limit, registered=1):
     """selects up to n (limit) random non-flagged media that was ever
        queued by registered user (nameLower)"""
     sql = ('SELECT type, id FROM Media WHERE mediaId IN '
@@ -197,10 +197,17 @@ def addByUserQueue(nameLower, limit):
            'Media.mediaId = Queue.mediaId AND Queue.userId= '
            '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?) '
            'AND Media.flag=0 ORDER BY RANDOM() limit ?)')
-    binds = (nameLower, 1, limit)
+    binds = (nameLower, registered, limit)
     clog.info(sql, 'sql')
     return query(sql, binds)
 
+def addByUserAdd(nameLower, limit, registered=1):
+    """selects up to n (limit) random non-flagged media that was 
+       added first (introduced) by registered user (nameLower)"""
+    sql = ('SELECT type, id FROM Media WHERE flag=0 AND by= '
+           '(SELECT userId FROM CyUser WHERE nameLower=? AND '
+           'registered=?) ORDER BY RANDOM() LIMIT ?')
+    binds = (nameLower, registered, limit)
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks

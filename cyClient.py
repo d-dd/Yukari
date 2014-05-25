@@ -191,31 +191,35 @@ class CyProtocol(WebSocketClientProtocol):
             num = int(arg[0])
             arg = ['-n', str(num)]
 
-        except(ValueError):
+        except(ValueError, IndexError):
             pass
 
         parser = argparse.ArgumentParser()
-        parser.add_argument('-s', '--sample', default='queue') # queue or add
+        parser.add_argument('-s', '--sample', default='queue', 
+                            choices=('queue', 'q', 'add', 'a'))
         parser.add_argument('-u', '--user', default='Anyone')
+        parser.add_argument('-r', '--registered', default=True, type=bool)
         parser.add_argument('-n', '--number', default=3)
         parser.add_argument('-t', '--title', default='') #TODO
         parser.add_argument('-a', '--artist', default='') #TODO
-        parser.add_argument('-T', '--temporary', default=False, type=bool) #TODO
-        parser.add_argument('-p', '--position', default='end') #TODO
-
+        parser.add_argument('-T', '--temporary', default=False, type=bool)
+        parser.add_argument('-p', '--position', default='end', 
+                            choices=('end', 'next'))
         try:
             args = parser.parse_args(arg)
-            reply = ('Quantity to add:%s, sample:%s, user:%s, temp:%s, pos:%s'
-                    % (args.number, args.sample, args.user, args.temporary,
-                       args.position))
+            reply = ('Quantity:%s, sample:%s, user:%s, registered:%s, temp:%s, '
+                     'pos:%s'
+                    % (args.number, args.sample, args.user, args.registered,
+                       args.temporary, args.position))
 
         except(SystemExit):
             reply = 'Invalid arguments.'
+            self.doSendChat(reply)
             return
         self.doSendChat(reply)
 
-        self.getRandMediaQueue(args.number, args.user, args.temporary,
-                               args.position)
+        self.getRandMedia(args.sample, args.number, args.user,
+                               args.temporary, args.position)
 
     def cancelChatLog(self):
         try:
@@ -454,6 +458,8 @@ class CyProtocol(WebSocketClientProtocol):
                                 self.collectYtQueue, mId)
             clog.debug('(checkMedia) Length of ytq %s' % len(self.ytq), sys)
             return d
+        else:
+            return defer.succeed('EmbedOk') # TODO
 
     def flagOrDelete(self, res, media, mType, mId):
         if res == 'EmbedOk':
@@ -564,13 +570,12 @@ class CyProtocol(WebSocketClientProtocol):
             else:
                 return 1
 
-    def doAddMedia(self, media, temp=False, pos='end'):
+    def doAddMedia(self, media, temp, pos):
         # Cytube has a throttle for queueing media
         # burst: 10,
         # sustained: 2
         
         lenBefore = len(self.queueMediaList)
-        clog.error('lenBefore %s' % lenBefore, 'LENBEFORE')
         self.queueMediaList.extend(media)
         if time.time() - self.lastQueueTime > 20:
             self.canBurst = True
@@ -591,19 +596,23 @@ class CyProtocol(WebSocketClientProtocol):
             # add a little slower than 2/sec to account for network latency
             # and Twisted callLater time is not guaranteed
             wait = (i + lenBefore + 3)/1.7 
-            d = reactor.callLater(wait, self.doAddSustained)
+            d = reactor.callLater(wait, self.doAddSustained, pos, temp)
     
-    def doAddSustained(self, pos='end', temp=False):
+    def doAddSustained(self, pos, temp):
         mType, mId = self.queueMediaList.popleft()
         self.sendf({'name': 'queue', 'args': {'type': mType, 
                                     'id': mId, 'pos': pos, 'temp': temp}})
         self.lastQueueTime = time.time()
 
-    def getRandMediaQueue(self, quantity, user, temp=False, pos='end'): # $add
-        """ Adds quantity number of media to the playlist """
-        d = database.addByUserQueue(user, quantity)
-        #d.addCallback(lambda res: clog.info(res, 'Adding'))
-        d.addCallback(self.doAddMedia)
+    def getRandMedia(self, sample, quantity, user, temp, pos):
+        """ Queues up to quantity number of media to the playlist """
+        if sample == 'queue' or sample == 'q':
+            d = database.addByUserQueue(user, quantity)
+        elif sample == 'add' or sample == 'a':
+            d = database.addByUserAdd(user, quantity)
+        else:
+            return
+        d.addCallback(self.doAddMedia, temp, pos)
 
     def doDeleteMedia(self, mType, mId):
         """ Delete media """
