@@ -182,6 +182,14 @@ class CyProtocol(WebSocketClientProtocol):
         # method 4 = manual set
 
     def _com_add(self, username, msg):
+        rank = self._getRank(username)
+        clog.info('rank is %s' % rank, 'RANK')
+        if not rank:
+            return
+        elif rank < 2:
+            maxAdd = 5
+        else:
+            maxAdd = 20
         clog.info(msg, sys)
         arg = list(msg.split()[1:])
 
@@ -198,31 +206,45 @@ class CyProtocol(WebSocketClientProtocol):
         parser.add_argument('-s', '--sample', default='queue', 
                             choices=('queue', 'q', 'add', 'a'))
         parser.add_argument('-u', '--user', default='Anyone')
-        parser.add_argument('-r', '--registered', default=True, type=bool)
-        parser.add_argument('-n', '--number', default=3)
+        parser.add_argument('-g', '--guest', default=False, type=bool)
+        parser.add_argument('-n', '--number', default=3, type=int)
         parser.add_argument('-t', '--title', default='') #TODO
         parser.add_argument('-a', '--artist', default='') #TODO
         parser.add_argument('-T', '--temporary', default=False, type=bool)
         parser.add_argument('-N', '--next', default=False, type=bool)
         try:
             args = parser.parse_args(arg)
-            reply = ('Quantity:%s, sample:%s, user:%s, registered:%s, temp:%s, '
-                     'pos:%s'
-                    % (args.number, args.sample, args.user, args.registered,
-                       args.temporary, args.next))
-            if args.next:
-                args.next = 'next'
-            else:
-                args.next = 'end'
-
         except(SystemExit):
-            reply = 'Invalid arguments.'
-            self.doSendChat(reply)
+            self.doSendChat('Invalid arguments.')
             return
+
+        args.number = min(args.number, maxAdd)
+        reply = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
+                 'pos:%s'
+                % (args.number, args.sample, args.user, args.guest,
+                   args.temporary, args.next))
         self.doSendChat(reply)
 
+        isRegistered = not args.guest
+        if args.next:
+            args.next = 'next'
+        else:
+            args.next = 'end'
+        if args.user == 'Anyone':
+            args.user = None
         self.getRandMedia(args.sample, args.number, args.user,
                                args.temporary, args.next)
+
+    def _com_omit(self, username, msg):
+        rank = self._getRank(username)
+        if rank < 2:
+            return
+
+    def _getRank(self, username):
+        try:
+            return int(self.userdict[username]['rank'])
+        except(KeyError):
+            clog.error('(_getRank) %s not found in userdict' % username, sys)
 
     def cancelChatLog(self):
         try:
@@ -474,10 +496,10 @@ class CyProtocol(WebSocketClientProtocol):
         elif res == 'NetworkError':
             clog.error('(flagOrDelete) There was a network error.', sys)
 
-        elif res == 'NoEmbed' or res == 'Status403':
+        elif res in ('NoEmbed', 'Status403', 'Status404'):
             self.doDeleteMedia(media['type'], media['id'])
             mediaTitle = media['title'].encode('utf-8')
-            msg = 'Removing non-embeddable media %s' % mediaTitle
+            msg = 'Removing non-playable media %s' % mediaTitle
             database.flagMedia(0b1, mType, mId)
             self.doSendChat(msg)
             clog.info(msg)

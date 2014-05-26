@@ -55,6 +55,9 @@ def checkStatus(response, ytId, content):
     if response.code == 403:
         d.addCallback(badVideo, ytId)
         return d
+    if response.code == 404:
+        d.addCallback(noVideo, ytId)
+        return d
     elif response.code == 503:
         d.addCallback(ytUnavailable, ytId)
         return d
@@ -87,6 +90,12 @@ def badVideo(res, ytId):
     clog.info('(badVideo) %s: %s' % (ytId, res))
     clog.info('This video needs to be deleted and flagged')
     return 'Status403'
+
+def noVideo(res, ytId):
+    # cQ39pN3u1yg
+    clog.info('(noVideo) %s: %s' % (ytId, res))
+    clog.info('This video needs to be deleted and flagged')
+    return 'Status404'
 
 def ytUnavailable(res, ytId):
     clog.err('(ytUnavailable) %s: %s' % (ytId, res))
