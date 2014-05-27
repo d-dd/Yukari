@@ -189,21 +189,31 @@ def unflagMedia(flag, mType, mId):
     binds = (~flag, mType, mId)
     return operate(sql, binds)
 
-def addByUserQueue(nameLower, limit, registered=1):
+def addByUserQueue(nameLower, registered, words, limit):
     """selects up to n (limit) random non-flagged media that was ever
        queued by registered user (nameLower)"""
+    binds, sql = [], []
     if nameLower:
         name = ('AND Queue.userId = (SELECT userId FROM CyUser WHERE nameLower=?'
                 ' AND registered=?) ' )
-        binds = (nameLower, registered, limit)
+        binds.extend((nameLower, int(registered)))
     else:
         name = ''
-        binds = (limit,)
+
+    if words:
+        title = ('AND Media.title LIKE ? ')
+        binds.append('%%%s%%' % words) # %% is escaped %
+    else:
+        title = ''
+
     sql = ('SELECT type, id FROM Media WHERE mediaId IN '
            '(SELECT DISTINCT Media.mediaId FROM Media, Queue WHERE '
-           'Media.mediaId = Queue.mediaId AND Media.flag=0 %s'
-           'ORDER BY RANDOM() LIMIT ?)') % name
+           'Media.mediaId = Queue.mediaId AND Media.flag=0 %s %s'
+           'ORDER BY RANDOM() LIMIT ?)') % (name, title)
+    binds.append(limit)
+    binds = tuple(binds)
     clog.info(sql, 'sql')
+    clog.info(binds, 'sql')
     return query(sql, binds)
 
 def addByUserAdd(nameLower, limit, registered=1):
@@ -216,6 +226,8 @@ def addByUserAdd(nameLower, limit, registered=1):
     if not nameLower:
         sql = 'SELECT type,id FROM Media WHERE flag=0 ORDER BY RANDOM() LIMIT ?'
         binds = (limit,)
+    clog.info(sql, 'sql')
+    clog.info(binds, 'sql')
     return query(sql, binds)
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,

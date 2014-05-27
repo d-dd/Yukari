@@ -74,7 +74,7 @@ class Connections:
         if self.cy:
             user = user.split('!', 1)[0] # takes out the extra info in the name
             msgf = '(%s) %s' % (user, msg)
-            self.wsFactory.prot.sendChat(msgf)
+            self.wsFactory.prot.doSendChat(msgf)
         self.processCommand(user, msg)
 
     def recCyMsg(self, user, msg):
@@ -104,7 +104,7 @@ class Connections:
 
     def sendToCy(self, msg, modflair=False):
         if self.cy:
-            self.wsFactory.prot.sendChat(msg, modflair)
+            self.wsFactory.prot.doSendChat(msg, modflair)
 
     def sendToIrc(self, msg):
         if self.irc:

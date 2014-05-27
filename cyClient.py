@@ -181,6 +181,18 @@ class CyProtocol(WebSocketClientProtocol):
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
 
+    def parseTitle(self, command):
+        # argparse doesn't support spaces in arguments, so we search
+        # and parse the -t/ --title values in msg ourselves
+        tBeg = command.find('-t ') + 3
+        if tBeg == -1:
+            return None
+        tEnd = command.find(' -', tBeg)
+        if tEnd == -1:
+            tEnd = len(command)
+        shortMsg = command[:tBeg-3] + command[tEnd+1:]
+        return command[tBeg:tEnd], shortMsg
+
     def _com_add(self, username, msg):
         rank = self._getRank(username)
         clog.info('rank is %s' % rank, 'RANK')
@@ -202,13 +214,15 @@ class CyProtocol(WebSocketClientProtocol):
         except(ValueError, IndexError):
             pass
 
+
+        
         parser = argparse.ArgumentParser()
         parser.add_argument('-s', '--sample', default='queue', 
                             choices=('queue', 'q', 'add', 'a'))
         parser.add_argument('-u', '--user', default='Anyone')
         parser.add_argument('-g', '--guest', default=False, type=bool)
         parser.add_argument('-n', '--number', default=3, type=int)
-        parser.add_argument('-t', '--title', default='') #TODO
+        parser.add_argument('-t', '--title', default='')
         parser.add_argument('-a', '--artist', default='') #TODO
         parser.add_argument('-T', '--temporary', default=False, type=bool)
         parser.add_argument('-N', '--next', default=False, type=bool)
@@ -226,14 +240,17 @@ class CyProtocol(WebSocketClientProtocol):
         self.doSendChat(reply)
 
         isRegistered = not args.guest
+
         if args.next:
             args.next = 'next'
         else:
             args.next = 'end'
-        if args.user == 'Anyone':
+        args.user = args.user.lower()
+        if args.user == 'anyone':
             args.user = None
-        self.getRandMedia(args.sample, args.number, args.user,
-                               args.temporary, args.next)
+        
+        self.getRandMedia(args.sample, args.number, args.user, isRegistered,
+                          args.title, args.temporary, args.next)
 
     def _com_omit(self, username, msg):
         rank = self._getRank(username)
@@ -629,10 +646,11 @@ class CyProtocol(WebSocketClientProtocol):
                                     'id': mId, 'pos': pos, 'temp': temp}})
         self.lastQueueTime = time.time()
 
-    def getRandMedia(self, sample, quantity, user, temp, pos):
+    def getRandMedia(self, sample, quantity, username, isRegistered, title,
+                     temp, pos):
         """ Queues up to quantity number of media to the playlist """
         if sample == 'queue' or sample == 'q':
-            d = database.addByUserQueue(user, quantity)
+            d = database.addByUserQueue(username, isRegistered, title, quantity)
         elif sample == 'add' or sample == 'a':
             d = database.addByUserAdd(user, quantity)
         else:

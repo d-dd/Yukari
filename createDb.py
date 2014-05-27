@@ -29,7 +29,7 @@ con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (2, '[server]', 1, '[server]', 0, 2, t, t, 0))
 con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (3, '[anonymous]', 1, '[anonymous]', 0, 4, t, t, 0))
+        (3, '[anonymous]', 0, '[anonymous]', 0, 4, t, t, 0))
 
 # IRC User table
 con.execute("""
@@ -97,7 +97,7 @@ title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
          '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
 title = title.decode('utf-8')
 con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
-           (None, 'yt', '01uN4MCsrCE', 248, title, 1, None))
+           (None, 'yt', '01uN4MCsrCE', 248, title, 1, 0))
 
 # MediaSong table
 # A junction table between Media and Song. Although the relationship
