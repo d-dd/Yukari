@@ -10,7 +10,7 @@
  - `-u, --user USER` Cytube username.
  - `-r, --registered` True/False. Guests are not registered users.
  - `-n, --number` The limit for querying Media table. It is not guaranteed that n media will be queued because there may not be enough matching media, some of those matches may already be on the playlist, and some media that are added may no longer be playable (e.g. deleted).
- - `-t, --title` todo
+ - `-t` search by title cached in the Media table
  - `-a, --artist` todo
  - `-T, --temporary` add media as temporary
  - `-N, --next` add media as next
