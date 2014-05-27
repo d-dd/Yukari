@@ -396,26 +396,6 @@ class CyProtocol(WebSocketClientProtocol):
                 if entry['media']['type'] == 'yt':
                     qpl.append((entry['media']['type'], entry['media']['id']))
         d = database.bulkLogMedia(dbpl)
-        d.addCallback(self.bulkCheckPlaylist, self.playlist)
-
-        if vdb:
-            d.addCallback(database.bulkQueryMediaSong, qpl)
-            d.addCallback(self.bulkCheckVocaDb)
-
-    def bulkCheckPlaylist(self, res, playlist):
-        for media in playlist:
-            mType = media['media']['type']
-            mId = media['media']['id']
-            d = self.checkMedia(0, mType, mId)
-            d.addCallback(self.flagOrDelete, media['media'], mType, mId)
-
-    def bulkCheckVocaDb(self, songlessMedia):
-        timeNow = round(time.time(), 4)
-        clog.info('(bulkCheckVocaDb)', sys)
-        for i, (mType, mId) in enumerate(songlessMedia):
-            # 0.5s delay between each call
-            reactor.callLater(i * 0.5, vdbapi.requestSongByPv, None, mType, mId,
-                              1, timeNow, 4)
 
     def addToPlaylist(self, item, afterUid):
         if afterUid == 'prepend':
@@ -655,7 +635,7 @@ class CyProtocol(WebSocketClientProtocol):
         if sample == 'queue' or sample == 'q':
             d = database.addByUserQueue(username, isRegistered, title, quantity)
         elif sample == 'add' or sample == 'a':
-            d = database.addByUserAdd(username, quantity)
+            d = database.addByUserAdd(username, isRegistered, title, quantity)
         else:
             return
         d.addCallback(self.doAddMedia, temp, pos)

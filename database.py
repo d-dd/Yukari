@@ -201,7 +201,7 @@ def addByUserQueue(nameLower, registered, words, limit):
         name = ''
 
     if words:
-        title = ('AND Media.title LIKE ? ')
+        title = 'AND Media.title LIKE ? '
         binds.append('%%%s%%' % words) # %% is escaped %
     else:
         title = ''
@@ -216,16 +216,25 @@ def addByUserQueue(nameLower, registered, words, limit):
     clog.info(binds, 'sql')
     return query(sql, binds)
 
-def addByUserAdd(nameLower, limit, registered=1):
+def addByUserAdd(nameLower, registered, words, limit):
     """selects up to n (limit) random non-flagged media that was 
        added first (introduced) by registered user (nameLower)"""
-    sql = ('SELECT type, id FROM Media WHERE flag=0 AND by= '
-           '(SELECT userId FROM CyUser WHERE nameLower=? AND '
-           'registered=?) ORDER BY RANDOM() LIMIT ?')
-    binds = (nameLower, registered, limit)
-    if not nameLower:
-        sql = 'SELECT type,id FROM Media WHERE flag=0 ORDER BY RANDOM() LIMIT ?'
-        binds = (limit,)
+    binds = []
+    if nameLower:
+        name = ('AND by = (SELECT userId FROM CyUser WHERE nameLower=? AND'
+                ' registered=?)')
+        binds.extend((nameLower, registered))
+    else:
+        name = ''
+    if words:
+        title = 'AND title LIKE ?'
+        binds.append('%%%s%%' % words)
+    else:
+         title = ''
+    sql = ('SELECT type, id FROM Media WHERE flag=0 %s %s'
+          'ORDER BY RANDOM() LIMIT ?') % (name, title)
+    binds.append(limit)
+    binds = tuple(binds)
     clog.info(sql, 'sql')
     clog.info(binds, 'sql')
     return query(sql, binds)
