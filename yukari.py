@@ -92,6 +92,7 @@ class Connections:
 
     def processCommand(self, user, msg):
         if msg.startswith('$'):
+            msg = msg.encode('utf-8')
             command = msg.split('$')[1]
             thunk = getattr(self, '_com_%s' % (command,), None)
             if thunk is not None:

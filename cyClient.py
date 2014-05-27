@@ -184,9 +184,10 @@ class CyProtocol(WebSocketClientProtocol):
     def parseTitle(self, command):
         # argparse doesn't support spaces in arguments, so we search
         # and parse the -t/ --title values in msg ourselves
-        tBeg = command.find('-t ') + 3
+        tBeg = command.find('-t ')
         if tBeg == -1:
-            return None
+            return None, command
+        tBeg += 3
         tEnd = command.find(' -', tBeg)
         if tEnd == -1:
             tEnd = len(command)
@@ -203,17 +204,20 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             maxAdd = 20
         clog.info(msg, sys)
-        arg = list(msg.split()[1:])
+        args = msg[len('$add '):]
+        clog.info(args, 'sent to parseTitle')
+        title, arguments = self.parseTitle(args)
+        args = arguments.split()
+        clog.info(args, 'args args')
 
         # shortcut in case people want to $add #
         # of course this can't be combined with other args
         try:
-            num = int(arg[0])
-            arg = ['-n', str(num)]
+            num = int(args[0])
+            args = ['-n', str(num)]
 
         except(ValueError, IndexError):
             pass
-
 
         
         parser = argparse.ArgumentParser()
@@ -222,21 +226,20 @@ class CyProtocol(WebSocketClientProtocol):
         parser.add_argument('-u', '--user', default='Anyone')
         parser.add_argument('-g', '--guest', default=False, type=bool)
         parser.add_argument('-n', '--number', default=3, type=int)
-        parser.add_argument('-t', '--title', default='')
         parser.add_argument('-a', '--artist', default='') #TODO
         parser.add_argument('-T', '--temporary', default=False, type=bool)
         parser.add_argument('-N', '--next', default=False, type=bool)
         try:
-            args = parser.parse_args(arg)
+            args = parser.parse_args(args)
         except(SystemExit):
             self.doSendChat('Invalid arguments.')
             return
 
         args.number = min(args.number, maxAdd)
         reply = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
-                 'pos:%s'
+                 'pos:%s, title%s'
                 % (args.number, args.sample, args.user, args.guest,
-                   args.temporary, args.next))
+                   args.temporary, args.next, title))
         self.doSendChat(reply)
 
         isRegistered = not args.guest
@@ -250,7 +253,7 @@ class CyProtocol(WebSocketClientProtocol):
             args.user = None
         
         self.getRandMedia(args.sample, args.number, args.user, isRegistered,
-                          args.title, args.temporary, args.next)
+                          title, args.temporary, args.next)
 
     def _com_omit(self, username, msg):
         rank = self._getRank(username)
@@ -652,7 +655,7 @@ class CyProtocol(WebSocketClientProtocol):
         if sample == 'queue' or sample == 'q':
             d = database.addByUserQueue(username, isRegistered, title, quantity)
         elif sample == 'add' or sample == 'a':
-            d = database.addByUserAdd(user, quantity)
+            d = database.addByUserAdd(username, quantity)
         else:
             return
         d.addCallback(self.doAddMedia, temp, pos)
