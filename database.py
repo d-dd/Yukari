@@ -239,6 +239,10 @@ def addByUserAdd(nameLower, registered, words, limit):
     clog.info(binds, 'sql')
     return query(sql, binds)
 
+def getMediaById(mediaId):
+    sql = 'SELECT * FROM Media WHERE mediaId=?'
+    return query(sql, (mediaId,))
+
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 dbpool.runInteraction(turnOnFK)

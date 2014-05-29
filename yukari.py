@@ -1,6 +1,6 @@
 from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
-from ext.rinception import Messenger, MessengerFactory
+from ext.rinception import LineReceiver, LineReceiverFactory
 from ext.apiserver import GetMedia
 from twisted.web.server import Site
 from conf import config
@@ -67,7 +67,7 @@ class Connections:
     def rinstantiate(self, port):
         """ Start server for Rin (steam-bot) """
         clog.info('(rinstantiate) Starting server for Rin', sys)
-        self.rinFactory = MessengerFactory()
+        self.rinFactory = LineReceiverFactory()
         reactor.listenTCP(18914, self.rinFactory)
 
     def recIrcMsg(self, user, channel, msg):

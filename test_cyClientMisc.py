@@ -1,5 +1,6 @@
 import unittest
 from cyClient import CyProtocol
+from ext.rinception import Lr
 
 class TestParseAdd(unittest.TestCase):
 
@@ -25,5 +26,22 @@ class TestParseAdd(unittest.TestCase):
         title = self.prot.parseTitle(command)
         self.assertEqual(title, (None, '-n 2'))
 
+class TestParseDict(unittest.TestCase):
+
+    def setUp(self):
+        self.rec = Lr(None)
+
+    def test(self):
+        requestd = {"callType":"mediaById", "args":{"mediaId":123}}
+        req = self.rec.parseDict(requestd)
+        callType, args = req
+        self.assertEqual(callType, 'mediaById')
+        self.assertEqual(args, {'mediaId':123})
+        ###
+        requestd = {"calltype":"mediaById", "args":{"mediaId":123}}
+        req = self.rec.parseDict(requestd)
+        self.assertEqual(req, False)
+
 if __name__ == '__main__':
     unittest.main()
+    #request = '{"callType":"mediaById", "args":"{"mediaId":123}}'

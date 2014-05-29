@@ -21,6 +21,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.queueMediaList = deque()
         self.canBurst = False
         self.lastQueueTime = time.time() - 20 #TODO
+        self.nowPlayingMedia = None
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
@@ -159,16 +160,20 @@ class CyProtocol(WebSocketClientProtocol):
         if msg.startswith('$'):
             command = msg.split()[0][1:]
             clog.debug('received command %s from %s' % (command, username), sys)
-            args = tuple(msg.split()[1:])
+            argsList = msg.split(' ', 1)
+            if len(argsList) == 2:
+                args = argsList[1]
+            else:
+                args = None
             thunk = getattr(self, '_com_%s' % (command,), None)
             if thunk is not None:
-                thunk(username, msg)
+                thunk(username, args)
 
-    def _com_vocadb(self, username, msg):
+    def _com_vocadb(self, username, args):
         if not vdb:
             return
         try:
-            songId = int(msg.split()[1])
+            songId = int(args)
         except IndexError:
             clog.error('(_com_vocadb) Index Error by %s' % username, sys)
             return
@@ -194,17 +199,15 @@ class CyProtocol(WebSocketClientProtocol):
         shortMsg = command[:tBeg-3] + command[tEnd+1:]
         return command[tBeg:tEnd], shortMsg
 
-    def _com_add(self, username, msg):
+    def _com_add(self, username, args):
         rank = self._getRank(username)
-        clog.info('rank is %s' % rank, 'RANK')
         if not rank:
             return
         elif rank < 2:
             maxAdd = 5
         else:
             maxAdd = 20
-        clog.info(msg, sys)
-        args = msg[len('$add '):]
+        clog.info(args, sys)
         clog.info(args, 'sent to parseTitle')
         title, arguments = self.parseTitle(args)
         args = arguments.split()
@@ -255,10 +258,41 @@ class CyProtocol(WebSocketClientProtocol):
         self.getRandMedia(args.sample, args.number, args.user, isRegistered,
                           title, args.temporary, args.next)
 
-    def _com_omit(self, username, msg):
+    def _com_omit(self, username, args):
         rank = self._getRank(username)
-        if rank < 2:
+        clog.info('(_com_omit) %s' % args)
+        if rank < 2 or not self.nowPlayingMedia:
             return
+        parsed = self._omit_args(args)
+        if not parsed:
+            self.doSendChat('Invalid parameters.')
+        elif parsed:
+            mType, mId = parsed
+            d = database.flagMedia(2, mType, mId)
+            d.addCallback(lambda res: clog.info(res, sys))
+
+    def _omit_args(self, args):
+        if not args:
+            mType, mId, mTitle = self.nowPlayingMedia
+            return mType, mId
+        elif args:
+            if ',' in args:
+                argl = args.split(',')
+            elif ' ' in args:
+                argl = args.split()
+            else:
+                return 'yt', args
+            try:
+                return argl[1], argl[0]
+            except(IndexError):
+                return False
+
+    def _com_unomit(self, username, msg):
+        rank = self._getRank(username)
+        if rank < 2 or not self.nowPlayingMedia:
+            return
+        mType, mId, mTitle = self.nowPlayingMedia
+        database.unflagMedia(2, mType, mId)
 
     def _getRank(self, username):
         try:
@@ -540,11 +574,11 @@ class CyProtocol(WebSocketClientProtocol):
         clog.error('(dbErr): %s' % err.value, sys)
 
     def _cyCall_changeMedia(self, fdict):
-        # set self.nowPlaying
+        # set self.nowPlayingMedia
         mType = fdict['args'][0]['type']
         mId = fdict['args'][0]['id']
         mTitle = fdict['args'][0]['title']
-        self.nowPlaying = (mType, mId, mTitle) # these are unicode
+        self.nowPlayingMedia = (mType, mId, mTitle) # these are unicode
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
             mId.encode('utf-8'))
