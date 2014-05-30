@@ -197,11 +197,17 @@ def unflagUser(flag, nameLower, isRegistered):
     return operate(sql, binds)
 
 def calcUserPoints(res, nameLower, isRegistered):
-    sql = ('SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by= (SELECT '
-           'userId FROM CyUser WHERE nameLower=? AND registered=?)) * 20) + '
-           '(SELECT (SELECT COUNT(*) FROM Queue WHERE userId=(SELECT userId '
-           'FROM CyUser WHERE nameLower=? AND registered=?)) * 3)')
-    binds = (nameLower, isRegistered, nameLower, isRegistered)
+    sql =  """
+    SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by = (SELECT userId FROM
+    CyUser WHERE nameLower=? AND registered=?)) * 20) + (SELECT 
+    (SELECT COUNT(*) FROM Queue WHERE userId = (SELECT userId FROM CyUser 
+    WHERE nameLower=? AND registered=?)) * 3) + (SELECT (SELECT
+    (SELECT SUM(leave) FROM userinout WHERE userid = (SELECT userid FROM 
+    cyUser WHERE nameLower=? AND registered=?)) - (SELECT 
+    SUM(enter) FROM userinout WHERE userid = (SELECT userid FROM cyUser
+    WHERE nameLower=? AND registered=?))) * 0.002);
+    """
+    binds = (nameLower, isRegistered) * 4
     #clog.info('(calcUserPoints) %s has %d points' % (nameLower, 9000), sys)
     #return defer.succeed(9000)
     return query(sql, binds)
@@ -266,7 +272,6 @@ def insertUsercount(timeNow, usercount, anoncount):
     return operate(sql, binds)
 
 def insertUserInOut(userId, enterTime, leaveTime):
-    """ Partial row """
     sql = 'INSERT INTO UserInOut VALUES (?, ?, ?, ?)'
     binds = (userId, enterTime, leaveTime, 0)
     return operate(sql, binds)
