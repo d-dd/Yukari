@@ -53,7 +53,7 @@ class LineReceiver(LineReceiver):
         if res:
             mRow = res[0]
             mediaDict = {'mediaId': mRow[0], 'type': mRow[1], 'id': mRow[2],
-                         'dur': mRow[3], 'title': mRow[4], 'flag': mRow[5]}
+                         'dur': mRow[3], 'title': mRow[4], 'flag': mRow[6]}
             response = {'callType': 'mediaById', 'result':'ok',
                         'resource': mediaDict}
         else:

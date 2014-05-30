@@ -259,6 +259,52 @@ class CyProtocol(WebSocketClientProtocol):
                           title, args.temporary, args.next)
 
     def _com_omit(self, username, args):
+        self._omit(username, args, 'flag')
+
+    def _com_unomit(self, username, args):
+        self._omit(username, args, 'unflag')
+
+    def _com_greet(self, username, args):
+        if self.checkRegistered(username):
+            d = database.flagUser(1, username.lower(), 1)
+            d.addCallback(database.calcUserPoints, username.lower(), 1)
+            d.addCallback(self.returnGreeting, username)
+
+    def _com_points(self, username, args):
+        if self.checkRegistered(username):
+            d = database.calcUserPoints( None, username.lower(), 1)
+            d.addCallback(self.returnPoints, username)
+
+    # should be PM
+    def _com_read(self, username, args):
+        # people who read the readme/this
+        if self.checkRegistered(username):
+            d = database.flagUser(2, username.lower(), 1)
+
+    # should be PM
+    def _com_enroll(self, username, args):
+        if self.checkRegistered(username):
+            d = database.flagUser(4, username.lower(), 1)
+
+    def returnGreeting(self, res, username):
+        points = res[0][0]
+        clog.info('(returnGreeting) %s has %d points.' %(username, points), sys)
+        if not points or points < 0:
+            self.doSendChat('Hello %s.' % username)
+        elif points < 999:
+            self.doSendChat('Hi %s.' % username)
+        elif points < 2000:
+            self.doSendChat('Hi %s!' % username)
+        else:
+            self.doSendChat('Hi %s! <3' % username, True)
+
+    def returnPoints(self, res, username):
+        points = res[0][0]
+        clog.info('(returnPoints) %s has %d points.' %(username, points), sys)
+        self.doSendChat('%s: %d' % (username, points))
+
+
+    def _omit(self, username, args, dir):
         rank = self._getRank(username)
         clog.info('(_com_omit) %s' % args)
         if rank < 2 or not self.nowPlayingMedia:
@@ -268,8 +314,10 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat('Invalid parameters.')
         elif parsed:
             mType, mId = parsed
-            d = database.flagMedia(2, mType, mId)
-            d.addCallback(lambda res: clog.info(res, sys))
+            if dir == 'flag':
+                database.flagMedia(2, mType, mId)
+            elif dir == 'unflag':
+                database.unflagMedia(2, mType, mId)
 
     def _omit_args(self, args):
         if not args:
@@ -286,13 +334,6 @@ class CyProtocol(WebSocketClientProtocol):
                 return argl[1], argl[0]
             except(IndexError):
                 return False
-
-    def _com_unomit(self, username, msg):
-        rank = self._getRank(username)
-        if rank < 2 or not self.nowPlayingMedia:
-            return
-        mType, mId, mTitle = self.nowPlayingMedia
-        database.unflagMedia(2, mType, mId)
 
     def _getRank(self, username):
         try:
@@ -551,7 +592,8 @@ class CyProtocol(WebSocketClientProtocol):
         assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
     def queryOrInsertMedia(self, media, userId):
-        d = database.dbQuery(('mediaId',) , 'Media', type=media['type'], id=media['id'])
+        d = database.dbQuery(('mediaId',) , 'Media', type=media['type'],
+                             id=media['id'])
         d.addCallback(database.queryResult)
         values = (None, media['type'], media['id'], media['seconds'],
                   media['title'], userId, 0)
@@ -581,7 +623,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.nowPlayingMedia = (mType, mId, mTitle) # these are unicode
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
-            mId.encode('utf-8'))
+                          mId.encode('utf-8'))
         clog.info('(_cyCall_changeMedia) %s' % s, sys)
 
     def _cyCall_moveVideo(self, fdict):

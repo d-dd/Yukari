@@ -189,6 +189,30 @@ def unflagMedia(flag, mType, mId):
     binds = (~flag, mType, mId)
     return operate(sql, binds)
 
+def flagUser(flag, nameLower, isRegistered):
+    clog.debug('Adding flag %s to %s, %s'
+               % (bin(flag), nameLower, isRegistered), sys)
+    sql = 'UPDATE CyUser SET flag=(flag|?) WHERE nameLower=? AND registered=?'
+    binds = (flag, nameLower, isRegistered)
+    return operate(sql, binds)
+            
+def unflagUser(flag, nameLower, isRegistered):
+    clog.debug('Removing flag %s to %s, %s'
+               % (bin(flag), nameLower, isRegistered), sys)
+    sql = 'UPDATE CyUser SET flag=(flag|?) WHERE nameLower=? AND registered=?'
+    binds = (~flag, nameLower, isRegistered)
+    return operate(sql, binds)
+
+def calcUserPoints(res, nameLower, isRegistered):
+    sql = ('SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by= (SELECT '
+           'userId FROM CyUser WHERE nameLower=? AND registered=?)) * 20) + '
+           '(SELECT (SELECT COUNT(*) FROM Queue WHERE userId=(SELECT userId '
+           'FROM CyUser WHERE nameLower=? AND registered=?)) * 3)')
+    binds = (nameLower, isRegistered, nameLower, isRegistered)
+    #clog.info('(calcUserPoints) %s has %d points' % (nameLower, 9000), sys)
+    #return defer.succeed(9000)
+    return query(sql, binds)
+
 def addByUserQueue(nameLower, registered, words, limit):
     """selects up to n (limit) random non-flagged media that was ever
        queued by registered user (nameLower)"""
