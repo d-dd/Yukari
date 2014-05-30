@@ -99,6 +99,11 @@ class CyProtocol(WebSocketClientProtocol):
         # setMotd comes after the chat buffer when joining a channel
         self.receivedChatBuffer = True
 
+    def _cyCall_usercount(self, fdict):
+        usercount = fdict['args'][0]
+        anoncount = usercount - len(self.userdict)
+        database.insertUsercount(int(time.time()), usercount, anoncount)
+
     def _cyCall_pm(self, fdict):
         return # TODO
         clog.info(fdict, sys)
@@ -387,17 +392,17 @@ class CyProtocol(WebSocketClientProtocol):
         if user['name'] not in self.userdict:
             self.userJoin(user, timeNow)
         self.userdict[user['name']]['inChannel'] = True
+        d = self.userdict[user['name']]['deferred']
 
     def userJoin(self, user, timeNow):
         user['keyId'] = None
         user['timeJoined'] = timeNow
         self.userdict[user['name']] = user
         reg = self.checkRegistered(user['name'])
-        d = database.dbQuery(('userId', 'flag', 'lastSeen'), 'cyUser',
+        d = database.dbQuery(('userId',), 'cyUser',
                          nameLower=user['name'].lower(), registered=reg)
         d.addCallback(database.queryResult)
-        values = (None, user['name'].lower(), reg, user['name'], 0, 0,
-                 timeNow, timeNow, 0)
+        values = (None, user['name'].lower(), reg, user['name'], 0, 0)
         d.addErrback(database.dbInsertReturnLastRow, 'cyUser', *values)
         d.addCallback(self.cacheKey, user)
         # add a reference to the deferred to the userdict
@@ -405,37 +410,39 @@ class CyProtocol(WebSocketClientProtocol):
         
     def cacheKey(self, res, user):
         assert res, 'no res at cacheKey'
-        if res:
+        if res[0]:
             clog.info("(cacheKey) cached %s's key %s" % (user['name'], res[0]),
                       sys)
             self.userdict[user['name']]['keyId'] = res[0]
+        return defer.succeed(res[0])
+
+    def userLeave(self, keyId, leftUser, timeNow):
+        userId = leftUser['keyId']
+        assert userId == keyId, 'KeyId mismatch at userleave!'
+        timeJoined = leftUser['timeJoined']
+        clog.debug('(userLeave) userId %s left: %d' % (keyId, timeNow), sys)
+        d = database.insertUserInOut(keyId, timeJoined, timeNow)
+        d.addCallback(lambda __: defer.succeed(keyId))
 
     def _cyCall_userLeave(self, fdict):
+        timeNow = int(time.time())
         username = fdict['args'][0]['name']
         if not username:
             return # when anon leaves, might be sync bug
-        self.userdict[username]['inChannel'] = False
         d = self.userdict[username]['deferred']
         clog.debug('_cyCall_userLeave) user %s has left. Adding callbacks' 
                    % username, sys)
         leftUser = self.userdict[username]
-        d.addCallback(self.clockUser, leftUser,
-                      int(time.time()))
-        d.addErrback(self.dbErr)
-        d.addCallback(self.removeUser, username)
-        d.addErrback(self.dbErr)
+        d.addCallback(self.userLeave, leftUser, timeNow)
+        self.removeUser(None, username) # remove user immediatley
 
     def removeUser(self, res, username):
         clog.debug('(removeUser) Removing user', sys)
         try:
-            if not self.userdict[username]['inChannel']:
-                del self.userdict[username]
-                clog.debug('(removeUser) deleted %s' % username, sys)
-            else:
-                clog.error('(removeUser) skipping: user %s in channel' % username, sys)
+            del self.userdict[username]
+            clog.debug('(removeUser) deleted %s' % username, sys)
         except(KeyError):
             clog.error('(removeUser) Failed: user %s not in userdict' % username, sys)
-            return KeyError
 
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlistTime < 3: # most likely the same userlist
@@ -502,9 +509,9 @@ class CyProtocol(WebSocketClientProtocol):
         try:
             media = (i for i in self.playlist if i['uid'] == uid).next()
             index =  self.playlist.index(media)
-            clog.debug('(getIndexFromUid) Looking up uid %s, index is %s' % (uid, index), sys)
+            clog.debug('(getIndexFromUid) Looking up uid %s, index is %s'
+                        % (uid, index), sys)
             return index
-
         except StopIteration as e:
             clog.error('(getIndexFromUid) media UID %s not found' % uid, sys)
 
@@ -643,17 +650,8 @@ class CyProtocol(WebSocketClientProtocol):
         # log everyone's access time before shutting down
         timeNow = int(time.time())
         for name, user in self.userdict.iteritems():
-            user['deferred'].addCallback(self.clockUser, user, timeNow)
+            user['deferred'].addCallback(self.userLeave, user, timeNow)
         self.cyRestart = False
-
-    def clockUser(self, res, leftUser, timeNow):
-        """ Clock out a user, by updating their accessTime """
-        username = leftUser['name']
-        clog.info('(clockUser) Clocking out %s!' % username, sys)
-        timeJoined = leftUser['timeJoined']
-        timeStayed = timeNow - timeJoined
-        userId = leftUser['keyId']
-        return database.updateCyUser(timeNow, timeStayed, userId)
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given

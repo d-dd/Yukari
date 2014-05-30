@@ -26,6 +26,14 @@ c = cyClient.CyProtocol()
 c.receivedChatBuffer = True
 c.userdict = {}
 # join and immedialty say Hi three times
+def recCyMsg(username, msg):
+    pass
+class Empty:
+    pass
+f = recCyMsg
+c.factory = Empty()
+c.factory.handle = Empty()
+c.factory.handle.recCyMsg = f
 c._cyCall_addUser(teto)
 c._cyCall_chatMsg(makeChat(1))
 c._cyCall_chatMsg(makeChat(2))

@@ -72,14 +72,7 @@ def updateRow(table, setd, whered):
     sql += 'WHERE'
     sql += ','.join(where)
     return sql, tuple(binds)
-        
     
-def updateCyUser(timeNow, timeStayed, userId):
-    sql = ('UPDATE CyUser SET lastSeen=?, accessTime=accessTime+? '
-           'WHERE userId=?')
-    binds = (timeNow, timeStayed, userId)
-    return operate(sql, binds)
-
 def bulkLogChat(table, chatList):
     return dbpool.runInteraction(_bulkLogChat, table, chatList)
 
@@ -266,6 +259,17 @@ def addByUserAdd(nameLower, registered, words, limit):
 def getMediaById(mediaId):
     sql = 'SELECT * FROM Media WHERE mediaId=?'
     return query(sql, (mediaId,))
+
+def insertUsercount(timeNow, usercount, anoncount):
+    sql = 'INSERT INTO Usercount VALUES (?, ?, ?)'
+    binds = (timeNow, usercount, anoncount)
+    return operate(sql, binds)
+
+def insertUserInOut(userId, enterTime, leaveTime):
+    """ Partial row """
+    sql = 'INSERT INTO UserInOut VALUES (?, ?, ?, ?)'
+    binds = (userId, enterTime, leaveTime, 0)
+    return operate(sql, binds)
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks

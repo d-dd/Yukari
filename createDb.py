@@ -10,30 +10,35 @@ cyName = config['Cytube']['username']
 #con.execute("DROP TABLE CyUser")
 # CyUser table
 con.execute("""
-        CREATE TABLE CyUser(
+        CREATE TABLE IF NOT EXISTS CyUser(
         userId INTEGER PRIMARY KEY,
         nameLower TEXT NOT NULL,
         registered INTEGER TEXT NOT NULL,
         nameOriginal TEXT NOT NULL,
         level INTEGER NOT NULL DEFAULT 0,
         flag INTEGER NOT NULL DEFAULT 0,
-        firstSeen INTEGER NOT NULL,
-        lastSeen INTEGER NOT NULL,
-        accessTime INTEGER,
         UNIQUE (nameLower, registered));""")
 
 # insert server
-t = int(time.time())
-con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (1, cyName.lower(), 1, cyName, 3, 1, t, t, 0))
-con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (2, '[server]', 1, '[server]', 0, 2, t, t, 0))
-con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (3, '[anonymous]', 0, '[anonymous]', 0, 4, t, t, 0))
+con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
+        (1, cyName.lower(), 1, cyName, 3, 1))
+con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
+        (2, '[server]', 1, '[server]', 0, 2))
+con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
+        (3, '[anonymous]', 0, '[anonymous]', 0, 4))
+
+# User in/out
+con.execute("""
+        CREATE TABLE IF NOT EXISTS UserInOut(
+        userId INTEGER,
+        enter INTEGER,
+        leave INTEGER,
+        flag DEFAULT 0,
+        FOREIGN KEY(userId) REFERENCES CyUser(userId));""")
 
 # IRC User table
 con.execute("""
-        CREATE TABLE IrcUser(
+        CREATE TABLE IF NOT EXISTS IrcUser(
         userId INTEGER PRIMARY KEY,
         nickLower TEXT NOT NULL,
         username TEXT,
@@ -45,7 +50,7 @@ con.execute("INSERT INTO IrcUser VALUES (?, ?, ?, ?, ?, ?)",
             (1, ircNick.lower(), 'cybot', 'Yuka.rin.rin', ircNick, 1))
 # Cy Chat table
 con.execute("""
-        CREATE TABLE CyChat(
+        CREATE TABLE IF NOT EXISTS CyChat(
         chatId INTEGER PRIMARY KEY,
         userId INTEGER,
         chatTime INTEGER,
@@ -57,7 +62,7 @@ con.execute("""
 
 # IRC Chat table
 con.execute("""
-        CREATE TABLE IrcChat(
+        CREATE TABLE IF NOT EXISTS IrcChat(
         chatId INTEGER PRIMARY KEY,
         userId INTEGER,
         status INTEGER,
@@ -68,7 +73,7 @@ con.execute("""
 
 # Song (VocaDB) table
 con.execute("""
-        CREATE TABLE Song(
+        CREATE TABLE IF NOT EXISTS Song(
         songId INTEGER PRIMARY KEY,
         data TEXT NOT NULL,
         lastUpdate INTEGER NOT NULL);""")
@@ -81,7 +86,7 @@ con.execute('INSERT INTO Song VALUES (?, ?, ?)', (0, 'null', 0))
 
 # media table
 con.execute("""
-        CREATE TABLE Media(
+        CREATE TABLE IF NOT EXISTS Media(
         mediaId INTEGER PRIMARY KEY,
         type TEXT NOT NULL,
         id TEXT NOT NULL,
@@ -106,7 +111,7 @@ con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
 # the program, and usable for rooms that don't need the VocaDB feature.
 
 con.execute("""
-        CREATE TABLE MediaSong(
+        CREATE TABLE IF NOT EXISTS MediaSong(
         mediaId INTEGER NOT NULL,
         songId INTEGER NOT NULL,
         userId INTEGER NOT NULL,
@@ -119,7 +124,7 @@ con.execute("""
 
 # queue table
 con.execute("""
-        CREATE TABLE Queue(
+        CREATE TABLE IF NOT EXISTS Queue(
         queueId INTEGER PRIMARY KEY,
         mediaId INTEGER NOT NULL,
         userId INTEGER NOT NULL,
@@ -127,6 +132,16 @@ con.execute("""
         flag INTEGER,
         FOREIGN KEY (userId) REFERENCES CyUser(userId),
         FOREIGN KEY (mediaId) REFERENCES media(mediaId));""")
+
+
+# Usercount
+con.execute("""
+        CREATE TABLE IF NOT EXISTS Usercount(
+        time INTEGER NOT NULL,
+        usercount INTEGER NOT NULL,
+        anoncount INTEGER NOT NULL)
+        """)
+
 
 con.commit()
 print "Tables created."
