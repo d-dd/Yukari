@@ -276,6 +276,11 @@ def insertUserInOut(userId, enterTime, leaveTime):
     binds = (userId, enterTime, leaveTime, 0)
     return operate(sql, binds)
 
+def insertPm(userId, pmTime, pmCyTime, msg, flag):
+    sql = 'INSERT INTO CyPM VALUES (?, ?, ?, ?, ?, ?)'
+    binds = (None, userId, pmTime, pmCyTime, msg, flag)
+    return operate(sql, binds)
+
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 dbpool.runInteraction(turnOnFK)

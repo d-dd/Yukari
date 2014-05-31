@@ -60,6 +60,17 @@ con.execute("""
         flag INTEGER,
         FOREIGN KEY(userId) REFERENCES CyUser(userId));""")
 
+# Cy PM table
+con.execute("""
+        CREATE TABLE IF NOT EXISTS CyPm(
+        chatId INTEGER PRIMARY KEY,
+        userId INTEGER NOT NULL,
+        pmTime INTEGER,
+        pmCyTime INTEGER,
+        pmMsg TEXT,
+        flag INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(userId) REFERENCES CyUser(userId));""")
+        
 # IRC Chat table
 con.execute("""
         CREATE TABLE IF NOT EXISTS IrcChat(

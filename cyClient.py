@@ -14,6 +14,7 @@ vdb = config['UserAgent']['vocadb']
 class CyProtocol(WebSocketClientProtocol):
 
     def __init__(self):
+        self.name = config['Cytube']['username']
         self.votes = 0
         self.unloggedChat = []
         self.lastChatLogTime = 0
@@ -62,12 +63,25 @@ class CyProtocol(WebSocketClientProtocol):
         self.sendf({'name': 'chatMsg',
                    'args': {'msg': msg, 'meta': {'modflair': modflair}}})
 
+    def doSendPm(self, msg, username):
+        self.sendf({'name': 'pm',
+                   'args': {'msg': msg, 'to': username}})
+
+    def sendMsg(self, msg, username, modflair=False, pm=False):
+        if pm:
+            self.sendf({'name': 'pm',
+                       'args': {'msg': msg, 'to': username}})
+        else:
+            if modflair:
+                modflair = 3 ### TODO remove hardcode rank
+            self.sendf({'name': 'chatMsg',
+                   'args': {'msg': msg, 'meta': {'modflair': modflair}}})
+
     def initialize(self):
         self.sendf({'name': 'initChannelCallbacks'})
-        name = config['Cytube']['username']
         pw = config['Cytube']['password']
         self.sendf({'name': 'login',
-                    'args': {'name': name, 'pw': pw}})
+                    'args': {'name': self.name, 'pw': pw}})
 
     def processFrame(self, fdict):
         name = fdict['name']
@@ -103,19 +117,6 @@ class CyProtocol(WebSocketClientProtocol):
         usercount = fdict['args'][0]
         anoncount = usercount - len(self.userdict)
         database.insertUsercount(int(time.time()), usercount, anoncount)
-
-    def _cyCall_pm(self, fdict):
-        return # TODO
-        clog.info(fdict, sys)
-        username = fdict['args'][0]['username']
-        msg = fdict['args'][0]['msg']
-        if msg == '$down':
-            self.votes -= 1
-        elif msg == '$up':
-            self.votes += 1
-        else:
-            return
-        self.sendCss()
 
     def sendCss(self):
         return # TODO
@@ -171,7 +172,47 @@ class CyProtocol(WebSocketClientProtocol):
             else:
                 args = None
             thunk = getattr(self, '_com_%s' % (command,), None)
-            if thunk is not None:
+            if  thunk is not None:
+                thunk(username, args)
+
+    def _cyCall_pm(self, fdict):
+        args = fdict['args'][0]
+        pmTime = args['time']
+        pmCyTime =round((args['time'])/1000.0, 2)
+        timenow = int(time.time())
+        fromUser = args['username']
+        toUser = args['to']
+        msg = tools.unescapeMsg(args['msg'])
+        if toUser == self.name:
+            # Yukari received PM
+            flag = 0
+            username = fromUser
+            
+        elif fromUser == self.name:
+            # Yukari sent the PM
+            flag = 1
+            username = toUser
+        
+        if username in self.userdict:
+            keyId = self.userdict[username]['keyId']
+            if keyId is not None:
+                clog.debug('(_cyCall_pm) key for %s:%s' % (username, keyId), sys)
+                database.insertPm(keyId, pmTime, pmCyTime, msg, flag)
+            else:
+                clog.error('(_cyCall_pm) no key for %s' % username, sys)
+        else:
+            clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
+            return
+        if msg.startswith('$'):
+            command = msg.split()[0][1:]
+            clog.debug('received PM command %s from %s' % (command, username), sys)
+            argsList = msg.split(' ', 1)
+            if len(argsList) == 2:
+                args = argsList[1]
+            else:
+                args = None
+            thunk = getattr(self, '_pm_%s' % (command,), None)
+            if  thunk is not None:
                 thunk(username, args)
 
     def _com_vocadb(self, username, args):
@@ -226,7 +267,6 @@ class CyProtocol(WebSocketClientProtocol):
 
         except(ValueError, IndexError):
             pass
-
         
         parser = argparse.ArgumentParser()
         parser.add_argument('-s', '--sample', default='queue', 
@@ -277,8 +317,13 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _com_points(self, username, args):
         if self.checkRegistered(username):
-            d = database.calcUserPoints( None, username.lower(), 1)
-            d.addCallback(self.returnPoints, username)
+            d = database.calcUserPoints(None, username.lower(), 1)
+            d.addCallback(self.returnPoints, username, False)
+
+    def _pm_points(self, username, args):
+        if self.checkRegistered(username):
+            d = database.calcUserPoints(None, username.lower(), 1)
+            d.addCallback(self.returnPoints, username, pm=True)
 
     # should be PM
     def _com_read(self, username, args):
@@ -303,11 +348,10 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             self.doSendChat('Hi %s! <3' % username, True)
 
-    def returnPoints(self, res, username):
+    def returnPoints(self, res, username, pm):
         points = res[0][0]
         clog.info('(returnPoints) %s has %d points.' %(username, points), sys)
-        self.doSendChat('%s: %d' % (username, points))
-
+        self.sendMsg('%s: %d' % (username, points), username, False, pm)
 
     def _omit(self, username, args, dir):
         rank = self._getRank(username)
