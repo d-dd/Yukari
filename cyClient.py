@@ -15,8 +15,9 @@ class CyProtocol(WebSocketClientProtocol):
 
     def __init__(self):
         self.name = config['Cytube']['username']
-        self.votes = 0
         self.unloggedChat = []
+        self.chatLoop = task.LoopingCall(self.bulkLogChat)
+        self.votes = 0
         self.lastChatLogTime = 0
         self.receivedChatBuffer = False
         self.queueMediaList = deque()
@@ -143,14 +144,9 @@ class CyProtocol(WebSocketClientProtocol):
         if keyId:
             self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
                                           modflair, 0))
-            if time.time() - self.lastChatLogTime < 3:
-                self.cancelChatLog()
-                self.dChat = reactor.callLater(3, self.bulkLogChat,
-                                               self.unloggedChat)
-            else:
-                self.cancelChatLog()
-                self.bulkLogChat(self.unloggedChat)
-                self.lastChatLogTime = time.time()
+            if not self.chatLoop.running:
+                clog.info('(_cy_chatMsg) starting chatLoop', sys)
+                self.chatLoop.start(3, now=False)
         else:
             assert keyId is None
             chatArgs = (timeNow, chatCyTime, msg, modflair, 0)
@@ -403,8 +399,11 @@ class CyProtocol(WebSocketClientProtocol):
         except NameError as e:
             clog.error('(cancelChatLog): %s' % e, sys)
 
-    def bulkLogChat(self, chatlist):
-        assert self.unloggedChat == chatlist
+    def bulkLogChat(self):
+        if self.chatLoop.running:
+            clog.info('(bulkLogChat) stopping chatLoop', sys)
+            self.chatLoop.stop()
+        chatlist = self.unloggedChat[:]
         self.unloggedChat = []
         #print 'Logging %s !!' % chatlist
         return database.bulkLogChat('cyChat', chatlist)
