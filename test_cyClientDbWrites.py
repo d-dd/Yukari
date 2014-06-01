@@ -1,5 +1,4 @@
 # test user and chat logging functionality
-# comment out the irc bridge since we dont' initialize with the the factory
 import time
 import cyClient
 from twisted.internet import reactor
@@ -45,5 +44,5 @@ reactor.callLater(3, c._cyCall_chatMsg, makeChat(5))
 reactor.callLater(4, c._cyCall_chatMsg, makeChat(6))
 reactor.callLater(6, c._cyCall_chatMsg, makeChat(7))
 # spam 10000 lines
-reactor.callLater(10, spam, 10000)
+reactor.callLater(11, spam, 10000)
 reactor.run()

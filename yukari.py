@@ -74,11 +74,11 @@ class Connections:
         if self.cy:
             user = user.split('!', 1)[0] # takes out the extra info in the name
             msgf = '(%s) %s' % (user, msg)
-            self.wsFactory.prot.doSendChat(msgf)
-        self.processCommand(user, msg)
+            self.wsFactory.prot.doSendChat(msgf, 'ircChat')
+            self.processCommand(user, msg, 'ircChat')
 
-    def recCyMsg(self, user, msg):
-        if self.irc:
+    def recCyMsg(self, user, msg, needProcessing):
+        if self.irc and user != 'Yukarin':
             #s = TagStrip()
             tools.chatFormat.feed(msg)
             cleanMsg = tools.chatFormat.get_text()
@@ -88,32 +88,36 @@ class Connections:
             tools.chatFormat.reset()
             cleanMsg = '(%s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
-        self.processCommand(user, msg)
+        if needProcessing:
+            self.processCommand(user, msg, 'cyChat')
 
-    def processCommand(self, user, msg):
+    def processCommand(self, user, msg, source):
         if msg.startswith('$'):
             msg = msg.encode('utf-8')
             command = msg.split('$')[1]
             thunk = getattr(self, '_com_%s' % (command,), None)
             if thunk is not None:
-                thunk(user, msg)
+                thunk(user, msg, source)
 
-    def _com_greet(self, user, msg):
-        #msg = 'Nice to meet you, %s!' % user
-        #reactor.callLater(0.05, self.sendChats, msg)
-        pass
+    def _com_greet(self, user, msg, source):
+        msg = 'Hi, %s.' % user
+        reactor.callLater(0.00, self.sendChats, msg, source)
 
-    def sendToCy(self, msg, modflair=False):
+    def _com_bye(self, user, msg, source):
+        msg = 'Goodbye, %s.' % user
+        self.sendChats(msg, source)
+
+    def sendToCy(self, msg, source, modflair=False):
         if self.cy:
-            self.wsFactory.prot.doSendChat(msg, modflair)
+            self.wsFactory.prot.doSendChat(msg, source, None,  modflair)
 
     def sendToIrc(self, msg):
         if self.irc:
             self.ircFactory.prot.sendChat(str(config['irc']['channel']), msg)
 
-    def sendChats(self, msg, modflair=False):
+    def sendChats(self, msg, source, modflair=False):
         self.sendToIrc(msg)
-        self.sendToCy(msg, modflair)
+        self.sendToCy(msg, source, modflair)
 
     def cleanup(self):
         """ Prepares for shutdown """

@@ -182,6 +182,11 @@ def unflagMedia(flag, mType, mId):
     binds = (~flag, mType, mId)
     return operate(sql, binds)
 
+def getUserFlag(nameLower, isRegistered):
+    sql = 'SELECT flag FROM CyUser WHERE nameLower=? AND registered=?'
+    binds = (nameLower, isRegistered)
+    return query(sql, binds)
+
 def flagUser(flag, nameLower, isRegistered):
     clog.debug('Adding flag %s to %s, %s'
                % (bin(flag), nameLower, isRegistered), sys)

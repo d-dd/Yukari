@@ -58,11 +58,22 @@ class CyProtocol(WebSocketClientProtocol):
         clog.debug('(sendf) [->] %s' % frame, sys)
         self.sendMessage(frame)
 
-    def doSendChat(self, msg, modflair=False):
-        if modflair:
-            modflair = 3 ### TODO remove hardcode rank
-        self.sendf({'name': 'chatMsg',
-                   'args': {'msg': msg, 'meta': {'modflair': modflair}}})
+    def doSendChat(self, msg, source='cyChat', username=None, modflair=False):
+        if source == 'cyChat' or source == 'ircChat':
+            if modflair:
+                modflair = 3 ### TODO remove hardcode rank
+            self.sendf({'name': 'chatMsg',
+                       'args': {'msg': msg, 'meta': {'modflair': modflair}}})
+       # # CyTube sends chatMsg for every message we send
+       # # For IRC we don't get any feedback for our own messages
+        
+        # prevent echoing IRC -> Cy -> IRC
+        if source != 'ircChat':
+            self.factory.handle.sendToIrc(msg)
+        elif source == 'cyPm':
+            self.sendf({'name': 'pm',
+                        'args': {'msg': msg, 'to': username}})
+
 
     def doSendPm(self, msg, username):
         self.sendf({'name': 'pm',
@@ -153,23 +164,15 @@ class CyProtocol(WebSocketClientProtocol):
             self.userdict[username]['deferred'].addCallback(self.deferredChat,
                                                                 chatArgs)
                 
-        if username != config['Cytube']['username'] and username != '[server]':
-            # comment line below for test. #TODO make proper test
-            self.factory.handle.recCyMsg(username, msg)
-            self.searchYoutube(msg)
-
         # check for commands
+        isCyCommand = False
         if msg.startswith('$'):
-            command = msg.split()[0][1:]
-            clog.debug('received command %s from %s' % (command, username), sys)
-            argsList = msg.split(' ', 1)
-            if len(argsList) == 2:
-                args = argsList[1]
-            else:
-                args = None
-            thunk = getattr(self, '_com_%s' % (command,), None)
-            if  thunk is not None:
-                thunk(username, args)
+            isCyCommand = self.checkCommand(username, msg, 'cyChat')
+
+        if username != self.name and username != '[server]':
+            clog.debug('Sending chat to IRC, username: %s' % username)
+            self.factory.handle.recCyMsg(username, msg, not isCyCommand)
+            #self.searchYoutube(msg)
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
@@ -200,17 +203,22 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
             return
         if msg.startswith('$'):
-            command = msg.split()[0][1:]
-            clog.debug('received PM command %s from %s' % (command, username), sys)
-            argsList = msg.split(' ', 1)
-            if len(argsList) == 2:
-                args = argsList[1]
-            else:
-                args = None
-            thunk = getattr(self, '_pm_%s' % (command,), None)
-            if  thunk is not None:
-                thunk(username, args)
+            self.checkCommand(username, msg, 'cyPm')
 
+    def checkCommand(self, username, msg, source):
+        command = msg.split()[0][1:]
+        clog.debug('(checkCommand) received %s command %s from %s' %
+                    (source, command, username), sys)
+        argsList = msg.split(' ', 1)
+        if len(argsList) == 2:
+            args = argsList[1]
+        else:
+            args = None
+        thunk = getattr(self, '_com_%s' % (command,), None)
+        if thunk is not None:
+            thunk(username, args, source)
+            return True
+            
     def _com_vocadb(self, username, args):
         if not vdb:
             return
@@ -299,19 +307,18 @@ class CyProtocol(WebSocketClientProtocol):
         self.getRandMedia(args.sample, args.number, args.user, isRegistered,
                           title, args.temporary, args.next)
 
-    def _com_omit(self, username, args):
+    def _com_omit(self, username, args, source):
         self._omit(username, args, 'flag')
 
-    def _com_unomit(self, username, args):
+    def _com_unomit(self, username, args, source):
         self._omit(username, args, 'unflag')
 
-    def _com_greet(self, username, args):
+    def _com_greet(self, username, args, source):
         if self.checkRegistered(username):
-            d = database.flagUser(1, username.lower(), 1)
-            d.addCallback(database.calcUserPoints, username.lower(), 1)
-            d.addCallback(self.returnGreeting, username)
+            d = database.getUserFlag(username.lower(), 1)
+            d.addCallback(self.greet, username, source)
 
-    def _com_points(self, username, args):
+    def _com_points(self, username, args, source):
         if self.checkRegistered(username):
             d = database.calcUserPoints(None, username.lower(), 1)
             d.addCallback(self.returnPoints, username, False)
@@ -332,17 +339,37 @@ class CyProtocol(WebSocketClientProtocol):
         if self.checkRegistered(username):
             d = database.flagUser(4, username.lower(), 1)
 
-    def returnGreeting(self, res, username):
+    def greet(self, res, username, source):
+        flag = res[0][0]
+        if flag & 1: # user has greeted us before
+            d = database.calcUserPoints(None, username.lower(), 1)
+            d.addCallback(self.returnGreeting, username, source)
+        elif not flag & 1:
+            database.flagUser(1, username.lower(), 1)
+            reply = 'Nice to meet you, %s!' % username
+            self.doSendChat(reply, source, username)
+    
+    def returnGreeting(self, res, username, source):
         points = res[0][0]
-        clog.info('(returnGreeting) %s has %d points.' %(username, points), sys)
-        if not points or points < 0:
-            self.doSendChat('Hello %s.' % username)
-        elif points < 999:
-            self.doSendChat('Hi %s.' % username)
-        elif points < 2000:
-            self.doSendChat('Hi %s!' % username)
+        # When a row is empty (most commonly for the userinout for a new user),
+        # it returns None. A new user who hasn't left (to be
+        # logged in userinout) may have enough points to warrant a better
+        # greeting, but that is very unlikely.
+        if points is None:
+            clog.info('(returnGreeting) %s has ?? points.' % username, sys)
         else:
-            self.doSendChat('Hi %s! <3' % username, True)
+            clog.info('(returnGreeting) %s has %d points.'
+                       % (username, points), sys)
+        modflair = False
+        if not points or points < 0:
+            reply = 'Hello %s.' % username
+        elif points < 999:
+            reply = 'Hi %s.' % username
+        elif points < 2000:
+            reply = 'Hi %s!' % username
+        else:
+            reply = 'Hi %s! <3' % username
+        self.doSendChat(reply, source, username, modflair)
 
     def returnPoints(self, res, username, pm):
         points = res[0][0]
