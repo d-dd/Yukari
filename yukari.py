@@ -6,7 +6,7 @@ from twisted.web.server import Site
 from conf import config
 import database, tools
 from tools import clog
-import time, sys
+import time, random
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
@@ -74,8 +74,8 @@ class Connections:
         if self.cy:
             user = user.split('!', 1)[0] # takes out the extra info in the name
             msgf = '(%s) %s' % (user, msg)
-            self.wsFactory.prot.doSendChat(msgf, 'ircChat')
-            self.processCommand(user, msg, 'ircChat')
+            self.wsFactory.prot.relayToCyChat(msgf)
+            self.processCommand(user, msg)
 
     def recCyMsg(self, user, msg, needProcessing):
         if self.irc and user != 'Yukarin':
@@ -89,35 +89,44 @@ class Connections:
             cleanMsg = '(%s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
         if needProcessing:
-            self.processCommand(user, msg, 'cyChat')
+            self.processCommand(user, msg)
 
-    def processCommand(self, user, msg, source):
+    def processCommand(self, user, msg):
         if msg.startswith('$'):
             msg = msg.encode('utf-8')
-            command = msg.split('$')[1]
+            command = msg.split()[0][1:]
+            argsList = msg.split(' ', 1)
+            if len(argsList) == 2:
+                args = argsList[1]
+            else:
+                args = None
             thunk = getattr(self, '_com_%s' % (command,), None)
             if thunk is not None:
-                thunk(user, msg, source)
+                thunk(user, args)
 
-    def _com_greet(self, user, msg, source):
+    def _com_greet(self, user, args):
         msg = 'Hi, %s.' % user
-        reactor.callLater(0.00, self.sendChats, msg, source)
+        reactor.callLater(0.00, self.sendChats, msg)
 
-    def _com_bye(self, user, msg, source):
+    def _com_bye(self, user, args):
         msg = 'Goodbye, %s.' % user
-        self.sendChats(msg, source)
+        self.sendChats(msg)
 
-    def sendToCy(self, msg, source, modflair=False):
-        if self.cy:
-            self.wsFactory.prot.doSendChat(msg, source, None,  modflair)
+    def _com_ask(self, user, args):
+        msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
+        self.sendChats(msg)
 
     def sendToIrc(self, msg):
         if self.irc:
             self.ircFactory.prot.sendChat(str(config['irc']['channel']), msg)
 
-    def sendChats(self, msg, source, modflair=False):
+    def sendToCy(self, msg, modflair=False):
+        if self.cy:
+            self.wsFactory.prot.relayToCyChat(msg, modflair)
+
+    def sendChats(self, msg, modflair=False):
         self.sendToIrc(msg)
-        self.sendToCy(msg, source, modflair)
+        self.sendToCy(msg, modflair)
 
     def cleanup(self):
         """ Prepares for shutdown """

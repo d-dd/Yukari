@@ -24,12 +24,17 @@ class CyProtocol(WebSocketClientProtocol):
         self.canBurst = False
         self.lastQueueTime = time.time() - 20 #TODO
         self.nowPlayingMedia = None
+        self.err = []
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
         self.ytq = deque()
+
+    def errcatch(self, err):
+        clog.error('caught something')
+        self.err.append(err)
 
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', sys)
@@ -58,36 +63,30 @@ class CyProtocol(WebSocketClientProtocol):
         clog.debug('(sendf) [->] %s' % frame, sys)
         self.sendMessage(frame)
 
-    def doSendChat(self, msg, source='cyChat', username=None, modflair=False):
-        if source == 'cyChat' or source == 'ircChat':
+    def doSendChat(self, msg, source='chat', username=None, modflair=False,
+                   toIrc=True):
+        clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, source,
+                    username), sys)
+
+        if source == 'chat':
             if modflair:
                 modflair = 3 ### TODO remove hardcode rank
             self.sendf({'name': 'chatMsg',
                        'args': {'msg': msg, 'meta': {'modflair': modflair}}})
-       # # CyTube sends chatMsg for every message we send
-       # # For IRC we don't get any feedback for our own messages
-        
-        # prevent echoing IRC -> Cy -> IRC
-        if source != 'ircChat':
-            self.factory.handle.sendToIrc(msg)
-        elif source == 'cyPm':
+        elif source == 'pm':
+            toIrc = False
             self.sendf({'name': 'pm',
                         'args': {'msg': msg, 'to': username}})
+        if toIrc:
+            self.factory.handle.sendToIrc(msg)
 
+    def relayToCyChat(self, msg, modflair=False):
+            self.sendf({'name': 'chatMsg',
+                       'args': {'msg': msg, 'meta': {'modflair': modflair}}})
 
     def doSendPm(self, msg, username):
         self.sendf({'name': 'pm',
                    'args': {'msg': msg, 'to': username}})
-
-    def sendMsg(self, msg, username, modflair=False, pm=False):
-        if pm:
-            self.sendf({'name': 'pm',
-                       'args': {'msg': msg, 'to': username}})
-        else:
-            if modflair:
-                modflair = 3 ### TODO remove hardcode rank
-            self.sendf({'name': 'chatMsg',
-                   'args': {'msg': msg, 'meta': {'modflair': modflair}}})
 
     def initialize(self):
         self.sendf({'name': 'initChannelCallbacks'})
@@ -116,6 +115,7 @@ class CyProtocol(WebSocketClientProtocol):
             clog.debug('(searchYoutube) matched: %s' % ytId, sys)
             d = apiClient.requestYtApi(ytId)
             d.addCallbacks(self.doSendChat, self.errYtInfo)
+            d.addErrback(self.errcatch)
 
     def _cyCall_login(self, fdict):
         if fdict['args'][0]['success']:
@@ -167,10 +167,10 @@ class CyProtocol(WebSocketClientProtocol):
         # check for commands
         isCyCommand = False
         if msg.startswith('$'):
-            isCyCommand = self.checkCommand(username, msg, 'cyChat')
+            isCyCommand = self.checkCommand(username, msg, 'chat')
 
         if username != self.name and username != '[server]':
-            clog.debug('Sending chat to IRC, username: %s' % username)
+            #clog.debug('Sending chat to IRC, username: %s' % username)
             self.factory.handle.recCyMsg(username, msg, not isCyCommand)
             #self.searchYoutube(msg)
 
@@ -203,7 +203,7 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
             return
         if msg.startswith('$'):
-            self.checkCommand(username, msg, 'cyPm')
+            self.checkCommand(username, msg, 'pm')
 
     def checkCommand(self, username, msg, source):
         command = msg.split()[0][1:]
@@ -314,19 +314,16 @@ class CyProtocol(WebSocketClientProtocol):
         self._omit(username, args, 'unflag')
 
     def _com_greet(self, username, args, source):
-        if self.checkRegistered(username):
-            d = database.getUserFlag(username.lower(), 1)
-            d.addCallback(self.greet, username, source)
+        isReg = self.checkRegistered(username)
+        d = database.getUserFlag(username.lower(), isReg)
+        d.addCallback(self.greet, username, isReg, source)
+        d.addErrback(self.errcatch)
 
     def _com_points(self, username, args, source):
         if self.checkRegistered(username):
             d = database.calcUserPoints(None, username.lower(), 1)
-            d.addCallback(self.returnPoints, username, False)
-
-    def _pm_points(self, username, args):
-        if self.checkRegistered(username):
-            d = database.calcUserPoints(None, username.lower(), 1)
-            d.addCallback(self.returnPoints, username, pm=True)
+            d.addCallback(self.returnPoints, username, source)
+            d.addErrback(self.errcatch)
 
     # should be PM
     def _com_read(self, username, args):
@@ -339,13 +336,14 @@ class CyProtocol(WebSocketClientProtocol):
         if self.checkRegistered(username):
             d = database.flagUser(4, username.lower(), 1)
 
-    def greet(self, res, username, source):
+    def greet(self, res, username, isReg, source):
         flag = res[0][0]
         if flag & 1: # user has greeted us before
-            d = database.calcUserPoints(None, username.lower(), 1)
+            d = database.calcUserPoints(None, username.lower(), isReg)
             d.addCallback(self.returnGreeting, username, source)
+            d.addErrback(self.errcatch)
         elif not flag & 1:
-            database.flagUser(1, username.lower(), 1)
+            database.flagUser(1, username.lower(), isReg)
             reply = 'Nice to meet you, %s!' % username
             self.doSendChat(reply, source, username)
     
@@ -371,10 +369,11 @@ class CyProtocol(WebSocketClientProtocol):
             reply = 'Hi %s! <3' % username
         self.doSendChat(reply, source, username, modflair)
 
-    def returnPoints(self, res, username, pm):
+    def returnPoints(self, res, username, source):
         points = res[0][0]
         clog.info('(returnPoints) %s has %d points.' %(username, points), sys)
-        self.sendMsg('%s: %d' % (username, points), username, False, pm)
+        self.doSendChat('%s: %d' % (username, points), source=source,
+                         username=username)
 
     def _omit(self, username, args, dir):
         rank = self._getRank(username)
@@ -432,8 +431,8 @@ class CyProtocol(WebSocketClientProtocol):
             self.chatLoop.stop()
         chatlist = self.unloggedChat[:]
         self.unloggedChat = []
-        #print 'Logging %s !!' % chatlist
-        return database.bulkLogChat('cyChat', chatlist)
+        # don't return a deferred here! bad things will happen
+        database.bulkLogChat('CyChat', chatlist)
 
     def deferredChat(self, res, chatArgs):
         """ Logs chat to database. Since this will be added to the userAdd
@@ -447,6 +446,7 @@ class CyProtocol(WebSocketClientProtocol):
         # is always a keyId, in case we need to keep chaining more chat log
         # callbacks.
         dd.addCallback(self.deferredChatRes, keyId)
+        dd.addErrback(self.errcatch)
 
     def deferredChatRes(self, res, key):
         if not res:
@@ -475,6 +475,7 @@ class CyProtocol(WebSocketClientProtocol):
         values = (None, user['name'].lower(), reg, user['name'], 0, 0)
         d.addErrback(database.dbInsertReturnLastRow, 'cyUser', *values)
         d.addCallback(self.cacheKey, user)
+        d.addErrback(self.errcatch)
         # add a reference to the deferred to the userdict
         self.userdict[user['name']]['deferred'] = d
         
@@ -493,6 +494,7 @@ class CyProtocol(WebSocketClientProtocol):
         clog.debug('(userLeave) userId %s left: %d' % (keyId, timeNow), sys)
         d = database.insertUserInOut(keyId, timeJoined, timeNow)
         d.addCallback(lambda __: defer.succeed(keyId))
+        d.addErrback(self.errcatch)
 
     def _cyCall_userLeave(self, fdict):
         timeNow = int(time.time())
@@ -504,6 +506,7 @@ class CyProtocol(WebSocketClientProtocol):
                    % username, sys)
         leftUser = self.userdict[username]
         d.addCallback(self.userLeave, leftUser, timeNow)
+        d.addErrback(self.errcatch)
         self.removeUser(None, username) # remove user immediatley
 
     def removeUser(self, res, username):
@@ -619,14 +622,18 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             flag = None
         d.addCallback(self.writeQueue, userId, timeNow, flag)
+        d.addErrback(self.errcatch)
         d.addCallback(self.checkMedia, mType, mId)
+        d.addErrback(self.errcatch)
         d.addCallback(self.flagOrDelete, media, mType, mId)
+        d.addErrback(self.errcatch)
 
         if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
             # since this callback is added after checkMedia which has a delay,
             # this also gets delayed
             d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
+            d.addErrback(self.errcatch)
 
     def checkMedia(self, res, mType, mId):
         if mType == 'yt':
@@ -783,6 +790,7 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             return
         d.addCallback(self.doAddMedia, temp, pos)
+        d.addErrback(self.errcatch)
 
     def doDeleteMedia(self, mType, mId):
         """ Delete media """
