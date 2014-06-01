@@ -71,6 +71,8 @@ class CyProtocol(WebSocketClientProtocol):
         if source == 'chat':
             if modflair:
                 modflair = 3 ### TODO remove hardcode rank
+            if not toIrc:
+                msg = '*' + msg
             self.sendf({'name': 'chatMsg',
                        'args': {'msg': msg, 'meta': {'modflair': modflair}}})
         elif source == 'pm':
@@ -660,7 +662,7 @@ class CyProtocol(WebSocketClientProtocol):
             mediaTitle = media['title'].encode('utf-8')
             msg = 'Removing non-playable media %s' % mediaTitle
             database.flagMedia(0b1, mType, mId)
-            self.doSendChat(msg)
+            self.doSendChat(msg, toIrc=False)
             clog.info(msg)
 
     def collectYtQueue(self, mId):
@@ -701,14 +703,19 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_changeMedia(self, fdict):
         # set self.nowPlayingMedia
-        mType = fdict['args'][0]['type']
-        mId = fdict['args'][0]['id']
-        mTitle = fdict['args'][0]['title']
+        media = fdict['args'][0]
+        mType = media['type']
+        mId = media['id']
+        mTitle = media['title']
         self.nowPlayingMedia = (mType, mId, mTitle) # these are unicode
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
         clog.info('(_cyCall_changeMedia) %s' % s, sys)
+        d = self.checkMedia(None, mType, mId)
+        d.addErrback(self.errcatch)
+        d.addCallback(self.flagOrDelete, media, mType, mId)
+        d.addErrback(self.errcatch)
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']

@@ -30,10 +30,10 @@ con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
 # User in/out
 con.execute("""
         CREATE TABLE IF NOT EXISTS UserInOut(
-        userId INTEGER,
-        enter INTEGER,
-        leave INTEGER,
-        flag DEFAULT 0,
+        userId INTEGER NOT NULL,
+        enter INTEGER NOT NULL,
+        leave INTEGER NOT NULL,
+        flag DEFAULT 0 NOT NULL,
         FOREIGN KEY(userId) REFERENCES CyUser(userId));""")
 
 # IRC User table
@@ -41,7 +41,7 @@ con.execute("""
         CREATE TABLE IF NOT EXISTS IrcUser(
         userId INTEGER PRIMARY KEY,
         nickLower TEXT NOT NULL,
-        username TEXT,
+        username TEXT NOT NULL,
         host TEXT NOT NULL,
         nickOriginal TEXT NOT NULL,
         flag INTEGER NOT NULL DEFAULT 0,
@@ -52,12 +52,12 @@ con.execute("INSERT INTO IrcUser VALUES (?, ?, ?, ?, ?, ?)",
 con.execute("""
         CREATE TABLE IF NOT EXISTS CyChat(
         chatId INTEGER PRIMARY KEY,
-        userId INTEGER,
-        chatTime INTEGER,
-        chatCyTime INTEGER,
-        chatMsg TEXT,
+        userId INTEGER NOT NULL,
+        chatTime INTEGER NOT NULL,
+        chatCyTime INTEGER NOT NULL,
+        chatMsg TEXT NOT NULL,
         modflair INTEGER,
-        flag INTEGER,
+        flag INTEGER DEFAULT 0 NOT NULL,
         FOREIGN KEY(userId) REFERENCES CyUser(userId));""")
 
 # Cy PM table
@@ -65,9 +65,9 @@ con.execute("""
         CREATE TABLE IF NOT EXISTS CyPm(
         chatId INTEGER PRIMARY KEY,
         userId INTEGER NOT NULL,
-        pmTime INTEGER,
-        pmCyTime INTEGER,
-        pmMsg TEXT,
+        pmTime INTEGER NOT NULL,
+        pmCyTime INTEGER NOT NULL,
+        pmMsg TEXT NOT NULL,
         flag INTEGER NOT NULL DEFAULT 0,
         FOREIGN KEY(userId) REFERENCES CyUser(userId));""")
         
@@ -75,11 +75,11 @@ con.execute("""
 con.execute("""
         CREATE TABLE IF NOT EXISTS IrcChat(
         chatId INTEGER PRIMARY KEY,
-        userId INTEGER,
+        userId INTEGER NOT NULL,
         status INTEGER,
-        chatTime INTEGER,
+        chatTime INTEGER NOT NULL,
         chatMsg TEXT,
-        flag INTEGER,
+        flag INTEGER DEFAULT 0 NOT NULL,
         FOREIGN KEY(userId) REFERENCES IrcUser(userId));""")
 
 # Song (VocaDB) table
@@ -104,7 +104,7 @@ con.execute("""
         dur INTEGER NOT NULL,
         title TEXT NOT NULL,
         by TEXT NOT NULL,
-        flag INTEGER,
+        flag INTEGER DEFAULT 0 NOT NULL,
         UNIQUE (type, id),
         FOREIGN KEY (by) REFERENCES CyUser(userId));""")
 
@@ -140,7 +140,7 @@ con.execute("""
         mediaId INTEGER NOT NULL,
         userId INTEGER NOT NULL,
         time INTEGER NOT NULL,
-        flag INTEGER,
+        flag INTEGER DEFAULT 0 NOT NULL,
         FOREIGN KEY (userId) REFERENCES CyUser(userId),
         FOREIGN KEY (mediaId) REFERENCES media(mediaId));""")
 

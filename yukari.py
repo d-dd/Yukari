@@ -113,8 +113,23 @@ class Connections:
         self.sendChats(msg)
 
     def _com_ask(self, user, args):
+        if len(args) > 227:
+            args = args[:224] + '(...)'
         msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
         self.sendChats(msg)
+
+    def _com_choose(self, user, args):
+        if len(args) > 230:
+            return
+        if ',' in args:
+            choices = args.split(',')
+        else:
+            choices = args.split()
+        if len(choices) < 1:
+            return
+        msg = '[Choose %s:] %s' % (args, random.choice(choices))
+        self.sendChats(msg)
+            
 
     def sendToIrc(self, msg):
         if self.irc:
