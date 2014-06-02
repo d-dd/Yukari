@@ -1,7 +1,7 @@
 import database, apiClient, tools, vdbapi
 from tools import clog
 from conf import config
-import json, time, re, argparse
+import json, time, re, argparse, random
 from collections import deque
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -144,7 +144,7 @@ class CyProtocol(WebSocketClientProtocol):
         args = fdict['args'][0]
         timeNow = round(time.time(), 2)
         username = args['username']
-        msg = tools.unescapeMsg(args['msg'])
+        msg = args['msg']
         chatCyTime = round((args['time'])/1000.0, 2)
         if 'modflair' in args['meta']:
             modflair = args['meta']['modflair']
@@ -168,13 +168,16 @@ class CyProtocol(WebSocketClientProtocol):
                 
         # check for commands
         isCyCommand = False
+        thunk = None
         if msg.startswith('$'):
-            isCyCommand = self.checkCommand(username, msg, 'chat')
-
+            thunk, args, source = self.checkCommand(username, msg, 'chat')
         if username != self.name and username != '[server]':
             #clog.debug('Sending chat to IRC, username: %s' % username)
-            self.factory.handle.recCyMsg(username, msg, not isCyCommand)
-            #self.searchYoutube(msg)
+            self.factory.handle.recCyMsg(username, msg, not thunk)
+        # send to IRC before executing the command
+        # to maintain proper chat queue (user command before Yukari's reply)
+        if thunk is not None:
+            thunk(username, args, 'chat')
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
@@ -205,7 +208,9 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
             return
         if msg.startswith('$'):
-            self.checkCommand(username, msg, 'pm')
+            thunk, args, source = self.checkCommand(username, msg, 'chat')
+            if thunk is not None:
+                thunk(username, args, 'pm')
 
     def checkCommand(self, username, msg, source):
         command = msg.split()[0][1:]
@@ -217,6 +222,7 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             args = None
         thunk = getattr(self, '_com_%s' % (command,), None)
+        return thunk, args, source
         if thunk is not None:
             thunk(username, args, source)
             return True
@@ -251,7 +257,9 @@ class CyProtocol(WebSocketClientProtocol):
         shortMsg = command[:tBeg-3] + command[tEnd+1:]
         return command[tBeg:tEnd], shortMsg
 
-    def _com_add(self, username, args):
+    def _com_add(self, username, args, source):
+        if source != 'chat':
+            return
         rank = self._getRank(username)
         if not rank:
             return
@@ -259,11 +267,12 @@ class CyProtocol(WebSocketClientProtocol):
             maxAdd = 5
         else:
             maxAdd = 20
+        if args is None:
+            args = '-n 3'
         clog.info(args, sys)
         clog.info(args, 'sent to parseTitle')
         title, arguments = self.parseTitle(args)
         args = arguments.split()
-        clog.info(args, 'args args')
 
         # shortcut in case people want to $add #
         # of course this can't be combined with other args
@@ -294,8 +303,8 @@ class CyProtocol(WebSocketClientProtocol):
                  'pos:%s, title%s'
                 % (args.number, args.sample, args.user, args.guest,
                    args.temporary, args.next, title))
-        self.doSendChat(reply)
-
+        #self.doSendChat(reply)
+        clog.debug('(_com_add) %s' % reply, sys)
         isRegistered = not args.guest
 
         if args.next:
@@ -322,21 +331,33 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
 
     def _com_points(self, username, args, source):
+        if source != 'pm':
+            return
         if self.checkRegistered(username):
             d = database.calcUserPoints(None, username.lower(), 1)
             d.addCallback(self.returnPoints, username, source)
             d.addErrback(self.errcatch)
 
     # should be PM
-    def _com_read(self, username, args):
+    def _com_read(self, username, args, source):
+        if source != 'pm':
+            return
         # people who read the readme/this
         if self.checkRegistered(username):
             d = database.flagUser(2, username.lower(), 1)
 
     # should be PM
-    def _com_enroll(self, username, args):
+    def _com_enroll(self, username, args, source):
+        if source != 'pm':
+            return
         if self.checkRegistered(username):
             d = database.flagUser(4, username.lower(), 1)
+
+    def _com_who(self, username, args, source):
+        if args is None or source != 'chat':
+            return
+        msg = '[Who: %s] %s' % (args, random.choice(self.userdict.keys()))
+        self.doSendChat(msg, source)
 
     def greet(self, res, username, isReg, source):
         flag = res[0][0]
@@ -622,7 +643,7 @@ class CyProtocol(WebSocketClientProtocol):
         if isTemp:
             flag = 1
         else:
-            flag = None
+            flag = 0
         d.addCallback(self.writeQueue, userId, timeNow, flag)
         d.addErrback(self.errcatch)
         d.addCallback(self.checkMedia, mType, mId)

@@ -80,6 +80,7 @@ class Connections:
     def recCyMsg(self, user, msg, needProcessing):
         if self.irc and user != 'Yukarin':
             #s = TagStrip()
+            clog.debug('recCyMsg: %s' % msg, sys)
             tools.chatFormat.feed(msg)
             cleanMsg = tools.chatFormat.get_text()
             # reset so we can use the same instance
@@ -119,6 +120,19 @@ class Connections:
         self.sendChats(msg)
 
     def _com_choose(self, user, args):
+        choices = self.getChoices(args)
+        if choices:
+            msg = '[Choose %s:] %s' % (args, random.choice(choices))
+            self.sendChats(msg)
+
+    def _com_permute(self, user, args):
+        choices = self.getChoices(args)
+        if choices:
+            random.shuffle(choices)
+            msg = '[Permute %s:] %s' % (args, ', '.join(choices))
+            self.sendChats(msg)
+
+    def getChoices(self, args):
         if len(args) > 230:
             return
         if ',' in args:
@@ -127,9 +141,7 @@ class Connections:
             choices = args.split()
         if len(choices) < 1:
             return
-        msg = '[Choose %s:] %s' % (args, random.choice(choices))
-        self.sendChats(msg)
-            
+        return choices
 
     def sendToIrc(self, msg):
         if self.irc:
