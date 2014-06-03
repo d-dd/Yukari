@@ -1,6 +1,7 @@
 """ Creates the initial tables required for operation."""
 import sqlite3, time
 from conf import config
+from sqlite3 import IntegrityError
 con = sqlite3.connect('data.db')
 con.execute('pragma foreign_keys=ON')
 
@@ -20,12 +21,15 @@ con.execute("""
         UNIQUE (nameLower, registered));""")
 
 # insert server
-con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
-        (1, cyName.lower(), 1, cyName, 3, 1))
-con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
-        (2, '[server]', 1, '[server]', 0, 2))
-con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
-        (3, '[anonymous]', 0, '[anonymous]', 0, 4))
+try:
+    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
+            (1, cyName.lower(), 1, cyName, 3, 1))
+    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
+            (2, '[server]', 1, '[server]', 0, 2))
+    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
+            (3, '[anonymous]', 0, '[anonymous]', 0, 4))
+except(IntegrityError):
+    pass
 
 # User in/out
 con.execute("""
@@ -46,8 +50,11 @@ con.execute("""
         nickOriginal TEXT NOT NULL,
         flag INTEGER NOT NULL DEFAULT 0,
         UNIQUE (nickLower, username, host));""")
-con.execute("INSERT INTO IrcUser VALUES (?, ?, ?, ?, ?, ?)",
-            (1, ircNick.lower(), 'cybot', 'Yuka.rin.rin', ircNick, 1))
+try:
+    con.execute("INSERT INTO IrcUser VALUES (?, ?, ?, ?, ?, ?)",
+                (1, ircNick.lower(), 'cybot', 'Yuka.rin.rin', ircNick, 1))
+except(IntegrityError):
+    pass
 # Cy Chat table
 con.execute("""
         CREATE TABLE IF NOT EXISTS CyChat(
@@ -92,8 +99,11 @@ con.execute("""
 # Put a row for -1 and 0
 # -1 is server (connection) error
 # 0 is null/invalid response
-con.execute('INSERT INTO Song VALUES (?, ?, ?)', (-1, 'connection error', 0))
-con.execute('INSERT INTO Song VALUES (?, ?, ?)', (0, 'null', 0))
+try:
+    con.execute('INSERT INTO Song VALUES (?, ?, ?)', (-1, 'connection error', 0))
+    con.execute('INSERT INTO Song VALUES (?, ?, ?)', (0, 'null', 0))
+except(IntegrityError):
+    pass
 
 # media table
 con.execute("""
@@ -112,8 +122,24 @@ title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
          '\x82\x8a\xe3\x80\x91Mahou \xe9\xad\x94\xe6\xb3\x95\xe3\x80\x90\xe3'
          '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
 title = title.decode('utf-8')
-con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
+try:
+    con.execute("INSERT INTO media VALUES (?, ?, ?, ?, ?, ?, ?)",
            (None, 'yt', '01uN4MCsrCE', 248, title, 1, 0))
+except(IntegrityError):
+    pass
+# like table
+# mediaId column breaks normalization but it is very convenient for queries
+con.execute("""
+        CREATE TABLE IF NOT EXISTS Like(
+        mediaId INTEGER NOT NULL,
+        queueId INTEGER NOT NULL,
+        userId INTEGER NOT NULL,
+        time INTEGER NOT NULL,
+        value INTEGER NOT NULL,
+        UNIQUE (queueId, userId),
+        FOREIGN KEY (mediaId) REFERENCES Media(mediaId),
+        FOREIGN KEY (userId) REFERENCES CyUser(userId),
+        FOREIGN KEY (queueId) REFERENCES Queue(queueId));""")
 
 # MediaSong table
 # A junction table between Media and Song. Although the relationship

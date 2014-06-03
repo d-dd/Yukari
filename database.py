@@ -102,11 +102,27 @@ def _insertMedia(txn, media):
     return [txn.lastrowid]
 
 def insertQueue(mediaId, userId, timeNow, flag):
+    return dbpool.runInteraction(_insertQueue, mediaId, userId, timeNow, flag)
+
+def _insertQueue(txn, mediaId, userId, timeNow, flag):
     sql = 'INSERT INTO Queue VALUES (?, ?, ?, ?, ?)'
     binds = (None, mediaId, userId, timeNow, flag)
     clog.debug('(insertQueue) binds: %s, %s, %s, %s' % 
                (mediaId, userId, timeNow, flag), sys)
-    return operate(sql, binds)
+    txn.execute(sql, binds)
+    return [txn.lastrowid]
+
+def queryMediaId(mType, mId):
+    sql = 'SELECT mediaId FROM Media WHERE type=? AND id=?'
+    binds = (mType, mId)
+    return query(sql, binds)
+
+def queryLastQueue(mType, mId):
+    """ Return the last (most recent) queueId of a mediaId """
+    sql = ('SELECT queueId FROM Queue WHERE mediaId = (SELECT mediaId FROM '
+           'Media WHERE type=? AND id=?)')
+    binds = (mType, mId)
+    return query(sql, binds)
 
 def insertSong(res, lastUpdate):
     if res == 0:
@@ -135,7 +151,6 @@ def insertMediaSongPv(songIdl, mType, mId, userId, timeNow, method):
            ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
     binds = (mType, mId, songIdl[0], userId, timeNow, method)
     return operate(sql, binds)
-
 
 def queryMediaSongRow(mType, mId):
     clog.debug('(queryMediaSongData)', sys)
@@ -200,6 +215,18 @@ def unflagUser(flag, nameLower, isRegistered):
     sql = 'UPDATE CyUser SET flag=(flag|?) WHERE nameLower=? AND registered=?'
     binds = (~flag, nameLower, isRegistered)
     return operate(sql, binds)
+
+def insertReplaceLike(mediaId, queueId, userId, timeNow, value):
+    sql = 'INSERT OR REPLACE INTO Like VALUES (?, ?, ?, ?, ?)'
+    binds = (mediaId, queueId, userId, timeNow, value)
+    return operate(sql, binds)
+
+def getLikes(queueId):
+    sql = ('SELECT nameOriginal, like.value FROM CyUser JOIN Like ON '
+          'CyUser.userId = Like.userId WHERE Like.queueId=?')
+    binds = (queueId,) 
+    return query(sql, binds)
+
 
 def calcUserPoints(res, nameLower, isRegistered):
     sql =  """

@@ -292,6 +292,8 @@ class CyProtocol(WebSocketClientProtocol):
         parser.add_argument('-a', '--artist', default='') #TODO
         parser.add_argument('-T', '--temporary', default=False, type=bool)
         parser.add_argument('-N', '--next', default=False, type=bool)
+        parser.add_argument('-o', '--omit', default=False, type=bool)
+
         try:
             args = parser.parse_args(args)
         except(SystemExit):
@@ -299,10 +301,13 @@ class CyProtocol(WebSocketClientProtocol):
             return
 
         args.number = min(args.number, maxAdd)
+        if rank < 2:
+            args.omit = False
+
         reply = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
-                 'pos:%s, title%s'
+                'pos:%s, title:%s, include ommited:%s'
                 % (args.number, args.sample, args.user, args.guest,
-                   args.temporary, args.next, title))
+                   args.temporary, args.next, title, args.omit))
         #self.doSendChat(reply)
         clog.debug('(_com_add) %s' % reply, sys)
         isRegistered = not args.guest
@@ -338,7 +343,6 @@ class CyProtocol(WebSocketClientProtocol):
             d.addCallback(self.returnPoints, username, source)
             d.addErrback(self.errcatch)
 
-    # should be PM
     def _com_read(self, username, args, source):
         if source != 'pm':
             return
@@ -346,12 +350,44 @@ class CyProtocol(WebSocketClientProtocol):
         if self.checkRegistered(username):
             d = database.flagUser(2, username.lower(), 1)
 
-    # should be PM
     def _com_enroll(self, username, args, source):
         if source != 'pm':
             return
         if self.checkRegistered(username):
             d = database.flagUser(4, username.lower(), 1)
+
+    def _com_like(self, username, args, source):
+        self._likeMedia(username, args, source, 1)
+
+    def _com_dislike(self, username, args, source):
+        self._likeMedia(username, args, source, -1)
+
+    def _com_unlike(self, username, args, source):
+        self._likeMedia(username, args, source, 0)
+
+    def _likeMedia(self, username, args, source, value):
+        if not self.checkRegistered(username):
+            self.doSendChat('You are not registered.', 'pm', username)
+            return
+        if args is not None:
+            mType, mId = args.split(', ')
+        else:
+            mType, mId, __ = self.nowPlayingMedia
+        #uid = int(uid)
+        # until js client side is done just use type, id for now
+        clog.info('(_com_like):type:%s, id:%s' % (mType, mId), sys) 
+        #assert self.getUidFromTypeId(type, id) == uid
+        uid = self.getUidFromTypeId(mType, mId) 
+        i = self.getIndexFromUid(uid)
+        userId = self.userdict[username]['keyId']
+        qid = self.playlist[i]['qid']
+        d = database.queryMediaId(mType, mId)
+        d.addCallback(self.processResult)
+        d.addCallback(database.insertReplaceLike, qid, userId, 
+                       int(time.time()), value)
+
+    def processResult(self, res):
+        return defer.succeed(res[0][0])
 
     def _com_who(self, username, args, source):
         if args is None or source != 'chat':
@@ -558,8 +594,11 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_playlist(self, fdict):
         """ Cache the playlist in memory, and write them to the media table """
-        # Don't add this to the queue table, since it'll end up adding
-        # multiple times each join/restart and also during shuffle and clear.
+        # For each item in the playlist, assign a queueId. If no queue can be
+        # found, (media added while bot was not online), then Yukari adds a
+        # queue and uses that queueId.
+        # We don't add all media to the queue table automatically since it'll
+        # end up adding multiple times each join/restart during shuffle.
         self.playlist = []
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', sys)
@@ -571,9 +610,32 @@ class CyProtocol(WebSocketClientProtocol):
                             entry['media']['seconds'], entry['media']['title'],
                             1, 0))
                             #'introduced by' Yukari
-                if entry['media']['type'] == 'yt':
-                    qpl.append((entry['media']['type'], entry['media']['id']))
+                qpl.append((entry['media']['type'], entry['media']['id'], entry['uid']))
         d = database.bulkLogMedia(dbpl)
+        d.addCallback(self.findQueueId, qpl)
+
+    def findQueueId(self, res, qpl):
+        for mType, mId, uid in qpl:
+            d = database.queryLastQueue(mType, mId)
+            d.addCallback(self.obtainQueueId, mType, mId)
+            d.addCallback(self.assignQueueId, uid)
+            #d.addCallback(lambda x: clog.info('obtained queueId %s' % x, sys))
+
+    def obtainQueueId(self, res, mType, mId):
+        clog.debug('(checkQueueId) res is %s' % res, sys)
+        if not res: # there is no queue history
+            d = database.queryMediaId(mType, mId)
+            # 1 = Yukari, 2 = flag for this type of queue
+            d.addCallback(lambda x: defer.succeed(x[0][0]))
+            d.addCallback(database.insertQueue, 1, int(time.time()), 2)
+            return d
+        elif res:
+            return defer.succeed(res[0])
+
+    def assignQueueId(self, res, uid):
+        queueId = res[0]
+        i = self.getIndexFromUid(uid)
+        self.playlist[i]['qid'] = queueId 
 
     def addToPlaylist(self, item, afterUid):
         if afterUid == 'prepend':
@@ -630,6 +692,7 @@ class CyProtocol(WebSocketClientProtocol):
         afterUid = fdict['args'][0]['after']
         mType = media['type']
         mId = media['id']
+        uid = item['uid']
         self.addToPlaylist(item, afterUid)
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
@@ -644,7 +707,7 @@ class CyProtocol(WebSocketClientProtocol):
             flag = 1
         else:
             flag = 0
-        d.addCallback(self.writeQueue, userId, timeNow, flag)
+        d.addCallback(self.writeQueue, userId, timeNow, flag, uid)
         d.addErrback(self.errcatch)
         d.addCallback(self.checkMedia, mType, mId)
         d.addErrback(self.errcatch)
@@ -707,10 +770,21 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(database.dbInsertReturnLastRow, 'Media', *values)
         return d
 
-    def writeQueue(self, res, userId, timeNow, flag):
+    def writeQueue(self, res, userId, timeNow, flag, uid):
         """ Insert queue into Queue. """
-        # res is the [mediaId]
-        return database.insertQueue(res[0], userId, timeNow, flag)
+        mediaId = res[0]
+        dd = database.insertQueue(mediaId, userId, timeNow, flag)
+        dd.addCallback(self.saveQueueId, mediaId, uid)
+        return dd
+
+    def saveQueueId(self, res, mediaId, uid):
+        queueId = res[0]
+        clog.info('(saveQueueId) QId of uid %s is %s' % (uid, queueId), sys)
+        i = self.getIndexFromUid(uid)
+        self.playlist[i]['qid'] = queueId 
+        #TODO write to qtable if not in qtable and give queue to every
+        # item on playlist on join (through db lookup...)
+        return defer.succeed(mediaId)
         
     def printRes(self, res):
         clog.info('(printRes) %s' % res, sys)
@@ -737,7 +811,15 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
         d.addCallback(self.flagOrDelete, media, mType, mId)
         d.addErrback(self.errcatch)
+        d.addCallback(self.loadLikes, mType, mId)
 
+    def loadLikes(self, res, mType, mId):
+        uid = self.getUidFromTypeId(mType, mId)
+        i = self.getIndexFromUid(uid)
+        queueId = self.playlist[i]['qid']
+        d = database.getLikes(queueId)
+        d.addCallback(lambda x: clog.info(x, sys))
+        
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']
         afterUid = fdict['args'][0]['after']
