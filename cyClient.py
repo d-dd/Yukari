@@ -703,16 +703,9 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             clog.error('(_cyCall_queue) user id not cached.', sys)
             return
-        if isTemp:
-            flag = 1
-        else:
-            flag = 0
-        d.addCallback(self.writeQueue, userId, timeNow, flag, uid)
-        d.addErrback(self.errcatch)
-        d.addCallback(self.checkMedia, mType, mId)
-        d.addErrback(self.errcatch)
-        d.addCallback(self.flagOrDelete, media, mType, mId)
-        d.addErrback(self.errcatch)
+        flag = 1 if isTemp else 0
+        d.addCallback(self.checkAndQueue, userId, timeNow, flag, uid, media,
+                      mType, mId)
 
         if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
@@ -720,6 +713,14 @@ class CyProtocol(WebSocketClientProtocol):
             # this also gets delayed
             d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
             d.addErrback(self.errcatch)
+
+    def checkAndQueue(self, res, userId, timeNow, flag, uid, media,
+                       mType, mId):
+        d = self.checkMedia(None, mType, mId)
+        d.addCallback(self.flagOrDelete, media, mType, mId)
+        dq = self.writeQueue(res, userId, timeNow, flag, uid)
+        i = self.getIndexFromUid(uid)
+        self.playlist[i]['qDeferred'] = dq
 
     def checkMedia(self, res, mType, mId):
         if mType == 'yt':
@@ -782,9 +783,7 @@ class CyProtocol(WebSocketClientProtocol):
         clog.info('(saveQueueId) QId of uid %s is %s' % (uid, queueId), sys)
         i = self.getIndexFromUid(uid)
         self.playlist[i]['qid'] = queueId 
-        #TODO write to qtable if not in qtable and give queue to every
-        # item on playlist on join (through db lookup...)
-        return defer.succeed(mediaId)
+        return defer.succeed(queueId)
         
     def printRes(self, res):
         clog.info('(printRes) %s' % res, sys)
@@ -816,8 +815,14 @@ class CyProtocol(WebSocketClientProtocol):
     def loadLikes(self, res, mType, mId):
         uid = self.getUidFromTypeId(mType, mId)
         i = self.getIndexFromUid(uid)
-        queueId = self.playlist[i]['qid']
-        d = database.getLikes(queueId)
+        try:
+            queueId = self.playlist[i]['qid']
+            d = database.getLikes(queueId)
+        except(KeyError):
+            clog.error('(loadLikes) Key is not ready!', sys)
+            d = self.playlist[i]['qDeferred']
+            d.addCallback(database.getLikes)
+        # result  [(userId, 1), (6, 1)]
         d.addCallback(lambda x: clog.info(x, sys))
         
     def _cyCall_moveVideo(self, fdict):

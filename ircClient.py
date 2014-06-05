@@ -194,7 +194,7 @@ class IrcProtocol(irc.IRCClient):
         status = 0 # we don't really need this
         msg = msg.decode('utf-8')
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, result, status, timeNow, msg, None)
+        binds = (None, result, status, timeNow, msg, 0)
         return database.operate(sql, binds)
 
     def test_makeChat(self, i):
