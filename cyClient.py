@@ -207,8 +207,19 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
             return
-        if msg.startswith('$'):
-            thunk, args, source = self.checkCommand(username, msg, 'chat')
+
+        if msg == '%%subscribeLike':
+            if username in self.userdict:
+                if not self.userdict[username]['subscribeLike']:
+                    self.userdict[username]['subscribeLike'] = True
+                    # send value for current media
+                    if username in self.currentLikes:
+                        msg = '%%%%%s' % self.currentLikes[username]
+                        self.doSendPm(msg, username)
+            return
+
+        if msg.startswith('$') and fromUser != self.name:
+            thunk, args, source = self.checkCommand(username, msg, 'pm')
             if thunk is not None:
                 thunk(username, args, 'pm')
 
@@ -520,13 +531,12 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = int(time.time())
         if user['name'] not in self.userdict:
             self.userJoin(user, timeNow)
-        self.userdict[user['name']]['inChannel'] = True
-        d = self.userdict[user['name']]['deferred']
 
     def userJoin(self, user, timeNow):
         user['keyId'] = None
         user['timeJoined'] = timeNow
         self.userdict[user['name']] = user
+        self.userdict[user['name']]['subscribeLike'] = False
         reg = self.checkRegistered(user['name'])
         d = database.dbQuery(('userId',), 'cyUser',
                          nameLower=user['name'].lower(), registered=reg)
@@ -604,6 +614,7 @@ class CyProtocol(WebSocketClientProtocol):
         clog.debug('(_cyCall_playlist) received playlist from Cytube', sys)
         dbpl, qpl = [], []
         for entry in pl:
+            entry['qDeferred'] = defer.Deferred()
             self.playlist.append(entry)
             if entry['media']['type'] != 'cu': # custom embed
                 dbpl.append((None, entry['media']['type'], entry['media']['id'],
@@ -612,11 +623,13 @@ class CyProtocol(WebSocketClientProtocol):
                             #'introduced by' Yukari
                 qpl.append((entry['media']['type'], entry['media']['id'], entry['uid']))
         d = database.bulkLogMedia(dbpl)
-        d.addCallback(self.findQueueId, qpl)
+        self.findQueueId(qpl)
 
-    def findQueueId(self, res, qpl):
+    def findQueueId(self, qpl):
         for mType, mId, uid in qpl:
             d = database.queryLastQueue(mType, mId)
+            i = self.getIndexFromUid(uid)
+            self.playlist[i]['qDeferred'] = d
             d.addCallback(self.obtainQueueId, mType, mId)
             d.addCallback(self.assignQueueId, uid)
             #d.addCallback(lambda x: clog.info('obtained queueId %s' % x, sys))
@@ -636,6 +649,7 @@ class CyProtocol(WebSocketClientProtocol):
         queueId = res[0]
         i = self.getIndexFromUid(uid)
         self.playlist[i]['qid'] = queueId 
+        return defer.succeed(queueId)
 
     def addToPlaylist(self, item, afterUid):
         if afterUid == 'prepend':
@@ -704,17 +718,34 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_queue) user id not cached.', sys)
             return
         flag = 1 if isTemp else 0
-        d.addCallback(self.checkAndQueue, userId, timeNow, flag, uid, media,
-                      mType, mId)
+        dq = defer.Deferred()
+        self.splitResults(d, dq) # fired in parallel when d has result
+        d.addCallback(lambda res: res[0])
+        dq.addCallback(self.writeQueue, userId, timeNow, flag, uid)
+        i = self.getIndexFromUid(uid)
+        self.playlist[i]['qDeferred'] = dq
+
+        dCheck = self.checkMedia(None, mType, mId)
+        dCheck.addCallback(self.flagOrDelete, media, mType, mId)
+
 
         if mType == 'yt' and vdb:
             timeNow = round(time.time(), 2)
             # since this callback is added after checkMedia which has a delay,
             # this also gets delayed
-            d.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
-            d.addErrback(self.errcatch)
+            dCheck.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
+            dCheck.addErrback(self.errcatch)
 
-    def checkAndQueue(self, res, userId, timeNow, flag, uid, media,
+    def splitResults(self, defer1, defer2):
+        """ Results of defer1 are sent to defer2 """
+        def split(val):
+            # pass val to defer2 chain
+            defer2.callback(val)
+            # return val to defer1 chain
+            return val
+        defer1.addCallback(split)
+
+    def depcheckAndQueue(self, res, userId, timeNow, flag, uid, media,
                        mType, mId):
         d = self.checkMedia(None, mType, mId)
         d.addCallback(self.flagOrDelete, media, mType, mId)
@@ -823,8 +854,16 @@ class CyProtocol(WebSocketClientProtocol):
             d = self.playlist[i]['qDeferred']
             d.addCallback(database.getLikes)
         # result  [(userId, 1), (6, 1)]
-        d.addCallback(lambda x: clog.info(x, sys))
-        
+        d.addCallback(self.sendLikes)
+
+    def sendLikes(self, res):
+        self.currentLikes, likes = dict(res), dict(res)
+        for username in likes:
+            if username in self.userdict:
+                if self.userdict[username]['subscribeLike']:
+                    msg = '%%%%%s' % likes[username]
+                    self.doSendPm(msg, username)
+
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']
         afterUid = fdict['args'][0]['after']
