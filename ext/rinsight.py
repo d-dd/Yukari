@@ -9,20 +9,25 @@ sys = 'RinClient'
 
 class Prot(Protocol):
     def connectionMade(self):
-        req = {'callType':'mediaById', 'args':{'mediaId':99}}
+        req = {'callType':'mediaById', 'args':{'mediaId':41}}
         reqs = json.dumps(req) + '\r\n'
         reactor.callLater(1, self.transport.write, reqs)
+        userlist = {'callType':'usersByMediaId', 'args':{'mediaId':'4'}}
+        userlist = json.dumps(userlist) + '\r\n'
+        reactor.callLater(2, self.transport.write, userlist)
 
     def dataReceived(self, data):
-        print type(data)
-        print data
         try:
             print json.loads(data)
         except(ValueError):
             print 'could not parse %s' % data
        # reactor.callLater(1, self.transport.write,'t')
        # reactor.callLater(1, self.transport.write,'\r\n')
-
+    
+    def connectionLost(self, reason):
+        print 'Connection Lost!'
+        if reactor.running:
+            reactor.stop()
 
 c = ClientCreator(reactor, Prot)
 c.connectTCP('localhost', 18914)

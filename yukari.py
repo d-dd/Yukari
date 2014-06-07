@@ -1,7 +1,6 @@
 from ircClient import IrcProtocol, IrcFactory
 from cyClient import CyProtocol, WsFactory
 from ext.rinception import LineReceiver, LineReceiverFactory
-from ext.apiserver import GetMedia
 from twisted.web.server import Site
 from conf import config
 import database, tools
@@ -22,12 +21,10 @@ class Connections:
         # False = Offline, True = Online, None = has shutdown
         self.irc = False
         self.cy = False
-        self.rin = False
 
         # Wether to restart when disconnected
         self.ircRestart = True
         self.cyRestart = True
-        self.rinRestart = True
 
     def cyPost(self):
         """ Send a POST request to Cytube for a server session id
@@ -68,7 +65,7 @@ class Connections:
         """ Start server for Rin (steam-bot) """
         clog.info('(rinstantiate) Starting server for Rin', sys)
         self.rinFactory = LineReceiverFactory()
-        reactor.listenTCP(18914, self.rinFactory)
+        reactor.listenTCP(port, self.rinFactory)
 
     def recIrcMsg(self, user, channel, msg):
         if self.cy:
@@ -189,18 +186,13 @@ def createShellServer(obj):
     factory.namespace['y'] = obj
     factory.username = config['telnet']['username']
     factory.password = config['telnet']['password']
-    #log.msg('starting shell server...', Loglevel=logging.ERROR, system='Shell')
     return port
-
 
 clog.error('test custom log', 'cLog tester')
 yukari = Connections()
 yukari.cyPost()
 yukari.ircConnect()
-yukari.rinstantiate(39393939)
+yukari.rinstantiate(18914)
 reactor.callWhenRunning(createShellServer, yukari)
 reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
-
-webRoot = GetMedia()
-reactor.listenTCP(39394, Site(webRoot))
 reactor.run()

@@ -298,6 +298,20 @@ def getMediaById(mediaId):
     sql = 'SELECT * FROM Media WHERE mediaId=?'
     return query(sql, (mediaId,))
 
+def getMediaLastRowId():
+    sql = 'SELECT COUNT(*) FROM Media'
+    return query(sql, tuple())
+
+def getUserlistQueue(mediaId):
+    sql = ('SELECT DISTINCT CyUser.nameOriginal FROM CyUser JOIN Queue ON '
+           'CyUser.userId = Queue.userId WHERE Queue.mediaId=?')
+    return query(sql, (mediaId,))
+
+def getUserAdd(mediaId):
+    sql = ('SELECT CyUser.nameOriginal FROM CyUser JOIN Media ON '
+           'CyUser.userId = Media.by WHERE Media.mediaId=?')
+    return query(sql, (mediaId,))
+
 def insertUsercount(timeNow, usercount, anoncount):
     sql = 'INSERT INTO Usercount VALUES (?, ?, ?)'
     binds = (timeNow, usercount, anoncount)
