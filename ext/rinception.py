@@ -56,6 +56,30 @@ class LineReceiver(LineReceiver):
         dLastRow = database.getMediaLastRowId()
         dl = defer.DeferredList([dMedia, dLastRow])
         dl.addCallback(self.sendOneMedia, args)
+    
+    def _rin_mediaByIdRange(self, args):
+        limit = 1000
+        if 'mediaIdRange' not in args:
+            self.sendBadArgs('mediaByIdRange')
+            return
+        try:
+            mediaIdRange = args['mediaIdRange']
+            idRange = mediaIdRange.split(',') # AttributeError
+            lower = int(idRange[0]) -1
+            upper = int(idRange[1]) # IndexError
+        except(AttributeError, IndexError):
+            self.sendBadArgs('mediaByIdRange')
+            return
+        quantity = upper - lower
+        if lower < 0 or quantity < 1:
+            self.sendBadArgs('mediaByIdRange')
+            return
+        elif quantity > limit:
+            self.sendBadArgs('mediaByIdRange',
+                             'Request over maximum request size of %d' % limit)
+            return
+        d = database.getMediaByIdRange(lower, quantity)
+        d.addCallback(self.sendManyMedia, quantity)
 
     def _rin_usersByMediaId(self, args):
         if 'mediaId' not in args:
@@ -72,16 +96,24 @@ class LineReceiver(LineReceiver):
         dl = defer.DeferredList([dQueuedUsers, dAddedUser])
         dl.addCallback(self.sendUsersByMediaId, args)
 
-    def sendBadArgs(self, callType):
-            response = {'callType': callType, 'result': 'badargs'}
-            self.sendLineAndLog(json.dumps(response))
+    def sendBadArgs(self, callType, reason=None):
+        if reason:
+            result = 'badargs: %s' % reason
+        else:
+            result = 'badargs'
+        response = {'callType': callType, 'result': result}
+        self.sendLineAndLog(json.dumps(response))
+
+    def jsonifyMedia(self, mRow):
+        mediaDict = {'mediaId': mRow[0], 'type': mRow[1], 'id': mRow[2],
+                     'dur': mRow[3], 'title': mRow[4], 'flag': mRow[6]}
+        return mediaDict
 
     def sendOneMedia(self, res, args):
         if res[0][0] and res[1][0]:
             mRow = res[0][1][0]
             mLastRowId = res[1][1][0][0] # 2deep4me
-            mediaDict = {'mediaId': mRow[0], 'type': mRow[1], 'id': mRow[2],
-                         'dur': mRow[3], 'title': mRow[4], 'flag': mRow[6]}
+            mediaDict = self.jsonifyMedia(mRow)
             response = {'callType': 'mediaById', 'result':'ok',
                         'resource': mediaDict, 'meta': {'isLastRow': False}}
             clog.info('lastrow %s %s' % (mRow[0], mLastRowId), sys)
@@ -89,6 +121,20 @@ class LineReceiver(LineReceiver):
                 response['meta']['isLastRow'] = True
         else:
             response = {'callType': 'mediaById', 'result':'nomatch',
+                         'args': args}
+        self.sendLineAndLog(json.dumps(response))
+
+    def sendManyMedia(self, res, quantity):
+        if res:
+            mediaList = []
+            for media in res:
+                mediaList.append(self.jsonifyMedia(media))
+            clog.info('sendManyMedia %s' % mediaList, sys)
+            fulfilled = True if len(mediaList) == quantity else False
+            response = {'callType': 'mediaByIdRange', 'result':'ok',
+                    'resource': mediaList, 'meta':{'fulfilled': fulfilled}}
+        else:
+            response = {'callType': 'mediaByIdRange', 'result':'nomatch',
                          'args': args}
         self.sendLineAndLog(json.dumps(response))
 

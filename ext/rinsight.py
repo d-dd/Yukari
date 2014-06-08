@@ -15,6 +15,9 @@ class Prot(Protocol):
         userlist = {'callType':'usersByMediaId', 'args':{'mediaId':'4'}}
         userlist = json.dumps(userlist) + '\r\n'
         reactor.callLater(2, self.transport.write, userlist)
+        mRange = {'callType': 'mediaByIdRange', 'args':{'mediaIdRange':'12, 999'}}
+        mRange = json.dumps(mRange) + '\r\n'
+        reactor.callLater(3, self.transport.write, mRange)
 
     def dataReceived(self, data):
         try:

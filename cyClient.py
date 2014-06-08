@@ -24,6 +24,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.canBurst = False
         self.lastQueueTime = time.time() - 20 #TODO
         self.nowPlayingMedia = None
+        self.currentLikes = []
         self.err = []
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
@@ -209,6 +210,7 @@ class CyProtocol(WebSocketClientProtocol):
             return
 
         if msg == '%%subscribeLike':
+            clog.debug('Received subscribeLike from %s' % username, sys)
             if username in self.userdict:
                 if not self.userdict[username]['subscribeLike']:
                     self.userdict[username]['subscribeLike'] = True
@@ -861,8 +863,9 @@ class CyProtocol(WebSocketClientProtocol):
         for username in likes:
             if username in self.userdict:
                 if self.userdict[username]['subscribeLike']:
-                    msg = '%%%%%s' % likes[username]
-                    self.doSendPm(msg, username)
+                    if likes[username]: # don't send if 0
+                        msg = '%%%%%s' % likes[username]
+                        self.doSendPm(msg, username)
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']
