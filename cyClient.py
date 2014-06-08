@@ -209,16 +209,23 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
             return
 
-        if msg == '%%subscribeLike':
-            clog.debug('Received subscribeLike from %s' % username, sys)
-            if username in self.userdict:
-                if not self.userdict[username]['subscribeLike']:
-                    self.userdict[username]['subscribeLike'] = True
-                    # send value for current media
-                    if username in self.currentLikes:
-                        msg = '%%%%%s' % self.currentLikes[username]
-                        self.doSendPm(msg, username)
-            return
+        if msg.startswith('%%'):
+            if msg == '%%subscribeLike':
+                clog.debug('Received subscribeLike from %s' % username, sys)
+                if username in self.userdict:
+                    if not self.userdict[username]['subscribeLike']:
+                        self.userdict[username]['subscribeLike'] = True
+                        # send value for current media
+                        if username in self.currentLikes:
+                            msg = '%%%%%s' % self.currentLikes[username]
+                            self.doSendPm(msg, username)
+                return
+            elif msg == '%%like':
+                self._com_like(username, None, 'ppm')
+            elif msg == '%%unlike':
+                self._com_unlike(username, None, 'ppm')
+            elif msg == '%%dislike':
+                self._com_dislike(username, None, 'ppm')
 
         if msg.startswith('$') and fromUser != self.name:
             thunk, args, source = self.checkCommand(username, msg, 'pm')
@@ -370,26 +377,23 @@ class CyProtocol(WebSocketClientProtocol):
             d = database.flagUser(4, username.lower(), 1)
 
     def _com_like(self, username, args, source):
-        self._likeMedia(username, args, source, 1)
+        if source == 'pm' or source == 'ppm':
+            self._likeMedia(username, args, source, 1)
 
     def _com_dislike(self, username, args, source):
-        self._likeMedia(username, args, source, -1)
+        if source == 'pm' or source == 'ppm':
+            self._likeMedia(username, args, source, -1)
 
     def _com_unlike(self, username, args, source):
-        self._likeMedia(username, args, source, 0)
+        if source == 'pm' or source == 'ppm':
+            self._likeMedia(username, args, source, 0)
 
     def _likeMedia(self, username, args, source, value):
-        if not self.checkRegistered(username):
-            self.doSendChat('You are not registered.', 'pm', username)
-            return
         if args is not None:
             mType, mId = args.split(', ')
         else:
             mType, mId, __ = self.nowPlayingMedia
-        #uid = int(uid)
-        # until js client side is done just use type, id for now
         clog.info('(_com_like):type:%s, id:%s' % (mType, mId), sys) 
-        #assert self.getUidFromTypeId(type, id) == uid
         uid = self.getUidFromTypeId(mType, mId) 
         i = self.getIndexFromUid(uid)
         userId = self.userdict[username]['keyId']
@@ -398,6 +402,15 @@ class CyProtocol(WebSocketClientProtocol):
         d.addCallback(self.processResult)
         d.addCallback(database.insertReplaceLike, qid, userId, 
                        int(time.time()), value)
+        d.addCallback(self.updateCurrentLikes, username, value)
+
+    def updateCurrentLikes(self, res, username, value):
+         self.currentLikes[username] = value
+         score = sum(self.currentLikes.itervalues())
+         self.doSendJs('yukariLikeScore=%d' % score)
+
+    def doSendJs(self, js):
+        self.sendf({'name': 'setChannelJS', 'args': {'js': js}})
 
     def processResult(self, res):
         return defer.succeed(res[0][0])
@@ -866,6 +879,9 @@ class CyProtocol(WebSocketClientProtocol):
                     if likes[username]: # don't send if 0
                         msg = '%%%%%s' % likes[username]
                         self.doSendPm(msg, username)
+
+        score = sum(self.currentLikes.itervalues())
+        self.doSendJs('yukariLikeScore=%d' % score)
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']

@@ -120,7 +120,7 @@ def queryMediaId(mType, mId):
 def queryLastQueue(mType, mId):
     """ Return the last (most recent) queueId of a mediaId """
     sql = ('SELECT queueId FROM Queue WHERE mediaId = (SELECT mediaId FROM '
-           'Media WHERE type=? AND id=?)')
+           'Media WHERE type=? AND id=?) ORDER BY queueId DESC LIMIT 1')
     binds = (mType, mId)
     return query(sql, binds)
 
@@ -297,6 +297,10 @@ def addByUserAdd(nameLower, registered, words, limit):
 def getMediaById(mediaId):
     sql = 'SELECT * FROM Media WHERE mediaId=?'
     return query(sql, (mediaId,))
+
+def getMediaByIdRange(fromId, limit):
+    sql = 'SELECT * FROM Media LIMIT ?, ?'
+    return query(sql, (fromId, limit))
 
 def getMediaLastRowId():
     sql = 'SELECT COUNT(*) FROM Media'
