@@ -110,7 +110,8 @@ class LineReceiver(LineReceiver):
         return mediaDict
 
     def sendOneMedia(self, res, args):
-        if res[0][0] and res[1][0]:
+        clog.info('sendonemedia %s' % res, sys)
+        if res[0][0] and res[1][0] and res[0][1]: # not res[0][1] means no row
             mRow = res[0][1][0]
             mLastRowId = res[1][1][0][0] # 2deep4me
             mediaDict = self.jsonifyMedia(mRow)
