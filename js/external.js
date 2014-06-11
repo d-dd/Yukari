@@ -23,7 +23,8 @@ Callbacks.pm = function (data) {
     }
     var pm = initPm(name);
     var msg = formatChatMessage(data, pm.data("last"));
-
+    var buffer = pm.find(".pm-buffer");
+    msg.appendTo(buffer);
     buffer.scrollTop(buffer.prop("scrollHeight"));
     if (pm.find(".panel-body").is(":hidden")) {
         pm.removeClass("panel-default").addClass("panel-primary");
@@ -52,20 +53,59 @@ function sendPmToYukari(message) {
         });
     }
 }
+//Parse vocainfo
 
-////create buttons
-$("#likecontrol").remove();
-$("#rightcontrols").append('<div id="likecontrol" class="btn-group-vertical"></div>');
-$("#likecontrol").append('<button id="like-btn" class="btn btn-xs btn-default glyphicon glyphicon-chevron-up" ' +
-    'data-toggle="button"><span id="like-btn-span"></span></button>');
-$("#likecontrol").append('<button id="dislike-btn" class="btn btn-xs btn-default glyphicon glyphicon-chevron-down" ' +
-    'data-toggle="button"><span id="dislike-btn-span"></span></button>');
-
-//If Yukari isn't here, disable buttons
-if (!findUserlistItem(YUKARI)) {
-    disableLikes();
+function groupArtists(artists) {
+    var newArr = [],
+        roles = {},
+        newItem, i, j, cur;
+    for (i=0, j=artists.length; i<j; i++) {
+        cur = artists[i];
+        if (!(cur.role in roles)) {
+            roles[cur.role] = {role: cur.role, name: []};
+            newArr.push(roles[cur.role]);
+        }
+        roles[cur.role].name.push([cur.name, cur.id]);
+    }
+    return newArr;
 }
 
+function combineArtists(groupedArtists) {
+    var artistString = '';
+    for (i=0, j=groupedArtists.length; i<j; i++) {
+        cur = groupedArtists[i]
+        var names = '',
+        x, y, curname;
+        for (x=0, y=cur.name.length; x<y; x++) {
+            curname = cur.name[x];
+            names += '<a target ="_blank" href="http://vocadb.net/ar/' + curname[1] + '/">' + curname[0] + '</a>';
+            if (x < y) {
+                names += ', ';
+                }
+            }
+        artistString += cur.role + ': ' + names;
+    }
+    return artistString;
+}
+function combineTitles(titles) {
+    var groupedTitles = '', i, j, cur;
+    for (i = 0, j = titles.length; i < j; i++) {
+        cur = titles[i];
+        groupedTitles += cur;
+        if (i + 1 < j) {
+            groupedTitles += ' / ';
+        }
+    }
+    return groupedTitles;
+}
+        
+function setVocadb(groupedTitles, artistString) {
+    $("#yukarin").remove();
+    $("#vdb-div").append("<div id='yukarin'>" + groupedTitles + "</br>" + artistString + " Method: " + vocapack.method +
+    "<a href='http://vocadb.net/S/" + vocapack.vocadbId + " ' target='_blank' title='link by: " +vocapack.setby +
+    "' button class = 'btn btn-xs btn-info vdb_btn'>VocaDB</a></div>");
+}
+ 
 //When Yukari leaves, disable buttons
 socket.on("userLeave", function (data) {
     if (data.name === YUKARI) {
@@ -158,21 +198,11 @@ socket.on("channelCSSJS", function (data) {
     if (findUserlistItem(YUKARI)) {
         $("#likescore").text(yukariLikeScore);
     }
+    var groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
+    var artistString = combineArtists(groupedArtists);
+    var groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
+    setVocadb(groupedTitles, artistString);
 });
-
-////initialize
-$("#like-btn").attr('disabled', true);
-$("#dislike-btn").attr('disabled', true);
-
-//send PM if not guest
-if (CLIENT.rank > -1) {
-    var isHere = findUserlistItem(YUKARI);
-    if (isHere) {
-        sendPmToYukari("%%subscribeLike");
-        $("#like-btn").attr('disabled', false);
-        $("#dislike-btn").attr('disabled', false);
-    }
-}
 
 //send PM when log on/guest join
 //this often skips for users already logged in because the script loads too late
@@ -192,3 +222,45 @@ socket.on("addUser", function (data) {
         sendPmToYukari("%%subscribeLike");
     }
 });
+
+//VocaDB Info pane
+//make Pane
+$("#rightpane-inner").prepend('<div id="vdbcontrol" class="plcontrol-collapse col-lg-12 col-md-12 collapse" ' +
+                              'style="height: auto;"><div class="vertical-spacer"></div><div class="input-group">' +
+                              '<div id="vdb-div" class="well"></div></div></div>');                       
+$("#plcontrol").append('<button id="music-note-btn" data-toggle="collapse" data-target="#vdbcontrol" ' +
+                       'class="btn btn-sm btn-default"><span id="music-note-span" ' +
+                       'class="glyphicon glyphicon-music" title="VocaDB"></span></button>');
+                       
+//Like buttons
+//create buttons
+$("#likecontrol").remove();
+$("#rightcontrols").append('<div id="likecontrol" class="btn-group-vertical"></div>');
+$("#likecontrol").append('<button id="like-btn" class="btn btn-xs btn-default glyphicon glyphicon-chevron-up" ' +
+    'data-toggle="button"><span id="like-btn-span"></span></button>');
+$("#likecontrol").append('<button id="dislike-btn" class="btn btn-xs btn-default glyphicon glyphicon-chevron-down" ' +
+    'data-toggle="button"><span id="dislike-btn-span"></span></button>');
+
+//If Yukari isn't here, disable buttons
+if (!findUserlistItem(YUKARI)) {
+    disableLikes();
+}
+
+//initial on join
+var groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
+var artistString = combineArtists(groupedArtists);
+var groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
+setVocadb(groupedTitles, artistString);
+
+$("#like-btn").attr('disabled', true);
+$("#dislike-btn").attr('disabled', true);
+
+//send PM if not guest
+if (CLIENT.rank > -1) {
+    var isHere = findUserlistItem(YUKARI);
+    if (isHere) {
+        sendPmToYukari("%%subscribeLike");
+        $("#like-btn").attr('disabled', false);
+        $("#dislike-btn").attr('disabled', false);
+    }
+}
