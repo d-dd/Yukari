@@ -92,6 +92,12 @@ def _bulkLogMedia(txn, playlist):
     sql = 'INSERT OR IGNORE INTO Media VALUES (?, ?, ?, ?, ?, ?, ?)'
     txn.executemany(sql, playlist)
 
+def bulkLogMediaSong(playlist):
+    return dbpool.runInteraction(_bulkLogMediaSong, playlist)
+
+def _bulkLogMediaSong(txn, playlist):
+    sql = 'INSERT OR IGNORE INTO Media VALUES ('
+
 def insertMedia(media):
     return dbpool.runInteraction(_insertMedia, media)
 
@@ -159,6 +165,16 @@ def queryMediaSongRow(mType, mId):
     binds = (mType, mId)
     return query(sql, binds)
 
+def queryVocaDbInfo(mType, mId):
+    clog.debug('(queryVocaDbInfo)', sys)
+    sql = ('SELECT CyUser.nameOriginal, MediaSong.mediaId, Song.songId, '
+           'MediaSong.method, Song.data FROM CyUser, MediaSong, Song WHERE '
+           'MediaSong.songId=Song.songId AND CyUser.userId=MediaSong.userId '
+           'AND MediaSong.mediaId = (SELECT mediaId FROM Media WHERE type=? '
+           'AND id=?)')
+    binds = (mType, mId)
+    return query(sql, binds)
+    
 def bulkQueryMediaSong(res, playlist):
     return dbpool.runInteraction(_bulkQueryMediaSong, playlist)
 
@@ -168,11 +184,12 @@ def _bulkQueryMediaSong(txn, playlist):
     for media in playlist:
         sql = ('SELECT songId FROM MediaSong WHERE mediaId IS'
                ' (SELECT mediaId FROM Media WHERE type=? AND id=?)')
-        txn.execute(sql, media)
+        binds = (media[1], media[2])
+        txn.execute(sql, binds)
         row = txn.fetchone()
         if not row:
-            songlessMedia.append(media)
-    clog.info(songlessMedia, sys)
+            songlessMedia.append(binds)
+    clog.info(songlessMedia, '[database] bulkquerymedia')
     return songlessMedia
 
 # media flags
@@ -235,8 +252,8 @@ def calcUserPoints(res, nameLower, isRegistered):
     (SELECT COUNT(*) FROM Queue WHERE userId = (SELECT userId FROM CyUser 
     WHERE nameLower=? AND registered=?)) * 3) + (SELECT (SELECT
     (SELECT SUM(leave) FROM userinout WHERE userid = (SELECT userid FROM 
-    cyUser WHERE nameLower=? AND registered=?)) - (SELECT 
-    SUM(enter) FROM userinout WHERE userid = (SELECT userid FROM cyUser
+    CyUser WHERE nameLower=? AND registered=?)) - (SELECT 
+    SUM(enter) FROM userinout WHERE userid = (SELECT userid FROM CyUser
     WHERE nameLower=? AND registered=?))) * 0.002);
     """
     binds = (nameLower, isRegistered) * 4

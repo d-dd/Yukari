@@ -26,6 +26,8 @@ class CyProtocol(WebSocketClientProtocol):
         self.nowPlayingMedia = None
         self.currentLikes = []
         self.err = []
+        self.currentVocadb = ''
+        self.currentLikeJs = ''
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
@@ -247,9 +249,11 @@ class CyProtocol(WebSocketClientProtocol):
             thunk(username, args, source)
             return True
             
-    def _com_vocadb(self, username, args):
+    def _com_vocadb(self, username, args, source):
         if not vdb:
             return
+        if args is None:
+            return # TODO refresh current song
         try:
             songId = int(args)
         except IndexError:
@@ -260,7 +264,7 @@ class CyProtocol(WebSocketClientProtocol):
             return
         userId = self.userdict[username]['keyId']
         timeNow = round(time.time(), 2)
-        mType, mId, mTitle  = self.nowPlaying
+        mType, mId, __  = self.nowPlayingMedia
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
 
@@ -407,7 +411,12 @@ class CyProtocol(WebSocketClientProtocol):
     def updateCurrentLikes(self, res, username, value):
          self.currentLikes[username] = value
          score = sum(self.currentLikes.itervalues())
-         self.doSendJs('yukariLikeScore=%d' % score)
+         self.currentLikeJs = 'yukariLikeScore = %d' % score
+         self.updateJs()
+
+    def updateJs(self):
+        js = '%s; %s;' % (self.currentVocadb, self.currentLikeJs)
+        self.doSendJs(js)
 
     def doSendJs(self, js):
         self.sendf({'name': 'setChannelJS', 'args': {'js': js}})
@@ -639,6 +648,20 @@ class CyProtocol(WebSocketClientProtocol):
                 qpl.append((entry['media']['type'], entry['media']['id'], entry['uid']))
         d = database.bulkLogMedia(dbpl)
         self.findQueueId(qpl)
+        self.findSonglessMedia(dbpl)
+
+    def findSonglessMedia(self, playlist):
+        d = database.bulkQueryMediaSong(None, playlist)
+        d.addCallback(self.requestEmptySongs)
+
+    def requestEmptySongs(self, res):
+        timeNow = int(time.time())
+        i = 0
+        for media in res:
+            mType, mId = media
+            if mType == 'yt':
+                reactor.callLater(i, vdbapi.requestSongByPv, None ,mType, mId, 1, timeNow, 0)
+                i += 0.5
 
     def findQueueId(self, qpl):
         for mType, mId, uid in qpl:
@@ -796,6 +819,8 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat(msg, toIrc=False)
             clog.info(msg)
 
+        return res
+
     def collectYtQueue(self, mId):
         # need another function because popleft() evaluates immediatly
         return apiClient.requestYtApi(self.ytq.popleft(), 'check')
@@ -857,8 +882,11 @@ class CyProtocol(WebSocketClientProtocol):
         d.addCallback(self.flagOrDelete, media, mType, mId)
         d.addErrback(self.errcatch)
         d.addCallback(self.loadLikes, mType, mId)
+        d.addCallback(self.loadVocaDb, mType, mId)
 
     def loadLikes(self, res, mType, mId):
+        if res != 'EmbedOk':
+            return
         uid = self.getUidFromTypeId(mType, mId)
         i = self.getIndexFromUid(uid)
         try:
@@ -881,7 +909,52 @@ class CyProtocol(WebSocketClientProtocol):
                         self.doSendPm(msg, username)
 
         score = sum(self.currentLikes.itervalues())
-        self.doSendJs('yukariLikeScore=%d' % score)
+        self.currentLikeJs = 'yukariLikeScore = %d' % score
+        self.updateJs()
+
+    def loadVocaDb(self, res, mType, mId):
+        d = database.queryVocaDbInfo(mType, mId)
+        d.addCallback(self.processVocadb, mType, mId)
+        #d.addCallback(lambda x: clog.info(x, 'loadvcaodb'))
+
+    def processVocadb(self, res, mType, mId):
+        if not res:
+            clog.error('(processVocadb) Vocadb db query returned []')
+            return
+        setby = res[0][0]
+        mediaId = res[0][1]
+        vocadbId = res[0][2]
+        method = res[0][3]
+        vocadbData = res[0][4]
+        vocadbInfo = self.parseVocadb(vocadbData)
+        vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
+                    'vocadbInfo': vocadbInfo}
+        vocapackjs = json.dumps(vocapack)
+        self.currentVocadb = 'vocapack =' + vocapackjs
+        self.updateJs()
+
+    def parseVocadb(self, vocadbData):
+        if vocadbData == 'null':
+            return {'res': None}
+        artists = []
+        data = json.loads(vocadbData)
+        for artist in data['artists']:
+            artistd = {}
+            artistd['name'] = artist['name']
+            artistd['id'] = artist['artist']['id']
+            artistd['isSup'] = artist['isSupport']
+            artistd['role'] = artist['effectiveRoles']
+            if artistd['role'] == 'Default':
+                artistd['role'] = artist['categories']
+            artists.append(artistd)
+        titles = []
+        for title in data['names']:
+            if title['language'] in ('Japanese', 'Romaji', 'English'):
+                titles.append(title['value'])
+
+        songType = data['songType']
+        return {'titles': titles, 'artists': artists, 'songType': songType,
+                'res': True}
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']
