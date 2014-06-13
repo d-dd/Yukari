@@ -130,6 +130,8 @@ function makeBadge(songType) {
 }
 
 function setVocadb(groupedTitles, artistString) {
+    $("#music-note-btn").removeClass("btn-default");
+    $("#music-note-btn").addClass("btn-primary");
     $("#yukarin").remove();
     var songLetter = makeBadge(vocapack.vocadbInfo.songType);
     var badge = '   <a href="http://vocadb.net/S/' + vocapack.vocadbId + 
@@ -138,6 +140,35 @@ function setVocadb(groupedTitles, artistString) {
     $("#vdb-div").append("<div id='yukarin'>" + groupedTitles + badge + "</br>" + artistString + 
     "<a href='http://vocadb.net/S/" + vocapack.vocadbId + " ' target='_blank' title='link by: " + vocapack.setby + "</div>");
 }
+
+function setVocadbPanel() {
+    if (!findUserlistItem(YUKARI)) {
+        return;
+    }
+    
+    $("#likescore").text(yukariLikeScore);
+    if (yukariOmit) {
+        $("#music-note-span").removeClass("glyphicon-music");
+        $("#music-note-span").addClass("glyphicon-thumbs-down");
+    } else {
+        $("#music-note-span").removeClass("glyphicon-thumbs-down");
+        $("#music-note-span").addClass("glyphicon-music");
+    }
+    if (vocapack.vocadbInfo.res) {
+        var groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
+        var artistString = combineArtists(groupedArtists);
+        var groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
+        setVocadb(groupedTitles, artistString);
+
+    } else {
+    $("#music-note-btn").removeClass("btn-primary");
+    $("#music-note-btn").addClass("btn-default");
+    $("#yukarin").remove();
+    $("#vdb-div").append("<div id='yukarin'>Unable to match</div>");
+    }
+}
+
+
  //When Yukari leaves, disable buttons
 socket.on("userLeave", function (data) {
     if (data.name === YUKARI) {
@@ -229,18 +260,7 @@ socket.on("changeMedia", function (data) {
 
 //on channelCSSJS, update score span
 socket.on("channelCSSJS", function (data) {
-    if (findUserlistItem(YUKARI)) {
-        $("#likescore").text(yukariLikeScore);
-    }
-    if (vocapack.vocadbInfo.res) {
-        var groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
-        var artistString = combineArtists(groupedArtists);
-        var groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
-    } else {
-        var groupedTitles = '';
-        var artistString = '';
-    }
-    setVocadb(groupedTitles, artistString);
+    setVocadbPanel();
 });
 
 //send PM when log on/guest join
@@ -298,7 +318,5 @@ $("#plcontrol").append('<button id="music-note-btn" data-toggle="collapse" data-
                        
                        
 //initial on join
-var groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
-var artistString = combineArtists(groupedArtists);
-var groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
-setVocadb(groupedTitles, artistString);
+setVocadbPanel();
+
