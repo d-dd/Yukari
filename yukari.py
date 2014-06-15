@@ -3,9 +3,9 @@ from cyClient import CyProtocol, WsFactory
 from ext.rinception import LineReceiver, LineReceiverFactory
 from twisted.web.server import Site
 from conf import config
-import database, tools
+import database, tools, apiClient
 from tools import clog
-import time, random
+import time, random, re
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
@@ -119,14 +119,14 @@ class Connections:
     def _com_choose(self, user, args):
         choices = self.getChoices(args)
         if choices:
-            msg = '[Choose %s:] %s' % (args, random.choice(choices))
+            msg = '[Choose: %s] %s' % (args, random.choice(choices))
             self.sendChats(msg)
 
     def _com_permute(self, user, args):
         choices = self.getChoices(args)
         if choices:
             random.shuffle(choices)
-            msg = '[Permute %s:] %s' % (args, ', '.join(choices))
+            msg = '[Permute: %s] %s' % (args, ', '.join(choices))
             self.sendChats(msg)
 
     def getChoices(self, args):
@@ -139,6 +139,41 @@ class Connections:
         if len(choices) < 1:
             return
         return choices
+    
+    def _com_8ball(self, user, args):
+        if not args:
+            return
+        choices = ('It is certain', 'It is decidedly so', 'Without a doubt',
+                   'Yes - definitely', 'You may rely on it', 'As I see it, yes',
+                   'Most likely', 'Outlook good', 'Signs point to yes', 'Yes',
+                   'Reply hazy, try again', 'Ask again later',
+                   'Better not tell you now', 'Cannot predict now',
+                   'Concentrate and ask again', "Don't count on it",
+                   'My reply is no', 'My sources say no','Outlook not so good',
+                   'Very doubtful')
+        msg = '[8ball: %s] %s' % (args, random.choice(choices))
+        self.sendChats(msg)
+
+    def _com_dice(self, user, args):
+        msg = '[dice: ???]: Dice Key!!'
+        self.sendChats(msg)
+
+    def _com_anagram(self, user, args):
+        if not args:
+            return
+        text = re.sub(r"[^a-zA-Z]", "", args)
+        if len(text) < 7:
+            self.sendChats('Anagram too short.')
+            return
+        elif len(text) >= 30:
+            self.sendChats('Anagram too long.')
+            return
+        d = apiClient.anagram(text)
+        d.addCallback(self.sendAnagram, args)
+
+    def sendAnagram(self, res, args):
+        if res:
+            self.sendChats('[Anagram: %s] %s' % (args, res))
 
     def sendToIrc(self, msg):
         if self.irc:

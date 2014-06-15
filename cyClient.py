@@ -963,7 +963,10 @@ class CyProtocol(WebSocketClientProtocol):
         for artist in data['artists']:
             artistd = {}
             artistd['name'] = artist['name']
-            artistd['id'] = artist['artist']['id']
+            try:
+                artistd['id'] = artist['artist']['id']
+            except(KeyError): # Some Artists do not have entries and thus no id
+                artistd['id'] = None
             artistd['isSup'] = artist['isSupport']
             artistd['role'] = artist['effectiveRoles']
             if artistd['role'] == 'Default':

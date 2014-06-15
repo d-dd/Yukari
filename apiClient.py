@@ -1,9 +1,10 @@
-import json
+import json, re
 from tools import clog
 from twisted.internet import reactor, defer
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 
+syst = 'ApiClient'
 def requestYtApi(ytId, content):
     """ Request video information from Youtube API """
     # ytId is unicode, so needs to be changed to str/bytes
@@ -114,6 +115,23 @@ def networkError(err):
 
 def printres(res):
     clog.error(res)
+
+def anagram(text):
+    url = 'http://anagramgenius.com/server.php?source_text=%s' % text
+    agent = Agent(reactor)
+    d = agent.request('GET', url)
+    d.addCallback(cbAnagramRequest)
+    return d
+
+def cbAnagramRequest(response):
+    d = readBody(response)
+    d.addCallback(parseAnagramBody)
+    return d
+
+def parseAnagramBody(body):
+    m = re.match(r".*<span class=\"black-18\">'(.*)'</span>", body, re.DOTALL)
+    if m:
+        return m.groups()[0]
 
 #d = requestYtApi('Dxt3OonUmFY', 'check')
 #d = requestYtApi('kMhBHBYHqus', 'check')
