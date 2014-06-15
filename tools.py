@@ -1,5 +1,5 @@
 import HTMLParser, htmlentitydefs
-import sys
+import sys, time
 import logging
 from twisted.words.protocols.irc import attributes as A
 from twisted.python import log
@@ -68,6 +68,9 @@ class TagStrip(HTMLParser.HTMLParser):
         self.result.append(unichr(codepoint))
     def get_text(self):
         return ''.join(self.result)
+
+def getTime():
+    return int(time.time()*100)
 
 clog = CustomLog()
 # only debug will show Twisted-produced messages

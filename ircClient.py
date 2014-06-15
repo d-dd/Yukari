@@ -1,6 +1,7 @@
 import database
 import time
 from tools import clog
+from tools import getTime
 from conf import config
 from collections import deque
 from twisted.words.protocols import irc
@@ -62,7 +63,7 @@ class IrcProtocol(irc.IRCClient):
         """ Log and send out message """
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
         msgd = msg.decode('utf-8')
-        binds = (None, 1, 3, round(time.time(), 2), msgd, 1)
+        binds = (None, 1, 3, getTime(), msgd, 1)
         d = database.operate(sql, binds) # must be in unicode
         self.say(channel, msg) # must not be in unicode
         
@@ -122,7 +123,7 @@ class IrcProtocol(irc.IRCClient):
         self.quit(message='Shutting down...!')
 
     def logProcess(self, user, msg):
-        timeNow = round(time.time(), 2)
+        timeNow = getTime()
         nickname = user.split('!')[0]
         i = user.find('~')
         j = user.find('@')

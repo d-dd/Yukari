@@ -73,7 +73,7 @@ def mediaSongResult(res, mType, mId, userId, timeNow):
     else:
         dd = requestApiByPv(mType, mId, timeNow)
         dd.addErrback(apiError)
-        dd.addCallback(youtubeDesc, mType, mId)
+        dd.addCallback(youtubeDesc, mType, mId, timeNow)
         dd.addCallback(database.insertMediaSongPv, mType, mId, userId, timeNow)
         return dd
 
@@ -94,12 +94,12 @@ def requestApiByPv(mType, mId, timeNow):
     dd.addCallback(database.insertSong, timeNow)
     return dd
 
-def youtubeDesc(res, mType, mId):
+def youtubeDesc(res, mType, mId, timeNow):
     if res[0] == 0: # no match
         clog.debug(('(youtubeDesc) No Youtube id match. Will attemp to retrieve'
                    'and parse description %s') % res, syst)
         d = apiClient.requestYtApi(mId, 'desc')
-        d.addCallback(searchYtDesc, mType, mId)
+        d.addCallback(searchYtDesc, mType, mId, timeNow)
         d.addErrback(errNoIdInDesc)
         return d
     else:
@@ -116,17 +116,17 @@ def nicoAcquire(res):
         clog.debug('(youtubeDesc) No Nico id match.', syst)
     return defer.succeed((1, res[0]))
 
-def searchYtDesc(res, mType, mId):
+def searchYtDesc(res, mType, mId, timeNow):
     m = nicoMatch.search(res)
     if m:
         nicoId = m.group(0)
         clog.debug(nicoId, 'searchYtDesc')
-        d = requestApiByPv('NicoNico', nicoId, int(time.time()))
+        d = requestApiByPv('NicoNico', nicoId, timeNow)
         d.addCallback(nicoAcquire)
-        d.addCallback(database.insertMediaSongPv, mType, mId, 1, int(time.time()))
+        d.addCallback(database.insertMediaSongPv, mType, mId, 1, timeNow)
         return d
     else:
-        database.insertMediaSongPv(0, mType, mId, 1, int(time.time()))
+        database.insertMediaSongPv(0, mType, mId, 1, timeNow)
         return defer.fail(Exception('No NicoId in Description found'))
 
 def apiError(err):

@@ -1,5 +1,6 @@
 import database, apiClient, tools, vdbapi
 from tools import clog
+from tools import getTime
 from conf import config
 import json, time, re, argparse, random
 from collections import deque
@@ -132,16 +133,16 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_usercount(self, fdict):
         usercount = fdict['args'][0]
         anoncount = usercount - len(self.userdict)
-        database.insertUsercount(int(time.time()), usercount, anoncount)
+        database.insertUsercount(getTime(), usercount, anoncount)
 
     def _cyCall_chatMsg(self, fdict):
         if not self.receivedChatBuffer:
             return
         args = fdict['args'][0]
-        timeNow = round(time.time(), 2)
+        timeNow = getTime()
         username = args['username']
         msg = args['msg']
-        chatCyTime = round((args['time'])/1000.0, 2)
+        chatCyTime = int((args['time'])/10.0)
         if 'modflair' in args['meta']:
             modflair = args['meta']['modflair']
         else:
@@ -177,8 +178,8 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
         pmTime = args['time']
-        pmCyTime =round((args['time'])/1000.0, 2)
-        timenow = int(time.time())
+        pmCyTime = int((args['time'])/10.0)
+        timenow = getTime()
         fromUser = args['username']
         toUser = args['to']
         msg = tools.unescapeMsg(args['msg'])
@@ -255,7 +256,7 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_com_vocadb) Value Error by %s' % username, sys)
             return
         userId = self.userdict[username]['keyId']
-        timeNow = round(time.time(), 2)
+        timeNow = getTime()
         mType, mId, __  = self.nowPlayingMedia
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
@@ -415,7 +416,7 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.queryMediaId(mType, mId)
         d.addCallback(self.processResult)
         d.addCallback(database.insertReplaceLike, qid, userId, 
-                       int(time.time()), value)
+                       getTime(), value)
         d.addCallback(self.updateCurrentLikes, username, value)
 
     def updateCurrentLikes(self, res, username, value):
@@ -559,7 +560,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_addUser(self, fdict):
         user = fdict['args'][0]
-        timeNow = int(time.time())
+        timeNow = getTime()
         if user['name'] not in self.userdict:
             self.userJoin(user, timeNow)
 
@@ -597,7 +598,7 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
 
     def _cyCall_userLeave(self, fdict):
-        timeNow = int(time.time())
+        timeNow = getTime()
         username = fdict['args'][0]['name']
         if not username:
             return # when anon leaves, might be sync bug
@@ -624,7 +625,7 @@ class CyProtocol(WebSocketClientProtocol):
             return
         self.lastUserlistTime = time.time()
         userlist = fdict['args'][0]
-        timeNow = int(time.time())
+        timeNow = getTime()
 
         # make a dictonary of users
         self.userdict = {}
@@ -663,7 +664,7 @@ class CyProtocol(WebSocketClientProtocol):
         d.addCallback(self.requestEmptySongs)
 
     def requestEmptySongs(self, res):
-        timeNow = int(time.time())
+        timeNow = getTime()
         i = 0
         for media in res:
             mType, mId = media
@@ -686,7 +687,7 @@ class CyProtocol(WebSocketClientProtocol):
             d = database.queryMediaId(mType, mId)
             # 1 = Yukari, 2 = flag for this type of queue
             d.addCallback(lambda x: defer.succeed(x[0][0]))
-            d.addCallback(database.insertQueue, 1, int(time.time()), 2)
+            d.addCallback(database.insertQueue, 1, getTime(), 2)
             return d
         elif res:
             return defer.succeed(res[0])
@@ -744,7 +745,7 @@ class CyProtocol(WebSocketClientProtocol):
             print item['media']['title'].encode('utf-8')
 
     def _cyCall_queue(self, fdict):
-        timeNow = round(time.time(), 2)
+        timeNow = getTime()
         item = fdict['args'][0]['item']
         isTemp = item['temp']
         media = item['media']
@@ -776,7 +777,7 @@ class CyProtocol(WebSocketClientProtocol):
 
 
         if mType == 'yt' and vdb:
-            timeNow = round(time.time(), 2)
+            timeNow = getTime()
             # since this callback is added after checkMedia which has a delay,
             # this also gets delayed
             dCheck.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
@@ -996,7 +997,7 @@ class CyProtocol(WebSocketClientProtocol):
         # disconnect first so we don't get any more join/leaves
         self.sendClose()
         # log everyone's access time before shutting down
-        timeNow = int(time.time())
+        timeNow = getTime() 
         for name, user in self.userdict.iteritems():
             user['deferred'].addCallback(self.userLeave, user, timeNow)
         self.cyRestart = False

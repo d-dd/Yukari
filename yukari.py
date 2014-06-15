@@ -5,7 +5,7 @@ from twisted.web.server import Site
 from conf import config
 import database, tools, apiClient
 from tools import clog
-import time, random, re
+import random, re
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
