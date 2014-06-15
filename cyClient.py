@@ -259,6 +259,7 @@ class CyProtocol(WebSocketClientProtocol):
         mType, mId, __  = self.nowPlayingMedia
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
+        d.addCallback(self.loadVocaDb, mType, mId)
 
     def parseTitle(self, command):
         # argparse doesn't support spaces in arguments, so we search
@@ -940,18 +941,18 @@ class CyProtocol(WebSocketClientProtocol):
     def processVocadb(self, res, mType, mId):
         if not res:
             clog.error('(processVocadb) Vocadb db query returned []')
-            vocaDbData = 'null'
+            self.currentVocadb = 'vocapack =' +json.dumps({'res': False})
         else:
             setby = res[0][0]
             mediaId = res[0][1]
             vocadbId = res[0][2]
             method = res[0][3]
             vocadbData = res[0][4]
-        vocadbInfo = self.parseVocadb(vocadbData)
-        vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
-                    'vocadbInfo': vocadbInfo}
-        vocapackjs = json.dumps(vocapack)
-        self.currentVocadb = 'vocapack =' + vocapackjs
+            vocadbInfo = self.parseVocadb(vocadbData)
+            vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
+                        'vocadbInfo': vocadbInfo}
+            vocapackjs = json.dumps(vocapack)
+            self.currentVocadb = 'vocapack =' + vocapackjs
         self.updateJs()
 
     def parseVocadb(self, vocadbData):

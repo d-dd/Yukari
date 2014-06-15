@@ -30,7 +30,6 @@ def dbQuery(columns, table, **kwargs):
         binds.append(value)
     sql += ' AND '.join(where)
     binds = tuple(binds)
-#    print 'dbquery', sql, binds
     return query(sql, binds)
 
 def queryResult(res):
@@ -151,12 +150,14 @@ def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
     binds = (mType, mId, songId, userId, timeNow, method)
     return operate(sql, binds)
     
-def insertMediaSongPv(songIdl, mType, mId, userId, timeNow, method):
-    clog.debug('(insertMediaSongPv)', sys)
-    sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
-           ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
-    binds = (mType, mId, songIdl[0], userId, timeNow, method)
-    return operate(sql, binds)
+def insertMediaSongPv(songIdl, mType, mId, userId, timeNow):
+    if songIdl:
+        clog.debug('(insertMediaSongPv)', sys)
+        sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
+               ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
+        binds = (mType, mId, songIdl[1], userId, timeNow, songIdl[0])
+        clog.debug('%s, %s' % (sql, binds), sys)
+        return operate(sql, binds)
 
 def queryMediaSongRow(mType, mId):
     clog.debug('(queryMediaSongData)', sys)
@@ -198,8 +199,8 @@ def _bulkQueryMediaSong(txn, playlist):
 # 1<<2: blacklisted media
 
 def getMediaFlag(mType, mId):
-    sql = 'SELECT flag FROM media WHERE type=?, id=?'
-    binds = (mTYpe, mId)
+    sql = 'SELECT flag FROM media WHERE type=? AND id=?'
+    binds = (mType, mId)
     return query(sql, binds)
 
 def flagMedia(flag, mType, mId):
@@ -257,8 +258,6 @@ def calcUserPoints(res, nameLower, isRegistered):
     WHERE nameLower=? AND registered=?))) * 0.002);
     """
     binds = (nameLower, isRegistered) * 4
-    #clog.info('(calcUserPoints) %s has %d points' % (nameLower, 9000), sys)
-    #return defer.succeed(9000)
     return query(sql, binds)
 
 def addByUserQueue(nameLower, registered, words, limit):

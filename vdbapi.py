@@ -1,14 +1,15 @@
-import json
+import json, re, time
 from twisted.internet import reactor, defer
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from conf import config
 from tools import clog
-import database
+import database, apiClient
 
 
 syst = 'vdbapi'
 UserAgentVdb = config['UserAgent']['vocadb'].encode('UTF-8')
+nicoMatch = re.compile(r'sm[0-9]{6,9}|nm[0-9]{6,9}')
 
 def processVdbJson(body):
     clog.info('(processVdbJson) Received reply from VocaDB', syst)
@@ -71,10 +72,10 @@ def mediaSongResult(res, mType, mId, userId, timeNow):
         return defer.succeed(res[0])
     else:
         dd = requestApiByPv(mType, mId, timeNow)
-        method = 0
         dd.addErrback(apiError)
-        dd.addCallback(database.insertMediaSongPv, mType, mId, userId, timeNow,
-                       method)
+        dd.addCallback(youtubeDesc, mType, mId)
+        dd.addCallback(database.insertMediaSongPv, mType, mId, userId, timeNow)
+                       
         return dd
 
 def requestApiByPv(mType, mId, timeNow):
@@ -93,6 +94,35 @@ def requestApiByPv(mType, mId, timeNow):
     dd.addCallbacks(processVdbJson, apiError)
     dd.addCallback(database.insertSong, timeNow)
     return dd
+
+def youtubeDesc(res, mType, mId):
+    if res[0] == 0: # no match
+        clog.debug(('(youtubeDesc) No Youtube id match. Will attemp to retrieve'
+                   'and parse description %s') % res, syst)
+        d = apiClient.requestYtApi(mId, 'desc')
+        d.addCallback(searchYtDesc, mType, mId)
+        d.addErrback(lambda x: clog.error('No nico id in YT desc %s' % x , syst))
+    else:
+        return defer.succeed((0, res[0]))
+
+def nicoAcquire(res):
+    clog.debug('nicoAcquire %s' % res, syst)
+    if res[0] == 0: # no match
+        clog.debug('(youtubeDesc) No Nico id match.', syst)
+    return defer.succeed((1, res[0]))
+
+def searchYtDesc(res, mType, mId):
+    m = nicoMatch.search(res)
+    if m:
+        nicoId = m.group(0)
+        clog.debug(nicoId, 'searchYtDesc')
+        d = requestApiByPv('NicoNico', nicoId, int(time.time()))
+        d.addCallback(nicoAcquire)
+        d.addCallback(database.insertMediaSongPv, mType, mId, 1, int(time.time()))
+        return d
+    else:
+        return defer.fail(None)
+
 
 def apiError(err):
     clog.error('(apiError) There was a problem with VocaDB API. %s' %
