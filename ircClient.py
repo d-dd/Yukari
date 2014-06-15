@@ -21,6 +21,7 @@ class IrcProtocol(irc.IRCClient):
         self.nickname = str(config['irc']['nick'])
         self.chatQueue = deque()
         self.bucketToken = int(config['irc']['bucket'])
+        self.bucketTokenMax = int(config['irc']['bucket'])
         self.underSpam = False
         self.nicklist = []
         self.nickdict = {} # {('nick','user','host'): id}
@@ -41,7 +42,7 @@ class IrcProtocol(irc.IRCClient):
             self.underSpam = True
 
     def addToken(self):
-        if self.bucketToken < 13:
+        if self.bucketToken < self.bucketTokenMax:
             clog.debug('(addToken) +1, token: %s' % self.bucketToken, sys)
             self.bucketToken += 1
         if self.underSpam and self.bucketToken > 10:
@@ -55,7 +56,7 @@ class IrcProtocol(irc.IRCClient):
         clog.debug('(popQueue) sending chat from IRC chat queue', sys)
         self.bucketToken -= 1
         self.logSay(self.channelName, self.chatQueue.popleft())
-        reactor.callLater(17-self.bucketToken, self.addToken)
+        reactor.callLater(self.bucketTokenMax+4-self.bucketToken, self.addToken)
 
     def logSay(self, channel, msg):
         """ Log and send out message """
