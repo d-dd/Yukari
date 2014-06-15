@@ -75,7 +75,6 @@ def mediaSongResult(res, mType, mId, userId, timeNow):
         dd.addErrback(apiError)
         dd.addCallback(youtubeDesc, mType, mId)
         dd.addCallback(database.insertMediaSongPv, mType, mId, userId, timeNow)
-                       
         return dd
 
 def requestApiByPv(mType, mId, timeNow):
@@ -101,9 +100,15 @@ def youtubeDesc(res, mType, mId):
                    'and parse description %s') % res, syst)
         d = apiClient.requestYtApi(mId, 'desc')
         d.addCallback(searchYtDesc, mType, mId)
-        d.addErrback(lambda x: clog.error('No nico id in YT desc %s' % x , syst))
+        d.addErrback(errNoIdInDesc)
+        return d
     else:
+        # pass-through the with method 0, results
         return defer.succeed((0, res[0]))
+
+def errNoIdInDesc(res):
+    clog.error('errNoIdInDesc %s' % res, syst)
+    return defer.succeed((1, 0))
 
 def nicoAcquire(res):
     clog.debug('nicoAcquire %s' % res, syst)
@@ -121,8 +126,8 @@ def searchYtDesc(res, mType, mId):
         d.addCallback(database.insertMediaSongPv, mType, mId, 1, int(time.time()))
         return d
     else:
-        return defer.fail(None)
-
+        database.insertMediaSongPv(0, mType, mId, 1, int(time.time()))
+        return defer.fail(Exception('No NicoId in Description found'))
 
 def apiError(err):
     clog.error('(apiError) There was a problem with VocaDB API. %s' %
