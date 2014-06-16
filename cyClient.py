@@ -967,7 +967,7 @@ class CyProtocol(WebSocketClientProtocol):
             vocadbData = res[0][4]
             vocadbInfo = self.parseVocadb(vocadbData)
             vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
-                        'vocadbInfo': vocadbInfo}
+                        'vocadbInfo': vocadbInfo, 'res': True}
             vocapackjs = json.dumps(vocapack)
             self.currentVocadb = 'vocapack =' + vocapackjs
         self.updateJs()
@@ -995,8 +995,7 @@ class CyProtocol(WebSocketClientProtocol):
                 titles.append(title['value'])
 
         songType = data['songType']
-        return {'titles': titles, 'artists': artists, 'songType': songType,
-                'res': True}
+        return {'titles': titles, 'artists': artists, 'songType': songType}
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']

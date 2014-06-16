@@ -1,6 +1,6 @@
 /*Upload this somewhere and put the link in External Javascript under
   Channel Settings, Admin Settings. */
-var YUKARI = 'Yukarin'; //Put name here
+var YUKARI = 'Yukari'; //Put name here
 
 //overwrite pm callback to silence private PMs
 Callbacks.pm = function (data) {
@@ -119,12 +119,15 @@ function makeBadge(songType) {
     } else if (songType === 'Mashup') {
         songLetter = 'M';
         label = 'label-default';
-    } else if (songType === 'PV') {
+    } else if (songType === 'MusicPV') {
         songLetter = 'PV';
         label = 'label-success';
-    } else if (songType === 'D') {
+    } else if (songType === 'DramaPV') {
         songLetter = 'D';
         label = 'label-success';
+    } else {
+        songLetter = 'o'
+        label = 'label-default';
     }
     return [songLetter, label];
 }
@@ -140,9 +143,15 @@ function setVocadb(groupedTitles, artistString) {
     $("#vdb-div").append("<div id='yukarin'>" + groupedTitles + badge + "</br>" + artistString + 
     "<a href='http://vocadb.net/S/" + vocapack.vocadbId + " ' target='_blank' title='link by: " + vocapack.setby + "</div>");
 }
-
+function setBlankVocadb() {
+    $("#music-note-btn").removeClass("btn-primary");
+    $("#music-note-btn").addClass("btn-default");
+    $("#yukarin").remove();
+    $("#vdb-div").append("<div id='yukarin'>No match</div>");
+    }
 function setVocadbPanel() {
     if (!findUserlistItem(YUKARI)) {
+        setBlankVocadb();
         return;
     }
     
@@ -154,17 +163,15 @@ function setVocadbPanel() {
         $("#music-note-span").removeClass("glyphicon-thumbs-down");
         $("#music-note-span").addClass("glyphicon-music");
     }
-    if (vocapack.vocadbInfo.res) {
-        var groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
-        var artistString = combineArtists(groupedArtists);
-        var groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
+    if (vocapack.res) {
+        var groupedArtists, artistString='', groupedTitles='';
+        groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
+        artistString = combineArtists(groupedArtists);
+        groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
         setVocadb(groupedTitles, artistString);
 
     } else {
-    $("#music-note-btn").removeClass("btn-primary");
-    $("#music-note-btn").addClass("btn-default");
-    $("#yukarin").remove();
-    $("#vdb-div").append("<div id='yukarin'>Unable to match</div>");
+        setBlankVocadb();
     }
 }
 
@@ -319,4 +326,3 @@ $("#plcontrol").append('<button id="music-note-btn" data-toggle="collapse" data-
                        
 //initial on join
 setVocadbPanel();
-
