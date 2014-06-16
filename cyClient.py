@@ -75,8 +75,7 @@ class CyProtocol(WebSocketClientProtocol):
         if source == 'chat':
             if modflair:
                 modflair = 3 ### TODO remove hardcode rank
-            if not toIrc:
-                msg = '*' + msg
+                msg = '+' + msg
             self.sendf({'name': 'chatMsg',
                        'args': {'msg': msg, 'meta': {'modflair': modflair}}})
         elif source == 'pm':
@@ -958,23 +957,24 @@ class CyProtocol(WebSocketClientProtocol):
     def processVocadb(self, res, mType, mId):
         if not res:
             clog.error('(processVocadb) Vocadb db query returned []')
-            self.currentVocadb = 'vocapack =' +json.dumps({'res': False})
+            self.currentVocadb = 'vocapack =' + json.dumps({'res': False})
         else:
             setby = res[0][0]
             mediaId = res[0][1]
             vocadbId = res[0][2]
             method = res[0][3]
             vocadbData = res[0][4]
-            vocadbInfo = self.parseVocadb(vocadbData)
-            vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
-                        'vocadbInfo': vocadbInfo, 'res': True}
-            vocapackjs = json.dumps(vocapack)
-            self.currentVocadb = 'vocapack =' + vocapackjs
+            if vocadbId == 0:
+                self.currentVocadb = 'vocapack =' + json.dumps({'res': False})
+            else:
+                vocadbInfo = self.parseVocadb(vocadbData)
+                vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
+                            'vocadbInfo': vocadbInfo, 'res': True}
+                vocapackjs = json.dumps(vocapack)
+                self.currentVocadb = 'vocapack =' + vocapackjs
         self.updateJs()
 
     def parseVocadb(self, vocadbData):
-        if vocadbData == 'null':
-            return {'res': False}
         artists = []
         data = json.loads(vocadbData)
         for artist in data['artists']:
