@@ -25,6 +25,10 @@ class Connections:
         # Wether to restart when disconnected
         self.ircRestart = True
         self.cyRestart = True
+        # Reconnect Timers
+        self.cyRetryWait = 0
+        self.cyLastConnect = 0
+        self.cyLastDisconect = 0
 
     def cyPost(self):
         """ Send a POST request to Cytube for a server session id

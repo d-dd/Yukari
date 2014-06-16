@@ -997,10 +997,13 @@ class CyProtocol(WebSocketClientProtocol):
         # disconnect first so we don't get any more join/leaves
         self.sendClose()
         # log everyone's access time before shutting down
+        self.logUserInOut()
+        self.cyRestart = False
+
+    def logUserInOut(self):
         timeNow = getTime() 
         for name, user in self.userdict.iteritems():
             user['deferred'].addCallback(self.userLeave, user, timeNow)
-        self.cyRestart = False
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given
@@ -1076,14 +1079,28 @@ class WsFactory(WebSocketClientFactory):
     def __init__(self, arg):
         WebSocketClientFactory.__init__(self, arg)
 
+    def startedConnecting(self, connector):
+        clog.debug('WsFactory...startedConnecting')
+        self.handle.cyLastConnect = time.time()
+
     def clientConnectionLost(self, connector, reason):
+        self.handle.cyLastDisconnect = time.time()
         clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s'
                      % reason, sys)
         if not self.handle.cyRestart:
             self.handle.doneCleanup('cy')
         else:
-            #self.handle.cyPost() # reconnect
-            self.handle.doneCleanup('cy')
+            self.prot.logUserInOut()
+            clog.error('clientConnectionLost! Reconnecting in %d seconds'
+                       % self.handle.cyRetryWait, sys)
+            # reconnect
+            reactor.callLater(self.handle.cyRetryWait, self.handle.cyPost)
+            self.handle.cyRetryWait += 2
+            self.handle.cyRetryWait = self.handle.cyRetryWait**2
+            if self.handle.cyRetryWait >= 5*60:
+                self.handle.cyRetryWait = 5*60
+            if self.handle.cyLastConnect - self.handle.cyLastDisconnect > 2*60:
+                self.handle.cyRetryWait = 0
 
     def clientConnectionFailed(self, connector, reason):
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'

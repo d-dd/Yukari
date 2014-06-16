@@ -13,7 +13,6 @@ class LineReceiverFactory(protocol.Factory):
         return LineReceiver(self)
 
 class LineReceiver(LineReceiver):
-    
     def __init__(self, factory):
         self.factory = factory
 
@@ -28,7 +27,8 @@ class LineReceiver(LineReceiver):
         clog.info(line, sys)
         d = checkLine(line)
         if not d:
-            return # if it's not a proper JSON don't reply
+            self.sendBadArgs('Unknown', 'Invalid JSON')
+            return
         request = self.parseDict(d)
         if request:
             callType, args = request
@@ -79,7 +79,7 @@ class LineReceiver(LineReceiver):
                              'Request over maximum request size of %d' % limit)
             return
         d = database.getMediaByIdRange(lower, quantity)
-        d.addCallback(self.sendManyMedia, quantity)
+        d.addCallback(self.sendManyMedia, quantity, args)
 
     def _rin_usersByMediaId(self, args):
         if 'mediaId' not in args:
@@ -125,7 +125,7 @@ class LineReceiver(LineReceiver):
                          'args': args}
         self.sendLineAndLog(json.dumps(response))
 
-    def sendManyMedia(self, res, quantity):
+    def sendManyMedia(self, res, quantity, args):
         if res:
             mediaList = []
             for media in res:
