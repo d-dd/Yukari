@@ -96,6 +96,45 @@ class LineReceiver(LineReceiver):
         dl = defer.DeferredList([dQueuedUsers, dAddedUser])
         dl.addCallback(self.sendUsersByMediaId, args)
 
+    def _rin_userSummaryByUsername(self, args):
+        if 'username' not in args or 'registered' not in args:
+            self.sendBadArgs('userByUsername')
+            return
+        username = args['username']
+        isRegistered = bool(args['registered'])
+        binds = (username.lower(), isRegistered)
+        dProfile = database.getUserProfile(*binds)
+        dTime = database.getUserTotalTime(*binds)
+        dQueue = database.getUserQueueSum(*binds)
+        dAdd = database.getUserAddSum(*binds)
+        dLikesReceived = database.getUserLikesReceivedSum(*binds, value=1)
+        dDislikesReceived = database.getUserLikesReceivedSum(*binds, value=-1)
+        dLiked = database.getUserLikedSum(*binds, value=1)
+        dDisliked = database.getUserLikedSum(*binds, value=-1)
+        dl = defer.DeferredList([dProfile, dTime, dQueue, dAdd, dLikesReceived,
+                                 dDislikesReceived, dLiked, dDisliked])
+        dl.addCallback(self.packUserSummary)
+
+    def packUserSummary(self, res):
+        di = {}
+        if not res[0][1]:
+            response = {'callType': 'userSummaryByUsername',
+                                   'result': 'UserNotFound'}
+        else:
+            di['username'] = res[0][1][0][0]
+            di['profileText'] = res[0][1][0][1]
+            di['profileImgUrl'] = res[0][1][0][2]
+            di['accessTime'] = res[1][1][0][0]
+            di['queueCount'] = res[2][1][0][0]
+            di['addCount'] = res[3][1][0][0]
+            di['likesReceived'] = res[4][1][0][0]
+            di['dislikesReceived'] = res[5][1][0][0]
+            di['likedCount'] = res[6][1][0][0]
+            di['dislikedCount'] = res[7][1][0][0]
+            response = {'callType': 'userSummaryByUsername', 'result': 'ok',
+                        'resource': di}
+        self.sendLineAndLog(json.dumps(response))
+
     def sendBadArgs(self, callType, reason=None):
         if reason:
             result = 'badargs: %s' % reason

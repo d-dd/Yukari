@@ -260,7 +260,7 @@ def calcUserPoints(res, nameLower, isRegistered):
     (SELECT SUM(leave) FROM userinout WHERE userid = (SELECT userid FROM 
     CyUser WHERE nameLower=? AND registered=?)) - (SELECT 
     SUM(enter) FROM userinout WHERE userid = (SELECT userid FROM CyUser
-    WHERE nameLower=? AND registered=?))) * 0.002);
+    WHERE nameLower=? AND registered=?))) * 0.00002);
     """
     binds = (nameLower, isRegistered) * 4
     return query(sql, binds)
@@ -336,6 +336,51 @@ def getUserAdd(mediaId):
     sql = ('SELECT CyUser.nameOriginal FROM CyUser JOIN Media ON '
            'CyUser.userId = Media.by WHERE Media.mediaId=?')
     return query(sql, (mediaId,))
+
+def getUserProfile(nameLower, isRegistered):
+    sql = ('SELECT nameOriginal, profileText, profileImgUrl FROM CyUser '
+           'WHERE nameLower=? AND registered=?')
+    binds = (nameLower, isRegistered)
+    return query(sql, binds)
+
+def getUserTotalTime(nameLower, isRegistered):
+    # sum of time left - sum of time entered = total access time
+    sql = ('SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid = '
+           '(SELECT userId FROM cyUser WHERE nameLower=? AND registered=?)) '
+           ' - (SELECT SUM(enter) FROM UserInOut WHERE userId = '
+           '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)))')
+    binds = (nameLower, isRegistered) * 2
+    return query(sql, binds)
+
+def getUserQueueSum(nameLower, isRegistered):
+    """ Queries the total number of queues by specified user """
+    sql = ('SELECT SUM(userId) FROM Queue WHERE userId='
+           '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)')
+    binds = (nameLower, isRegistered) 
+    return query(sql, binds)
+
+def getUserAddSum(nameLower, isRegistered):
+    """ Queries the total number of adds by specified user """
+    sql = ('SELECT SUM(by) FROM Media WHERE by='
+           '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)')
+    binds = (nameLower, isRegistered) 
+    return query(sql, binds)
+
+def getUserLikesReceivedSum(nameLower, isRegistered, value):
+    """ Queries the total number of Likes the user's queues received 
+        For a list of those queues, use #####TODO """
+    sql = ('SELECT COUNT(*) FROM (SELECT Queue.queueId, Like.userId '
+           'FROM Queue JOIN Like ON Queue.queueId = Like.queueId WHERE '
+           'Queue.userId = (SELECT userId FROM CyUser WHERE nameLower=? AND '
+           'registered=?) AND Like.value=?);')
+    binds = (nameLower, isRegistered, value)
+    return query(sql, binds)
+
+def getUserLikedSum(nameLower, isRegistered, value):
+    sql = ('SELECT COUNT(*) FROM LIKE WHERE userId= (SELECT userId FROM CyUser'
+           ' WHERE nameLower=? AND registered=?) AND value=?')
+    binds = (nameLower, isRegistered, value)
+    return query(sql, binds)
 
 def insertUsercount(timeNow, usercount, anoncount):
     sql = 'INSERT INTO Usercount VALUES (?, ?, ?)'
