@@ -118,6 +118,7 @@ def printres(res):
 
 def anagram(text):
     url = 'http://anagramgenius.com/server.php?source_text=%s' % text
+    url = url.encode('utf-8')
     agent = Agent(reactor)
     d = agent.request('GET', url)
     d.addCallback(cbAnagramRequest)

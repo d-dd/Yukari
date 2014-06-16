@@ -115,18 +115,27 @@ class Connections:
         self.sendChats(msg)
 
     def _com_ask(self, user, args):
+        if not args:
+            return
         if len(args) > 227:
             args = args[:224] + '(...)'
+        args = tools.unescapeMsg(args)
         msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
         self.sendChats(msg)
 
     def _com_choose(self, user, args):
+        if not args:
+            return
+        args = tools.unescapeMsg(args)
         choices = self.getChoices(args)
         if choices:
             msg = '[Choose: %s] %s' % (args, random.choice(choices))
             self.sendChats(msg)
 
     def _com_permute(self, user, args):
+        if not args:
+            return
+        args = tools.unescapeMsg(args)
         choices = self.getChoices(args)
         if choices:
             random.shuffle(choices)
@@ -155,6 +164,7 @@ class Connections:
                    'Concentrate and ask again', "Don't count on it",
                    'My reply is no', 'My sources say no','Outlook not so good',
                    'Very doubtful')
+        args = tools.unescapeMsg(args)
         msg = '[8ball: %s] %s' % (args, random.choice(choices))
         self.sendChats(msg)
 
@@ -165,6 +175,7 @@ class Connections:
     def _com_anagram(self, user, args):
         if not args:
             return
+        args = tools.unescapeMsg(args)
         text = re.sub(r"[^a-zA-Z]", "", args)
         if len(text) < 7:
             self.sendChats('Anagram too short.')
