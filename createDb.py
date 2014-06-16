@@ -18,16 +18,18 @@ con.execute("""
         nameOriginal TEXT NOT NULL,
         level INTEGER NOT NULL DEFAULT 0,
         flag INTEGER NOT NULL DEFAULT 0,
+        profileText TEXT,
+        profileImgUrl TEXT,
         UNIQUE (nameLower, registered));""")
 
 # insert server
 try:
-    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
-            (1, cyName.lower(), 1, cyName, 3, 1))
-    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
-            (2, '[server]', 1, '[server]', 0, 2))
-    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?)",
-            (3, '[anonymous]', 0, '[anonymous]', 0, 4))
+    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (1, cyName.lower(), 1, cyName, 3, 1, None, None))
+    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (2, '[server]', 1, '[server]', 0, 2, None, None))
+    con.execute("INSERT INTO CyUser VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (3, '[anonymous]', 0, '[anonymous]', 0, 4, None, None))
 except(IntegrityError):
     pass
 

@@ -573,13 +573,23 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.dbQuery(('userId',), 'cyUser',
                          nameLower=user['name'].lower(), registered=reg)
         d.addCallback(database.queryResult)
-        values = (None, user['name'].lower(), reg, user['name'], 0, 0)
+        values = (None, user['name'].lower(), reg, user['name'], 0, 0,
+                  None, None)
         d.addErrback(database.dbInsertReturnLastRow, 'cyUser', *values)
         d.addCallback(self.cacheKey, user)
         d.addErrback(self.errcatch)
         # add a reference to the deferred to the userdict
         self.userdict[user['name']]['deferred'] = d
+
+        profileText = user['profile']['text']
+        profileImgUrl = user['profile']['image']
+        d.addCallback(self.updateProfile, profileText, profileImgUrl)
         
+    def updateProfile(self, userId, profileText, profileImgUrl):
+        d = database.updateProfile(userId, profileText, profileImgUrl)
+        d.addCallback(lambda __: defer.succeed(userId))
+        return d
+
     def cacheKey(self, res, user):
         assert res, 'no res at cacheKey'
         if res[0]:
@@ -750,11 +760,17 @@ class CyProtocol(WebSocketClientProtocol):
         isTemp = item['temp']
         media = item['media']
         queueby = item['queueby']
+        title = media['title']
         afterUid = fdict['args'][0]['after']
         mType = media['type']
         mId = media['id']
         uid = item['uid']
         self.addToPlaylist(item, afterUid)
+
+        # Announce queue
+        msg = '@3939%s added %s!#3939' % (queueby, title)
+        self.doSendChat(msg, source='chat', toIrc=False)
+
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
         else:
@@ -834,7 +850,7 @@ class CyProtocol(WebSocketClientProtocol):
         elif res in ('NoEmbed', 'Status403', 'Status404'):
             self.doDeleteMedia(media['type'], media['id'])
             mediaTitle = media['title'].encode('utf-8')
-            msg = 'Removing non-playable media %s' % mediaTitle
+            msg = '@3939Removing non-playable media %s#3939' % mediaTitle
             database.flagMedia(0b1, mType, mId)
             self.doSendChat(msg, toIrc=False)
             clog.info(msg)
@@ -1082,6 +1098,7 @@ class WsFactory(WebSocketClientFactory):
     def startedConnecting(self, connector):
         clog.debug('WsFactory...startedConnecting')
         self.handle.cyLastConnect = time.time()
+        self.handle.cyAnnounceConnect()
 
     def clientConnectionLost(self, connector, reason):
         self.handle.cyLastDisconnect = time.time()
@@ -1091,6 +1108,7 @@ class WsFactory(WebSocketClientFactory):
             self.handle.doneCleanup('cy')
         else:
             self.prot.logUserInOut()
+            self.handle.cyAnnouceDisconnect()
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
                        % self.handle.cyRetryWait, sys)
             # reconnect

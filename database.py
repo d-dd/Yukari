@@ -72,6 +72,11 @@ def updateRow(table, setd, whered):
     sql += ','.join(where)
     return sql, tuple(binds)
     
+def updateProfile(userId, profileText, profileImgUrl):
+    sql = 'UPDATE CyUser SET profileText=?, profileImgUrl=? WHERE userId=?'
+    binds = (profileText, profileImgUrl, userId)
+    return operate(sql, binds)
+
 def bulkLogChat(table, chatList):
     return dbpool.runInteraction(_bulkLogChat, table, chatList)
 

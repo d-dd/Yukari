@@ -191,6 +191,15 @@ class Connections:
         self.sendToIrc(msg)
         self.sendToCy(msg, modflair)
 
+    def cyAnnouceDisconnect(self):
+        msg = ('[status] Disconnected from Cytube. Reconnect attempt in '
+              '%d seconds.' % self.cyRetryWait)
+        self.sendToIrc(msg)
+
+    def cyAnnounceConnect(self):
+        msg = ('[status] Connected to Cytube.')
+        self.sendToIrc(msg)
+
     def cleanup(self):
         """ Prepares for shutdown """
         clog.info('(cleanup) Cleaning up for shutdown!', sys)
