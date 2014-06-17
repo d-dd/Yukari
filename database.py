@@ -2,7 +2,7 @@ from twisted.internet import defer
 from twisted.enterprise import adbapi
 from tools import clog
 sys = 'database'
-
+USERIDSQL = '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)'
 
 def turnOnFK(txn):
     txn.execute('pragma foreign_keys=ON')
@@ -250,18 +250,12 @@ def getLikes(queueId):
     binds = (queueId,) 
     return query(sql, binds)
 
-
 def calcUserPoints(res, nameLower, isRegistered):
-    sql =  """
-    SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by = (SELECT userId FROM
-    CyUser WHERE nameLower=? AND registered=?)) * 20) + (SELECT 
-    (SELECT COUNT(*) FROM Queue WHERE userId = (SELECT userId FROM CyUser 
-    WHERE nameLower=? AND registered=?)) * 3) + (SELECT (SELECT
-    (SELECT SUM(leave) FROM userinout WHERE userid = (SELECT userid FROM 
-    CyUser WHERE nameLower=? AND registered=?)) - (SELECT 
-    SUM(enter) FROM userinout WHERE userid = (SELECT userid FROM CyUser
-    WHERE nameLower=? AND registered=?))) * 0.00002);
-    """
+    sql = ('SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by = %s) * 20)'
+       '+ (SELECT (SELECT COUNT(*) FROM Queue WHERE userId = %s) * 3)'
+       '+ (SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid = %s)'
+       '- (SELECT SUM(enter) FROM userinout WHERE userid = %s)) * 0.00002)'
+        % ((USERIDSQL,) * 4))
     binds = (nameLower, isRegistered) * 4
     return query(sql, binds)
 
@@ -270,18 +264,15 @@ def addByUserQueue(nameLower, registered, words, limit):
        queued by registered user (nameLower)"""
     binds, sql = [], []
     if nameLower:
-        name = ('AND Queue.userId = (SELECT userId FROM CyUser WHERE nameLower=?'
-                ' AND registered=?) ' )
+        name = ('AND Queue.userId = %s' % USERIDSQL)
         binds.extend((nameLower, int(registered)))
     else:
         name = ''
-
     if words:
         title = 'AND Media.title LIKE ? '
         binds.append('%%%s%%' % words) # %% is escaped %
     else:
         title = ''
-
     sql = ('SELECT type, id FROM Media WHERE mediaId IN '
            '(SELECT DISTINCT Media.mediaId FROM Media, Queue WHERE '
            'Media.mediaId = Queue.mediaId AND Media.flag=0 %s %s'
@@ -297,8 +288,7 @@ def addByUserAdd(nameLower, registered, words, limit):
        added first (introduced) by registered user (nameLower)"""
     binds = []
     if nameLower:
-        name = ('AND by = (SELECT userId FROM CyUser WHERE nameLower=? AND'
-                ' registered=?)')
+        name = ('AND by = %s' % USERIDSQL)
         binds.extend((nameLower, registered))
     else:
         name = ''
@@ -346,23 +336,32 @@ def getUserProfile(nameLower, isRegistered):
 def getUserTotalTime(nameLower, isRegistered):
     # sum of time left - sum of time entered = total access time
     sql = ('SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid = '
-           '(SELECT userId FROM cyUser WHERE nameLower=? AND registered=?)) '
-           ' - (SELECT SUM(enter) FROM UserInOut WHERE userId = '
-           '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)))')
+           '%s) - (SELECT SUM(enter) FROM UserInOut WHERE userId = %s))' 
+           % (USERIDSQL, USERIDSQL))
     binds = (nameLower, isRegistered) * 2
+    return query(sql, binds)
+
+def getUserFirstSeen(nameLower, isRegistered):
+    sql = ('SELECT enter FROM UserInOut WHERE userId = %s'
+           ' ORDER BY enter ASC LIMIT 1' % USERIDSQL)
+    binds = (nameLower, isRegistered)
+    return query(sql, binds)
+
+def getUserLastSeen(nameLower, isRegistered):
+    sql = ('SELECT leave FROM UserInOut WHERE userId = %s'
+           ' ORDER BY leave DESC LIMIT 1' % USERIDSQL)
+    binds = (nameLower, isRegistered)
     return query(sql, binds)
 
 def getUserQueueSum(nameLower, isRegistered):
     """ Queries the total number of queues by specified user """
-    sql = ('SELECT SUM(userId) FROM Queue WHERE userId='
-           '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)')
+    sql = 'SELECT COUNT(userId) FROM Queue WHERE userId= %s' % USERIDSQL
     binds = (nameLower, isRegistered) 
     return query(sql, binds)
 
 def getUserAddSum(nameLower, isRegistered):
     """ Queries the total number of adds by specified user """
-    sql = ('SELECT SUM(by) FROM Media WHERE by='
-           '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)')
+    sql = 'SELECT COUNT(by) FROM Media WHERE by=%s' % USERIDSQL
     binds = (nameLower, isRegistered) 
     return query(sql, binds)
 
@@ -371,14 +370,12 @@ def getUserLikesReceivedSum(nameLower, isRegistered, value):
         For a list of those queues, use #####TODO """
     sql = ('SELECT COUNT(*) FROM (SELECT Queue.queueId, Like.userId '
            'FROM Queue JOIN Like ON Queue.queueId = Like.queueId WHERE '
-           'Queue.userId = (SELECT userId FROM CyUser WHERE nameLower=? AND '
-           'registered=?) AND Like.value=?);')
+           'Queue.userId = %s AND Like.value=?)' % USERIDSQL)
     binds = (nameLower, isRegistered, value)
     return query(sql, binds)
 
 def getUserLikedSum(nameLower, isRegistered, value):
-    sql = ('SELECT COUNT(*) FROM LIKE WHERE userId= (SELECT userId FROM CyUser'
-           ' WHERE nameLower=? AND registered=?) AND value=?')
+    sql = 'SELECT COUNT(*) FROM LIKE WHERE userId=%s AND value=?' % USERIDSQL
     binds = (nameLower, isRegistered, value)
     return query(sql, binds)
 

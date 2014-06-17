@@ -105,32 +105,41 @@ class LineReceiver(LineReceiver):
         binds = (username.lower(), isRegistered)
         dProfile = database.getUserProfile(*binds)
         dTime = database.getUserTotalTime(*binds)
+        dFirstSeen = database.getUserFirstSeen(*binds)
+        dLastSeen = database.getUserLastSeen(*binds)
         dQueue = database.getUserQueueSum(*binds)
         dAdd = database.getUserAddSum(*binds)
         dLikesReceived = database.getUserLikesReceivedSum(*binds, value=1)
         dDislikesReceived = database.getUserLikesReceivedSum(*binds, value=-1)
         dLiked = database.getUserLikedSum(*binds, value=1)
         dDisliked = database.getUserLikedSum(*binds, value=-1)
-        dl = defer.DeferredList([dProfile, dTime, dQueue, dAdd, dLikesReceived,
-                                 dDislikesReceived, dLiked, dDisliked])
+        dl = defer.DeferredList([dProfile, dTime, dFirstSeen, dLastSeen, dQueue,
+                    dAdd, dLikesReceived, dDislikesReceived, dLiked, dDisliked])
         dl.addCallback(self.packUserSummary)
 
     def packUserSummary(self, res):
-        di = {}
         if not res[0][1]:
             response = {'callType': 'userSummaryByUsername',
                                    'result': 'UserNotFound'}
+        di = {}
         else:
             di['username'] = res[0][1][0][0]
             di['profileText'] = res[0][1][0][1]
             di['profileImgUrl'] = res[0][1][0][2]
-            di['accessTime'] = res[1][1][0][0]
-            di['queueCount'] = res[2][1][0][0]
-            di['addCount'] = res[3][1][0][0]
-            di['likesReceived'] = res[4][1][0][0]
-            di['dislikesReceived'] = res[5][1][0][0]
-            di['likedCount'] = res[6][1][0][0]
-            di['dislikedCount'] = res[7][1][0][0]
+            if res[1][1][0][0]:
+                di['accessTime'] = int(res[1][1][0][0]/100)
+                di['firstSeen'] = int(res[2][1][0][0]/100)
+                di['lastSeen'] = int(res[3][1][0][0]/100)
+            else: # no row in UserInOut
+                di['accessTime'] = 0
+                di['firstSeen'] = 0
+                di['lastSeen'] = 0
+            di['queueCount'] = res[4][1][0][0]
+            di['addCount'] = res[5][1][0][0]
+            di['likesReceived'] = res[6][1][0][0]
+            di['dislikesReceived'] = res[7][1][0][0]
+            di['likedCount'] = res[8][1][0][0]
+            di['dislikedCount'] = res[9][1][0][0]
             response = {'callType': 'userSummaryByUsername', 'result': 'ok',
                         'resource': di}
         self.sendLineAndLog(json.dumps(response))

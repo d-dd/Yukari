@@ -18,9 +18,9 @@ class Prot(Protocol):
         mRange = json.dumps(mRange) + '\r\n'
         #reactor.callLater(3, self.transport.write, mRange)
         userInfo = {'callType': 'userSummaryByUsername', 'args':
-                    {'username':'dragondread', 'registered': True}}
+                    {'username':'Yukari', 'registered': True}}
         userInfo = json.dumps(userInfo) + '\r\n'
-        reactor.callLater(3, self.transport.write, userInfo)
+        reactor.callLater(0, self.transport.write, userInfo)
 
     def dataReceived(self, data):
         try:
