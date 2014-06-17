@@ -121,8 +121,8 @@ class LineReceiver(LineReceiver):
         if not res[0][1]:
             response = {'callType': 'userSummaryByUsername',
                                    'result': 'UserNotFound'}
-        di = {}
         else:
+            di = {}
             di['username'] = res[0][1][0][0]
             di['profileText'] = res[0][1][0][1]
             di['profileImgUrl'] = res[0][1][0][2]

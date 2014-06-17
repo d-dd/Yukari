@@ -5,11 +5,10 @@ from tools import getTime
 from conf import config
 from collections import deque
 from twisted.words.protocols import irc
-from twisted.internet import reactor, defer
+from twisted.internet import reactor, defer, task
 from twisted.internet.protocol import ClientFactory
 
 # on Rizon networks, the optional part/quit message rarely works.
-
 class NoRowException(Exception):
     pass
 
@@ -20,9 +19,11 @@ class IrcProtocol(irc.IRCClient):
 
     def __init__(self):
         self.nickname = str(config['irc']['nick'])
+        self.channelName = str(config['irc']['channel'])
         self.chatQueue = deque()
         self.bucketToken = int(config['irc']['bucket'])
         self.bucketTokenMax = int(config['irc']['bucket'])
+        self.throttleLoop = task.LoopingCall(self.addToken)
         self.underSpam = False
         self.nicklist = []
         self.nickdict = {} # {('nick','user','host'): id}
@@ -52,12 +53,15 @@ class IrcProtocol(irc.IRCClient):
                     '[Resuming relay from Cytube.]')
             self.factory.handle.sendToCy('[Resuming relay to IRC.]',
                                   modflair=True)
+        elif self.bucketToken == self.bucketTokenMax:
+            self.throttleLoop.stop()
 
     def popQueue(self):
         clog.debug('(popQueue) sending chat from IRC chat queue', sys)
         self.bucketToken -= 1
         self.logSay(self.channelName, self.chatQueue.popleft())
-        reactor.callLater(self.bucketTokenMax+4-self.bucketToken, self.addToken)
+        if not self.throttleLoop.running:
+            self.throttleLoop.start(2, now=False)
 
     def logSay(self, channel, msg):
         """ Log and send out message """
@@ -79,8 +83,6 @@ class IrcProtocol(irc.IRCClient):
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
-        self.channelName = str(config['irc']['channel'])
-        self.nickname = str(config['irc']['nick'])
 
     def signedOn(self):
         self.join(self.channelName)
@@ -105,6 +107,10 @@ class IrcProtocol(irc.IRCClient):
     def left(self, channel):
         clog.info('Left IRC channel: %s' % channel, sys)
         self.factory.handle.irc = False
+
+    def kickedFrom(self, channel, kicker, message):
+        clog.info('kickedFrom %s by %s: %s' % (channel, kicker, message), sys)
+        self.join(self.channelName)
 
     def privmsg(self, user, channel, msg):
         clog.info('priv message from %s' % user, sys)
