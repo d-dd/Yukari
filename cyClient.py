@@ -141,7 +141,6 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = getTime()
         username = args['username']
         msg = args['msg']
-        msg = tools.unescapeMsg(msg)
         chatCyTime = int((args['time'])/10.0)
         if 'modflair' in args['meta']:
             modflair = args['meta']['modflair']
@@ -166,6 +165,8 @@ class CyProtocol(WebSocketClientProtocol):
         # check for commands
         isCyCommand = False
         thunk = None
+        # unescape after chat has been logged
+        msg = tools.unescapeMsg(msg)
         if msg.startswith('$'):
             thunk, args, source = self.checkCommand(username, msg, 'chat')
         if username != self.name and username != '[server]':
