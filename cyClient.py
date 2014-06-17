@@ -141,11 +141,13 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = getTime()
         username = args['username']
         msg = args['msg']
+        msg = tools.unescapeMsg(msg)
         chatCyTime = int((args['time'])/10.0)
         if 'modflair' in args['meta']:
             modflair = args['meta']['modflair']
         else:
             modflair = None
+        action = True if 'action' in args['meta'] else False
         if username == '[server]':
             keyId = 2
         elif username in self.userdict:
@@ -168,7 +170,7 @@ class CyProtocol(WebSocketClientProtocol):
             thunk, args, source = self.checkCommand(username, msg, 'chat')
         if username != self.name and username != '[server]':
             #clog.debug('Sending chat to IRC, username: %s' % username)
-            self.factory.handle.recCyMsg(username, msg, not thunk)
+            self.factory.handle.recCyMsg(username, msg, not thunk, action=action)
         # send to IRC before executing the command
         # to maintain proper chat queue (user command before Yukari's reply)
         if thunk is not None:

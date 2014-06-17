@@ -113,11 +113,18 @@ class IrcProtocol(irc.IRCClient):
         self.join(self.channelName)
 
     def privmsg(self, user, channel, msg):
-        clog.info('priv message from %s' % user, sys)
-        if msg == '$test':
-            self.test_module()
+        clog.debug('priv message from %s' % user, sys)
+      #  if msg == '$test':
+      #      self.test_module()
         self.factory.handle.recIrcMsg(user, channel, msg)
-        self.logProcess(user, msg)
+        flag = 0
+        self.logProcess(user, msg, flag)
+
+    def action(self, user, channel, data):
+        clog.debug('action %s by %s' % (data, user) , sys)
+        self.factory.handle.recIrcMsg(user, channel, data, modifier='action')
+        flag = 2 #action
+        self.logProcess(user, data, flag)
 
     def sendChat(self, channel, msg):
         if isinstance(msg, unicode):
@@ -128,7 +135,7 @@ class IrcProtocol(irc.IRCClient):
         self.leave(self.channelName, reason)
         self.quit(message='Shutting down...!')
 
-    def logProcess(self, user, msg):
+    def logProcess(self, user, msg, flag):
         timeNow = getTime()
         nickname = user.split('!')[0]
         i = user.find('~')
@@ -141,15 +148,15 @@ class IrcProtocol(irc.IRCClient):
                 # a callback for the keyId must already be registered
                 clog.error('(logProcess) key None for user %s' % nickname, sys)
                 dd = self.nickdict[nickname]['deferred']
-                dd.addCallback(self.logChat, 3, timeNow, msg)
+                dd.addCallback(self.logChat, 3, timeNow, msg, flag)
             if keyId:
-                d = self.logChat(keyId, 3, timeNow, msg)
+                d = self.logChat(keyId, 3, timeNow, msg, flag)
                 
         else:
             self.nickdict[nickname] = {'keyId': None, 'deferred': None}
             clog.debug('(logProcess) added %s to nickdict' % nickname, sys)
             dd = self.queryOrAddUser(nickname, username, host)
-            dd.addCallback(self.logChat, 3, timeNow, msg)
+            dd.addCallback(self.logChat, 3, timeNow, msg, flag)
             self.nickdict[nickname]['deferred'] = dd
 
     def queryOrAddUser(self, nickname, username, host):
@@ -198,11 +205,11 @@ class IrcProtocol(irc.IRCClient):
         msg = 'STATUS %s' % nickname
         self.msg('NickServ', msg)
         
-    def logChat(self, result, status, timeNow, msg):
+    def logChat(self, result, status, timeNow, msg, flag):
         status = 0 # we don't really need this
         msg = msg.decode('utf-8')
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, result, status, timeNow, msg, 0)
+        binds = (None, result, status, timeNow, msg, flag)
         return database.operate(sql, binds)
 
     def test_makeChat(self, i):

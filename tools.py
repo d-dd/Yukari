@@ -46,6 +46,8 @@ class CustomLog():
 
 def unescapeMsg(htmlStr):
     """ Unescape HTML entities from a string """
+    if not htmlStr:
+        return ''
     return h.unescape(htmlStr)
 
 class TagStrip(HTMLParser.HTMLParser):

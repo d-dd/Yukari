@@ -71,14 +71,19 @@ class Connections:
         self.rinFactory = LineReceiverFactory()
         reactor.listenTCP(port, self.rinFactory)
 
-    def recIrcMsg(self, user, channel, msg):
+    def recIrcMsg(self, user, channel, msg, modifier=None):
         if self.cy:
             user = user.split('!', 1)[0] # takes out the extra info in the name
-            msgf = '(%s) %s' % (user, msg)
-            self.wsFactory.prot.relayToCyChat(msgf)
-            self.processCommand(user, msg)
+            if not modifier:
+                msgf = '(%s) %s' % (user, msg)
+                self.wsFactory.prot.relayToCyChat(msgf)
+                self.processCommand(user, msg)
+            elif modifier == 'action':
+                msgf = '_(%s)_ %s' % (user, msg)
+                self.wsFactory.prot.relayToCyChat(msgf)
+                # don't process action for commands
 
-    def recCyMsg(self, user, msg, needProcessing):
+    def recCyMsg(self, user, msg, needProcessing, action=False):
         if self.irc and user != 'Yukarin':
             #s = TagStrip()
             clog.debug('recCyMsg: %s' % msg, sys)
@@ -88,7 +93,10 @@ class Connections:
             tools.chatFormat.close()
             tools.chatFormat.result = []
             tools.chatFormat.reset()
-            cleanMsg = '(%s) %s' % (user, cleanMsg)
+            if not action:
+                cleanMsg = '(%s) %s' % (user, cleanMsg)
+            elif action:
+                cleanMsg = '( * %s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
         if needProcessing:
             self.processCommand(user, msg)
@@ -119,14 +127,12 @@ class Connections:
             return
         if len(args) > 227:
             args = args[:224] + '(...)'
-        args = tools.unescapeMsg(args)
         msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
         self.sendChats(msg)
 
     def _com_choose(self, user, args):
         if not args:
             return
-        args = tools.unescapeMsg(args)
         choices = self.getChoices(args)
         if choices:
             msg = '[Choose: %s] %s' % (args, random.choice(choices))
@@ -135,7 +141,6 @@ class Connections:
     def _com_permute(self, user, args):
         if not args:
             return
-        args = tools.unescapeMsg(args)
         choices = self.getChoices(args)
         if choices:
             random.shuffle(choices)
@@ -164,7 +169,6 @@ class Connections:
                    'Concentrate and ask again', "Don't count on it",
                    'My reply is no', 'My sources say no','Outlook not so good',
                    'Very doubtful')
-        args = tools.unescapeMsg(args)
         msg = '[8ball: %s] %s' % (args, random.choice(choices))
         self.sendChats(msg)
 
@@ -175,7 +179,6 @@ class Connections:
     def _com_anagram(self, user, args):
         if not args:
             return
-        args = tools.unescapeMsg(args)
         text = re.sub(r"[^a-zA-Z]", "", args)
         if len(text) < 7:
             self.sendChats('Anagram too short.')

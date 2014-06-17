@@ -1,4 +1,4 @@
-""" Server for steam-bot """
+""" Server for Rin Webserver """
 from twisted.internet import protocol, reactor, defer
 from twisted.protocols.basic import LineReceiver
 from tools import clog
