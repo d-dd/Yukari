@@ -40,6 +40,7 @@ class CyProtocol(WebSocketClientProtocol):
         clog.error('caught something')
         self.err.append(err)
 
+
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', sys)
         self.connectedTime = time.time()
@@ -1109,8 +1110,12 @@ class WsFactory(WebSocketClientFactory):
         if not self.handle.cyRestart:
             self.handle.doneCleanup('cy')
         else:
-            self.prot.logUserInOut()
-            self.handle.cyAnnouceDisconnect()
+            try:
+                self.prot.logUserInOut()
+            except(AttributeError):
+                # prot doesn't exist yet
+                pass
+            self.handle.cyAnnouceLeftRoom()
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
                        % self.handle.cyRetryWait, sys)
             # reconnect

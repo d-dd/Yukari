@@ -30,6 +30,16 @@ class Connections:
         self.cyLastConnect = 0
         self.cyLastDisconect = 0
 
+    def restartConnection(self, method, waitTime):
+        clog.error('restarting connection in %s' % waitTime)
+        msg = ('[status] Could not connect to server. Attempting to reconnect '
+              'in %d seconds.' % waitTime)
+        self.sendToIrc(msg)
+        reactor.callLater(waitTime, method)
+        waitTime = waitTime**(1+random.random())
+        # return between 2 and 300
+        return min(max(2, waitTime), 300)
+
     def cyPost(self):
         """ Send a POST request to Cytube for a server session id
         and start the connection process """
@@ -43,10 +53,10 @@ class Connections:
 
     def cyPostErr(self, err):
         clog.error(err, sys)
+        self.cyRetryWait = self.restartConnection(self.cyPost, self.cyRetryWait)
 
     def processBody(self, body):
         clog.debug('(processBody) Received session string %s ' % body, sys)
-
         msg = body.split(',')
         sid = msg[0][:msg[0].find(':')]
         ws = 'ws://%s:%s/socket.io/1/websocket/%s/' % (config['Cytube']['url'],
@@ -205,8 +215,8 @@ class Connections:
         self.sendToIrc(msg)
         self.sendToCy(msg, modflair)
 
-    def cyAnnouceDisconnect(self):
-        msg = ('[status] Disconnected from Cytube. Reconnect attempt in '
+    def cyAnnouceLeftRoom(self):
+        msg = ('[status] Left Cytube channel. Rejoin attempt in '
               '%d seconds.' % self.cyRetryWait)
         self.sendToIrc(msg)
 
