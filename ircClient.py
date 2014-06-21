@@ -27,6 +27,7 @@ class IrcProtocol(irc.IRCClient):
         self.underSpam = False
         self.nicklist = []
         self.nickdict = {} # {('nick','user','host'): id}
+        self.ircConnect = time.time()
 
     def addQueue(self, msg):
         if not self.underSpam and self.bucketToken != 0:

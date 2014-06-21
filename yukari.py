@@ -5,7 +5,8 @@ from twisted.web.server import Site
 from conf import config
 import database, tools, apiClient
 from tools import clog
-import random, re
+import random, re, time
+from datetime import timedelta
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
@@ -29,6 +30,8 @@ class Connections:
         self.cyRetryWait = 0
         self.cyLastConnect = 0
         self.cyLastDisconect = 0
+
+        self.startTime = time.time()
 
     def restartConnection(self, method, waitTime):
         clog.error('restarting connection in %s' % waitTime)
@@ -202,6 +205,20 @@ class Connections:
     def sendAnagram(self, res, args):
         if res:
             self.sendChats('[Anagram: %s] %s' % (args, res))
+
+    def _com_status(self, user, args):
+        pass ## TODO
+
+    def _com_uptime(self, user, args):
+        uptime = time.time() - self.startTime
+        uptime = str(timedelta(seconds=round(uptime)))
+        cyUptime = time.time() - self.cyLastConnect
+        cyUptime = str(timedelta(seconds=round(cyUptime)))
+        ircUptime = time.time() - self.ircFactory.prot.ircConnect
+        ircUptime = str(timedelta(seconds=round(ircUptime)))
+
+        self.sendChats('[status] UPTIME Yukari: %s; Cytube: %s, IRC: %s' %
+                       (uptime, cyUptime, ircUptime))
 
     def sendToIrc(self, msg):
         if self.irc:
