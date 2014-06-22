@@ -1,26 +1,38 @@
 #Yukari Commands
+##**General Commands:**
+- `$greet` Greets the user.
+- `$bye` Says goodbye to the user.
+- `$ask question` Answers Yes or No randomly to question.
+- `$choose choices` Selects one choice from `choices`. `choices` may be separated by whitespace or commas.
+- `$permute choices` Permutes `choices`. `choices` may be separated by whitespace or commas.
+- `$anagram words` Returns an anagram of `words`. www.anagramgenius.com is the server that solves the anagrams.
+- `$8ball question` Answers the question using a magic 8-ball.
+- `$dice` Yukari lost her multidimensional die.
+- `$uptime` Lists the uptimes of Yukari and other connected serviecs.
+- `$sql` Execute a valid SQL command against Yukari's database directly.
 
-- `$add` Queues media queried from the database.
-
- `[-s {queue,q,add,a}] [-u USER] [-r REGISTERED]`
-
+##**CyTube Commands:**
+- `$who` Chooses a Cytube user randomly 
+- `$add` Queue media queried from the database.  
+ `[-s {queue,q,add,a}] [-u USER] [-r REGISTERED]`  
  `[-n NUMBER] [-t TITLE] [-a ARTIST] [-T TEMPORARY] [-N NEXT]`
- 
- - `-s, --sample {queue,q,add,a}` `queue` (`q`) or `add` (`a`) method of quering media from the database. `queue` will search media that was ever queued by user. `add` will search media that was first added, or introduced by user.
+  - `-s, --sample {queue,q,add,a}` `queue` (`q`) or `add` (`a`) method of querying media from the database. `queue` searchs media that was ever queued by user. `add` searchs media that was first added, or introduced by user.
  - `-u, --user USER` Cytube username.
  - `-r, --registered` True/False. Guests are not registered users.
- - `-n, --number` The limit for querying Media table. It is not guaranteed that n media will be queued because there may not be enough matching media, some of those matches may already be on the playlist, and some media that are added may no longer be playable (e.g. deleted).
- - `-t` search by title cached in the Media table
- - `-a, --artist` todo
- - `-T, --temporary` add media as temporary
- - `-N, --next` add media as next
- 
+ - `-n, --number` The limit for querying Media table. The maximum number for non-moderaters is 3, and 20 for moderators and above.
+ - `-t` search by title
+ - `-a, --artist` #TODO
+ - `-T, --temporary` add as temporary
+ - `-N, --next` add as next
 
-- `$greet` Returns a greeting, which may differ depending on the activity of the user
-- `$omit [type, id]` Adds the omit flag to the specified media. If nothing is specified, the flag is applied to the currently playing media.
-- `$unomit [type, id]` Removes omit flag.
-- `$blacklist [type, id]` Adds the blacklist flag to the specified media. If nothing is specified, the flag is appiled to the currently playing media. Blacklisted media will be deleted, and any subsequent queues will be automatically removed from the playlist.
-- `$points` PM command. Returns user points.
+##**CyTube PM Commands:**
+- `$points`  Show points. Adding and queuing media will generate more points. Staying in the channel will yields a small amount of points.  
+- `$read` Tell Yukari that I have read this.
 
-- `$ask` Answers Yes or No randomly
-- `$who` Chooses a Cytube user randomly  
+##**CyTube Moderator commands:**
+- `$omit [type, id]` Add the omit flag to the specified media. If nothing is specified, the flag is applied to the currently playing media. Omitted media will not be selected by `$add`.
+- `$unomit [type, id]` Remove omit flag.
+- `$blacklist [type, id]` Add the blacklist flag to the specified media. If nothing is specified, the flag is appiled to the currently playing media. Blacklisted media will be deleted, and any subsequent queues will be automatically removed from the playlist.
+- `$vocadb [VocaDB Song Id]` Match the currently playing media with a VocaDB Id. This will update the VocaDB Panel.
+  -   `-f` Force update the cache #TODO
+  -   `-p` PV match. Use this when the PV is the same as the entry in VocaDB (and not just the song). Without this the VocaDB panel will not display non-audio related artists such as illustrators and animators #TODO
