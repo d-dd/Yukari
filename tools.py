@@ -22,7 +22,11 @@ class LevelFileLogObserver(log.FileLogObserver):
         else:
             level = logging.INFO
         if level > self.logLevel and level == logging.ERROR:
-            self.write("\033[91m")
+            self.write('\033[91m')
+            log.FileLogObserver.emit(self, eventDict)
+            self.write('\033[0m')
+        elif level == logging.WARNING:
+            self.write('\033[33m')
             log.FileLogObserver.emit(self, eventDict)
             self.write('\033[0m')
         else:

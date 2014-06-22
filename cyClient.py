@@ -166,9 +166,10 @@ class CyProtocol(WebSocketClientProtocol):
         # check for commands
         isCyCommand = False
         thunk = None
-        # unescape after chat has been logged
-        msg = tools.unescapeMsg(msg)
         if msg.startswith('$'):
+            # unescape only if chat is a command
+            # so Yukari can show return value properly ([Ask: >v<] Yes.)
+            msg = tools.unescapeMsg(msg)
             thunk, args, source = self.checkCommand(username, msg, 'chat')
         if username != self.name and username != '[server]':
             #clog.debug('Sending chat to IRC, username: %s' % username)

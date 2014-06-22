@@ -415,15 +415,6 @@ def getChannelPopularMedia(limit, direction):
     # mid|agg|mediaId|type|id|dur|title|by|flag
     return query(sql, binds)
 
-def getChannelUnpopularMedia(limit):
-    limit = min(limit, 1000)
-    sql = ('SELECT Queue.mediaId, SUM(Like.value) AS agg FROM Queue INNER JOIN '
-           'Like ON Queue.queueId = Like.queueId WHERE Queue.queueId IN '
-           '(SELECT queueId FROM Like) GROUP BY Queue.MediaId HAVING agg < 0 '
-           'ORDER BY agg ASC LIMIT ?')
-    binds = (limit,)
-    return query(sql, binds)
-
 def insertUsercount(timeNow, usercount, anoncount):
     sql = 'INSERT INTO Usercount VALUES (?, ?, ?)'
     binds = (timeNow, usercount, anoncount)

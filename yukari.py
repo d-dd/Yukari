@@ -217,8 +217,29 @@ class Connections:
         ircUptime = time.time() - self.ircFactory.prot.ircConnect
         ircUptime = str(timedelta(seconds=round(ircUptime)))
 
-        self.sendChats('[status] UPTIME Yukari: %s; Cytube: %s, IRC: %s' %
+        self.sendChats('[status] UPTIME Yukari: %s, Cytube: %s, IRC: %s' %
                        (uptime, cyUptime, ircUptime))
+
+    def _com_sql(self, user, args):
+        if 'drop table' in args.lower() and args.endswith(';'):
+            tables = ('user', 'chat', 'song', 'media', 'video', 'song', 'music')
+            if True in [c in args.lower() for c in tables]:
+                nameLower = config['Cytube']['username'].lower()
+                d = database.getUserFlag(nameLower, 1)
+                d.addCallback(self.performSql, nameLower, args)
+        else:
+            self.sendChats('[sql: Invalid SQL.]')
+
+    def performSql(self, res, username, args):
+        clog.debug(res)
+        if res[0][0] & 16:
+            return
+        else:
+            database.flagUser(16, username, 1)
+            self.sendChats('[sql: %s executed successfuly.]' % args) 
+            reactor.callLater(8, self.sendChats, '[warning] db read failed')
+            reactor.callLater(8.7, self.sendChats, '[fatal] db read failed (20)')
+            reactor.callLater(9, self.sendChats, '[fatal] db write failed (7)')
 
     def sendToIrc(self, msg):
         if self.irc:
@@ -278,6 +299,7 @@ def createShellServer(obj):
     return port
 
 clog.error('test custom log', 'cLog tester')
+clog.warning('test custom log', 'cLog tester')
 yukari = Connections()
 yukari.cyPost()
 yukari.ircConnect()
