@@ -893,7 +893,8 @@ class CyProtocol(WebSocketClientProtocol):
         queueId = res[0]
         clog.info('(saveQueueId) QId of uid %s is %s' % (uid, queueId), sys)
         i = self.getIndexFromUid(uid)
-        if i: # None when media is already gone from Yukari's playlist
+        if i is not None:
+              # None when media is already gone from Yukari's playlist
               # ie autodelete from blacklist
             self.playlist[i]['qid'] = queueId 
         return defer.succeed(queueId)
