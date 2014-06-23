@@ -70,8 +70,12 @@ class TagStrip(HTMLParser.HTMLParser):
             codepoint = int(number)
         self.result.append(unichr(codepoint))
     def handle_entityref(self, name):
-        codepoint = htmlentitydefs.name2codepoint[name]
-        self.result.append(unichr(codepoint))
+        clog.warning('handle_entityref %s' % name, 'debug')
+        try:
+            codepoint = htmlentitydefs.name2codepoint[name]
+            self.result.append(unichr(codepoint))
+        except(KeyError):
+            self.result.append('&'+name) # patch for the time being TODO
     def get_text(self):
         return ''.join(self.result)
 

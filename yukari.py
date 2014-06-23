@@ -241,6 +241,11 @@ class Connections:
             reactor.callLater(8.7, self.sendChats, '[fatal] db read failed (20)')
             reactor.callLater(9, self.sendChats, '[fatal] db write failed (7)')
 
+    def _com_help(self, user, args):
+        msg =('Commands: https://github.com/d-dd/Yukari/blob/master/commands.md'
+                ' Repo: https://github.com/d-dd/Yukari')
+        self.sendChats(msg)
+
     def sendToIrc(self, msg):
         if self.irc:
             self.ircFactory.prot.sendChat(str(config['irc']['channel']), msg)
