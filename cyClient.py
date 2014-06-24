@@ -371,12 +371,10 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
 
     def _com_points(self, username, args, source):
-        if source != 'pm':
-            return
-        if self.checkRegistered(username):
-            d = database.calcUserPoints(None, username.lower(), 1)
-            d.addCallback(self.returnPoints, username, source)
-            d.addErrback(self.errcatch)
+        reg = self.checkRegistered(username)
+        d = self.calculatePoints(username, reg)
+        d.addCallback(self.returnPoints, username, source)
+        d.addErrback(self.errcatch)
 
     def _com_read(self, username, args, source):
         if source != 'pm':
@@ -449,7 +447,7 @@ class CyProtocol(WebSocketClientProtocol):
     def greet(self, res, username, isReg, source):
         flag = res[0][0]
         if flag & 1: # user has greeted us before
-            d = database.calcUserPoints(None, username.lower(), isReg)
+            d = self.calculatePoints(username, isReg)
             d.addCallback(self.returnGreeting, username, source)
             d.addErrback(self.errcatch)
         elif not flag & 1:
@@ -457,17 +455,8 @@ class CyProtocol(WebSocketClientProtocol):
             reply = 'Nice to meet you, %s!' % username
             self.doSendChat(reply, source, username)
     
-    def returnGreeting(self, res, username, source):
-        points = res[0][0]
-        # When a row is empty (most commonly for the userinout for a new user),
-        # it returns None. A new user who hasn't left (to be
-        # logged in userinout) may have enough points to warrant a better
-        # greeting, but that is very unlikely.
-        if points is None:
-            clog.info('(returnGreeting) %s has ?? points.' % username, sys)
-        else:
-            clog.info('(returnGreeting) %s has %d points.'
-                       % (username, points), sys)
+    def returnGreeting(self, points, username, source):
+        clog.info('(returnGreeting) %s has %d points' % (username, points), sys)
         modflair = False
         if not points or points < 0:
             reply = 'Hello %s.' % username
@@ -480,10 +469,28 @@ class CyProtocol(WebSocketClientProtocol):
         self.doSendChat(reply, source, username, modflair)
 
     def returnPoints(self, res, username, source):
-        points = res[0][0]
+        points = res
         clog.info('(returnPoints) %s has %d points.' %(username, points), sys)
         self.doSendChat('%s: %d' % (username, points), source=source,
                          username=username)
+
+    def calculatePoints(self, username, isRegistered):
+        d1 = database.calcUserPoints(None, username.lower(), isRegistered)
+        d2 = database.calcAccessTime(None, username.lower(), isRegistered)
+        dl = defer.DeferredList([d1, d2])
+        dl.addCallback(self.sumPoints, username, isRegistered)
+        return dl
+
+    def sumPoints(self, res, username, isRegistered):
+        # sample res [(True, [(420,)]), (True, [(258.7464,)])]
+        # [(True, [(0,)]), (True, [(None,)])] # no add/queue, no userinoutrow
+        clog.debug('(sumPoints %s)' % res, sys)
+        try:
+            points = res[0][1][0][0] + res [1][1][0][0]
+        except(TypeError):
+            points = res[0][1][0][0]
+        return points
+
 
     def _omit(self, username, args, dir):
         rank = self._getRank(username)

@@ -253,10 +253,15 @@ def getLikes(queueId):
 def calcUserPoints(res, nameLower, isRegistered):
     sql = ('SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by = %s) * 20)'
        '+ (SELECT (SELECT COUNT(*) FROM Queue WHERE userId = %s) * 3)'
-       '+ (SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid = %s)'
-       '- (SELECT SUM(enter) FROM userinout WHERE userid = %s)) * 0.00002)'
-        % ((_USERIDSQL,) * 4))
-    binds = (nameLower, isRegistered) * 4
+       % ((_USERIDSQL,) * 2))
+    binds = (nameLower, isRegistered) * 2
+    return query(sql, binds)
+
+def calcAccessTime(res, nameLower, isRegistered):
+    sql = ('SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid=%s)'
+           '- (SELECT SUM(enter) FROM userinout WHERE userid = %s)) * 0.00002'
+        % ((_USERIDSQL,) * 2))
+    binds = (nameLower, isRegistered) * 2
     return query(sql, binds)
 
 def addByUserQueue(nameLower, registered, words, limit):
