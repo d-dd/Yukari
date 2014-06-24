@@ -186,8 +186,44 @@ class Connections:
         self.sendChats(msg)
 
     def _com_dice(self, user, args):
-        msg = '[dice: ???]: Dice Key!!'
+        if not args:
+            nums = (1, 6)
+        elif ',' in args:
+            nums = args.split(',')
+        else:
+            nums = args.split()
+        if len(nums) < 2:
+            return
+        times, sides = nums[0], nums[1]
+        if not times or not sides:
+            return
+        try:
+            times = int(times)
+            sides = int(sides)
+        except(ValueError):
+            return
+        rolls = self.rollDice(times, sides)
+        if not rolls:
+            return
+        if len(rolls) == 1:
+            rollsStr = ''
+        elif len(rolls) > 5:
+            rollsStr = str(rolls[:5])[:-1] + ' ...]' 
+        else:
+            rollsStr = str(rolls)
+        msg = ('[Dice: %dd%d] %s %s' % 
+                    (times, sides, sum(rolls), rollsStr))
         self.sendChats(msg)
+
+    def rollDice(self, times, sides):
+        if times < 1 or sides < 1 or times > 999 or sides > 999:
+            return
+        rolls = list()
+        if sides == 1:
+            rolls = times * [sides]
+            return rolls
+        else:
+            return [random.randrange(1, sides+1) for x in range(1, times+1)]
 
     def _com_anagram(self, user, args):
         if not args:

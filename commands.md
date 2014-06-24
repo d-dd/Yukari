@@ -7,7 +7,7 @@
 - `$permute choices` Permutes `choices`. `choices` may be separated by whitespace or commas.
 - `$anagram words` Returns an anagram of `words`. www.anagramgenius.com is the server that solves the anagrams.
 - `$8ball question` Answers the question using a magic 8-ball.
-- `$dice` Yukari lost her multidimensional die.
+- `$dice [rolls, sides]` Rolls dice and outputs sum. Rolls 1d6 without arguments. 
 - `$uptime` Lists the uptimes of Yukari and other connected serviecs.
 - `$sql` Execute a valid SQL command against Yukari's database directly.
 
