@@ -11,8 +11,8 @@ class Prot(Protocol):
         req = {'callType':'mediaById', 'args':{'mediaId':9}}
         reqs = json.dumps(req) + '\r\n'
         #reactor.callLater(1, self.transport.write, reqs)
-        userlist = {'callType':'usersByMediaId', 'args':{'mediaId':'4'}}
-        userlist = json.dumps(userlist) + '\r\n'
+        userlistM = {'callType':'usersByMediaId', 'args':{'mediaId':'4'}}
+        userlistM = json.dumps(userlistM) + '\r\n'
         #reactor.callLater(2, self.transport.write, userlist)
         mRange = {'callType': 'mediaByIdRange', 'args':{'mediaIdRange':'1, 4'}}
         mRange = json.dumps(mRange) + '\r\n'
@@ -20,7 +20,13 @@ class Prot(Protocol):
         userInfo = {'callType': 'userSummaryByUsername', 'args':
                     {'username':'Yukari', 'registered': True}}
         userInfo = json.dumps(userInfo) + '\r\n'
-        reactor.callLater(0, self.transport.write, userInfo)
+        #reactor.callLater(0, self.transport.write, userInfo)
+        popularMedia = {'callType': 'popularMedia', 'args': {'limit': 5, 'direction':'adown'}}
+        popularMedia = json.dumps(popularMedia) + '\r\n'
+        #reactor.callLater(0, self.transport.write, popularMedia)
+        userlist = {'callType':'userlist', 'args':None}
+        userlist = json.dumps(userlist) + '\r\n'
+        reactor.callLater(0, self.transport.write, userlist)
 
     def dataReceived(self, data):
         try:
