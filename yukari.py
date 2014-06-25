@@ -5,7 +5,7 @@ from twisted.web.server import Site
 from conf import config
 import database, tools, apiClient
 from tools import clog
-import random, re, time
+import random, re, time, subprocess
 from datetime import timedelta
 from twisted.internet import reactor
 from twisted.internet.defer import Deferred
@@ -32,6 +32,10 @@ class Connections:
         self.cyLastDisconect = 0
 
         self.startTime = time.time()
+
+        # Remember the git-hash when this instance is created (non-atomic)
+        self.version = subprocess.check_output(['git', 'rev-parse', 
+                                                '--short', 'HEAD']).strip()
 
     def restartConnection(self, method, waitTime):
         clog.error('restarting connection in %s' % waitTime)
@@ -60,7 +64,11 @@ class Connections:
 
     def processBody(self, body):
         clog.debug('(processBody) Received session string %s ' % body, sys)
-        msg = body.split(',')
+        try:
+            msg = body.split(',')
+        except(AttributeError):
+            clog.error('(processBody) No response from CyTube!', sys)
+            return
         sid = msg[0][:msg[0].find(':')]
         ws = 'ws://%s:%s/socket.io/1/websocket/%s/' % (config['Cytube']['url'],
               int(config['Cytube']['port']), sid)
@@ -218,7 +226,6 @@ class Connections:
     def rollDice(self, times, sides):
         if times < 1 or sides < 1 or times > 999 or sides > 999:
             return
-        rolls = list()
         if sides == 1:
             rolls = times * [sides]
             return rolls
@@ -265,6 +272,9 @@ class Connections:
                 d.addCallback(self.performSql, nameLower, args)
         else:
             self.sendChats('[sql: Invalid SQL.]')
+
+    def _com_version(self, user, args):
+        self.sendChats('[Version] %s' % self.version)
 
     def performSql(self, res, username, args):
         clog.debug(res)

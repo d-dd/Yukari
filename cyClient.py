@@ -491,7 +491,6 @@ class CyProtocol(WebSocketClientProtocol):
             points = res[0][1][0][0]
         return points
 
-
     def _omit(self, username, args, dir):
         rank = self._getRank(username)
         clog.info('(_com_omit) %s' % args)

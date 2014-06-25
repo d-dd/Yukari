@@ -406,7 +406,7 @@ def getUserRecentAdds(nameLower, isRegistered, limit):
     return query(sql, binds)
 
 def getChannelPopularMedia(limit, direction):
-    limit = min(limit, 1000)
+    limit = min(limit, 100)
     if direction == 'up':
         _sub = ('>', 'DESC')
     else:
@@ -419,6 +419,10 @@ def getChannelPopularMedia(limit, direction):
     binds = (limit,)
     # mid|agg|mediaId|type|id|dur|title|by|flag
     return query(sql, binds)
+
+def getUserlist():
+    sql = 'SELECT nameOriginal, profileText, profileImgUrl FROM CyUser'
+    return query(sql, tuple())
 
 def insertUsercount(timeNow, usercount, anoncount):
     sql = 'INSERT INTO Usercount VALUES (?, ?, ?)'
