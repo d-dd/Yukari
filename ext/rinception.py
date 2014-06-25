@@ -117,6 +117,39 @@ class LineReceiver(LineReceiver):
                     dAdd, dLikesReceived, dDislikesReceived, dLiked, dDisliked])
         dl.addCallback(self.packUserSummary)
 
+    def _rin_popularMedia(self, args):
+        if 'limit' not in args:
+            self.sendBadArgs('popularMedia')
+            return
+        limit = args['limit']
+        direction = args.get('direction', 'up')
+        if direction != 'down':
+            direction = 'up'
+        d = database.getChannelPopularMedia(limit, direction)
+        d.addCallback(self.sendPopularMedia)
+
+    def _rin_userlist(self, args):
+        d = database.getUserlist()
+        d.addCallback(self.sendUserlist)
+
+    def sendUserlist(self, res):
+        # take out [server], [anonymous], etc
+        # dictionary comprehension! Yay Python 2.7
+        userlist = {name: {'profileText': text, 'profileImgUrl': url}
+                       for (name, text, url) in res if not name.startswith('[')}
+        clog.debug(userlist, 'userlist')
+
+    def sendPopularMedia(self, res):
+        if not res:
+            response = {'callType': 'popularMedia',
+                                   'result': 'NoMediaFound'}
+        popularList = []
+        for row in res:
+            popularList.append(self.jsonifyMediaPop(row))
+        response = {'callType': 'popularMedia', 'result': 'ok',
+                    'resource': popularList}
+        self.sendLineAndLog(json.dumps(response))
+
     def packUserSummary(self, res):
         if not res[0][1]:
             response = {'callType': 'userSummaryByUsername',
@@ -155,6 +188,11 @@ class LineReceiver(LineReceiver):
     def jsonifyMedia(self, mRow):
         mediaDict = {'mediaId': mRow[0], 'type': mRow[1], 'id': mRow[2],
                      'dur': mRow[3], 'title': mRow[4], 'flag': mRow[6]}
+        return mediaDict
+
+    def jsonifyMediaPop(self, mRow):
+        mediaDict = {'likeScore': mRow[1], 'mediaId': mRow[2], 'type': mRow[3],
+                     'id': mRow[4], 'dur': mRow[5], 'title': mRow[6], 'flag': mRow[8]}
         return mediaDict
 
     def sendOneMedia(self, res, args):
