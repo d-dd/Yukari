@@ -114,9 +114,9 @@ class IrcProtocol(irc.IRCClient):
         self.join(self.channelName)
 
     def privmsg(self, user, channel, msg):
-        clog.debug('priv message from %s' % user, sys)
-      #  if msg == '$test':
-      #      self.test_module()
+        clog.debug('(privmsg) message from %s in %s' % (user, channel), sys)
+        if channel != self.channelName:
+            return
         self.factory.handle.recIrcMsg(user, channel, msg)
         flag = 0
         self.logProcess(user, msg, flag)
@@ -213,19 +213,6 @@ class IrcProtocol(irc.IRCClient):
         binds = (None, result, status, timeNow, msg, flag)
         return database.operate(sql, binds)
 
-    def test_makeChat(self, i):
-        """ Test user + chat logging functionality """
-        user = 'testo%s!~dd@pon.pon.pata.pon' % i
-        channel = '#mikumonday'
-        msg = '%s_test' % i
-        self.privmsg(user, channel, msg)
-
-    def test_module(self):
-       self.test_makeChat(1)
-       self.test_makeChat(2)
-       self.test_makeChat(3)
-       self.test_makeChat(4)
-    
 class IrcFactory(ClientFactory):
     protocol = IrcProtocol
 
