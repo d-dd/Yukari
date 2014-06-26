@@ -421,7 +421,8 @@ def getChannelPopularMedia(limit, direction):
     return query(sql, binds)
 
 def getUserlist():
-    sql = 'SELECT nameOriginal, profileText, profileImgUrl FROM CyUser'
+    sql = ('SELECT nameOriginal, registered, profileText, profileImgUrl '
+            'FROM CyUser')
     return query(sql, tuple())
 
 def insertUsercount(timeNow, usercount, anoncount):

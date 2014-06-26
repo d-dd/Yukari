@@ -134,10 +134,14 @@ class LineReceiver(LineReceiver):
 
     def sendUserlist(self, res):
         # take out [server], [anonymous], etc
-        # dictionary comprehension! Yay Python 2.7
-        userlist = {name: {'profileText': text, 'profileImgUrl': url}
-                       for (name, text, url) in res if not name.startswith('[')}
-        clog.debug(userlist, 'userlist')
+        # dictionary comprehension! Yay 2.7
+        userlist = {name: {'profileText': text, 
+                           'registered': True if reg else False, 
+                           'profileImgUrl': url}
+                  for (name, reg, text, url) in res if not name.startswith('[')}
+        response = {'callType': 'userlist', 'result': 'ok', 
+                                            'resource': userlist}
+        self.sendLineAndLog(json.dumps(response))
 
     def sendPopularMedia(self, res):
         if not res:

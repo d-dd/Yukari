@@ -610,7 +610,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def userLeave(self, keyId, leftUser, timeNow):
         userId = leftUser['keyId']
-        assert userId == keyId, 'KeyId mismatch at userleave!'
+        assert userId == keyId, ('KeyId mismatch at userleave! %s, %s' %
+                                                        (userId, keyId))
         timeJoined = leftUser['timeJoined']
         clog.debug('(userLeave) userId %s left: %d' % (keyId, timeNow), sys)
         d = database.insertUserInOut(keyId, timeJoined, timeNow)
