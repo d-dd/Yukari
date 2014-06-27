@@ -250,7 +250,10 @@ class CyProtocol(WebSocketClientProtocol):
         if not vdb:
             return
         if args is None:
-            return # TODO refresh current song
+            mType, mId, __ = self.nowPlayingMedia
+            d = database.getSongId(mType, mId)
+            d.addCallback(self.checkVocadbCommand, mType, mId)
+            return
         try:
             songId = int(args)
         except IndexError:
@@ -265,6 +268,17 @@ class CyProtocol(WebSocketClientProtocol):
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
         d.addCallback(self.loadVocaDb, mType, mId)
+
+    def checkVocadbCommand(self, res, mType, mId):
+        # no match or connection error
+        #clog.debug('checkVdbCommand: %s' % res[0][0], sys)
+        if res[0][0] < 1:
+            # TODO do a full request 
+            return
+        else:
+            d = vdbapi.requestApiBySongId(None, res[0][0], getTime())
+            d.addCallback(self.loadVocaDb, mType, mId)
+
 
     def parseTitle(self, command):
         # argparse doesn't support spaces in arguments, so we search
@@ -292,7 +306,6 @@ class CyProtocol(WebSocketClientProtocol):
         if args is None:
             args = '-n 3'
         clog.info(args, sys)
-        clog.info(args, 'sent to parseTitle')
         title, arguments = self.parseTitle(args)
         args = arguments.split()
 
@@ -539,7 +552,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def bulkLogChat(self):
         if self.chatLoop.running:
-            clog.info('(bulkLogChat) stopping chatLoop', sys)
+            clog.debug('(bulkLogChat) stopping chatLoop', sys)
             self.chatLoop.stop()
         chatlist = self.unloggedChat[:]
         self.unloggedChat = []
@@ -603,7 +616,7 @@ class CyProtocol(WebSocketClientProtocol):
     def cacheKey(self, res, user):
         assert res, 'no res at cacheKey'
         if res[0]:
-            clog.info("(cacheKey) cached %s's key %s" % (user['name'], res[0]),
+            clog.debug("(cacheKey) cached %s's key %s" % (user['name'], res[0]),
                       sys)
             self.userdict[user['name']]['keyId'] = res[0]
         return defer.succeed(res[0])

@@ -13,7 +13,7 @@ nicoMatch = re.compile(r'sm[0-9]{6,9}|nm[0-9]{6,9}')
 
 def processVdbJson(body):
     clog.info('(processVdbJson) Received reply from VocaDB', syst)
-    clog.debug('(processVdbJson) %s' % body, syst)
+   # clog.debug('(processVdbJson) %s' % body, syst)
     body = body.decode('UTF-8')
     try:
         pbody = json.loads(body)
@@ -23,7 +23,7 @@ def processVdbJson(body):
         if 'message' in pbody:
             clog.error(pbody['message'], syst)
     except(TypeError): # body is null (pbody is None)
-        clog.error('(processVdbJson) null from Vocadb', syst)
+        clog.warning('(processVdbJson) null from Vocadb', syst)
         return defer.succeed(0)
 
     songId = pbody['id']
@@ -49,7 +49,7 @@ def requestApiBySongId(res, songId, timeNow):
     agent = Agent(reactor)
     url = 'http://vocadb.net/api/songs/%s?' % songId
     url += '&fields=artists,names&lang=romaji'
-    clog.info('(requestApiBySongId) %s' % url, syst)
+    clog.warning('(requestApiBySongId) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
     d.addCallback(readBody)
     d.addCallbacks(processVdbJson, apiError)
@@ -87,7 +87,7 @@ def requestApiByPv(mType, mId, timeNow):
         service = 'NicoNicoDouga'
     url = 'http://vocadb.net/api/songs?pvId=%s&pvService=%s' % (mId, service)
     url += '&fields=artists,names&lang=romaji'
-    clog.info('(requestApiByPv) %s' % url, syst)
+    clog.warning('(requestApiByPv) %s' % url, syst)
     dd = agent.request('GET', str(url), Headers({'User-Agent':[UserAgentVdb]}))
     dd.addCallback(readBody)
     dd.addCallbacks(processVdbJson, apiError)
@@ -107,7 +107,7 @@ def youtubeDesc(res, mType, mId, timeNow):
         return defer.succeed((0, res[0]))
 
 def errNoIdInDesc(res):
-    clog.error('errNoIdInDesc %s' % res, syst)
+    clog.warning('errNoIdInDesc %s' % res, syst)
     return defer.succeed((1, 0))
 
 def nicoAcquire(res):

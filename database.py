@@ -181,6 +181,12 @@ def queryVocaDbInfo(mType, mId):
     binds = (mType, mId)
     return query(sql, binds)
     
+def getSongId(mType, mId):
+    sql = ('SELECT songId FROM MediaSong WHERE mediaId = (SELECT mediaId '
+            'FROM MEDIA WHERE type=? AND id=?)')
+    binds = (mType, mId)
+    return query(sql, binds)
+
 def bulkQueryMediaSong(res, playlist):
     return dbpool.runInteraction(_bulkQueryMediaSong, playlist)
 
