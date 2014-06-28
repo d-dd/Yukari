@@ -636,7 +636,13 @@ class CyProtocol(WebSocketClientProtocol):
         username = fdict['args'][0]['name']
         if not username:
             return # when anon leaves, might be sync bug
-        d = self.userdict[username]['deferred']
+        try:
+            d = self.userdict[username]['deferred']
+        except(KeyError):
+            # when long staying users leave sometimes we get 
+            # more than one userLeave frame
+            clog.error('_cyCall_userLeave %s does not exist!' % username)
+            return
         clog.debug('_cyCall_userLeave) user %s has left. Adding callbacks' 
                    % username, sys)
         leftUser = self.userdict[username]
