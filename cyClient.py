@@ -359,10 +359,10 @@ class CyProtocol(WebSocketClientProtocol):
                           title, args.temporary, args.next)
 
     def _com_omit(self, username, args, source):
-        self._omit(username, args, 'flag')
+        self._omit(username, args, 'flag', source)
 
     def _com_unomit(self, username, args, source):
-        self._omit(username, args, 'unflag')
+        self._omit(username, args, 'unflag', source)
 
     def _com_blacklist(self, username, args, source):
         rank = self._getRank(username)
@@ -504,7 +504,7 @@ class CyProtocol(WebSocketClientProtocol):
             points = res[0][1][0][0]
         return points
 
-    def _omit(self, username, args, dir):
+    def _omit(self, username, args, dir, source):
         rank = self._getRank(username)
         clog.info('(_com_omit) %s' % args)
         if rank < 2 or not self.nowPlayingMedia:
@@ -514,16 +514,40 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat('Invalid parameters.')
         elif parsed:
             mType, mId = parsed
+            # check existence and retrieve title
+            d = database.getMediaByTypeId(mType, mId)
+            d.addCallback(self.cbOmit, mType, mId, username, dir, source)
+
+    def cbOmit(self, res, mType, mId, username, dir, source):
+        if not res:
+            st = '' if dir == 'flag' else 'un'
+            self.doSendChat('Cannot %somit media not in database'
+                            % st, source, username, toIrc=False)
+
+        elif dir == 'flag' and res[0][6] & 2: # already omitted
+            self.doSendChat('%s is already omitted' % res[0][4], 
+                            source, username, toIrc=False)
+
+        elif dir == 'unflag' and not res[0][6] & 2: # not omitted
+            self.doSendChat('%s is not omitted' % res[0][4], source,
+                            username, toIrc=False)
+        else:
+            title = res[0][4]
             if dir == 'flag':
                 database.flagMedia(2, mType, mId)
                 if (mType, mId) == self.nowPlayingMedia[:2]:
                     self.currentOmitted = True
                     self.updateJs()
+                self.doSendChat('@3939Omitted %s#3939' % title, source, 
+                                username, toIrc=False)
+
             elif dir == 'unflag':
                 database.unflagMedia(2, mType, mId)
                 if (mType, mId) == self.nowPlayingMedia[:2]:
                     self.currentOmitted = False
                     self.updateJs()
+                self.doSendChat('@3939Unomitted %s#3939' % title, source,
+                                username, toIrc=False)
 
     def _omit_args(self, args):
         if not args:

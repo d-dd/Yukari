@@ -320,6 +320,11 @@ def getMediaById(mediaId):
     sql = 'SELECT * FROM Media WHERE mediaId=?'
     return query(sql, (mediaId,))
 
+def getMediaByTypeId(mType, mId):
+    sql = 'SELECT * FROM Media WHERE type=? and id=?'
+    binds = (mType, mId)
+    return query(sql, binds)
+
 def getMediaByIdRange(fromId, limit):
     sql = 'SELECT * FROM Media LIMIT ?, ?'
     return query(sql, (fromId, limit))
