@@ -141,7 +141,6 @@ def insertSong(res, lastUpdate):
     return dbpool.runInteraction(_insertSong, res, lastUpdate)
 
 def _insertSong(txn, res, lastUpdate):
-    clog.debug('(insertSong)', sys)
     sql = 'INSERT OR REPLACE INTO Song VALUES (?, ?, ?)'
     data, songId = res
     binds = (songId, data, lastUpdate)
@@ -149,7 +148,6 @@ def _insertSong(txn, res, lastUpdate):
     return [txn.lastrowid]
 
 def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
-    clog.debug('(insertMediaSong)', sys)
     sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
            ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
     binds = (mType, mId, songId, userId, timeNow, method)
@@ -157,11 +155,11 @@ def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
     
 def insertMediaSongPv(songIdl, mType, mId, userId, timeNow):
     if songIdl:
-        clog.debug('(insertMediaSongPv)', sys)
+        #clog.debug('(insertMediaSongPv)', sys)
         sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
                ' ((SELECT mediaId FROM Media WHERE type=? AND id=?), ?, ?, ?, ?)')
         binds = (mType, mId, songIdl[1], userId, timeNow, songIdl[0])
-        clog.debug('%s, %s' % (sql, binds), sys)
+        #clog.debug('%s, %s' % (sql, binds), sys)
         return operate(sql, binds)
 
 def queryMediaSongRow(mType, mId):
@@ -463,6 +461,16 @@ def getProfile(profileId):
 def setProfileFlag(profileId, flag):
     sql = 'UPDATE CyProfile SET flag=? WHERE profileId=?'
     return operate(sql, (flag, profileId))
+
+def insertAnnouncement(setBy, title, text, timeNow):
+    sql = 'INSERT INTO CyAnnouncement VALUES (?, ?, ?, ?, ?)'
+    binds = (None, timeNow, setBy, title, text)
+    return operate(sql, binds)
+
+def getLastAnnouncement():
+    sql = 'SELECT * FROM CyAnnouncement ORDER BY announceId DESC LIMIT 1'
+    return query(sql, tuple())
+
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks

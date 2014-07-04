@@ -44,7 +44,7 @@ class Connections:
         msg = ('[status] Could not connect to server. Attempting to reconnect '
               'in %d seconds.' % waitTime)
         self.sendToIrc(msg)
-        reactor.callLater(waitTime, method)
+        reactor.callLater(waitTime, method, None)
         waitTime = waitTime**(1+random.random())
         # return between 2 and 300
         return min(max(2, waitTime), 300)
@@ -99,6 +99,8 @@ class Connections:
 
     def cyPostErr(self, err):
         clog.error(err, sys)
+        if self.cyLastConnect - self.cyLastDisconnect > 2*60:
+            self.cyRetryWait = 0
         self.cyRetryWait = self.restartConnection(self.cyPost, self.cyRetryWait)
 
     def processBody(self, body):
@@ -120,10 +122,11 @@ class Connections:
         connectWS(self.wsFactory)
 
     def ircConnect(self):
-        self.ircFactory = IrcFactory(config['irc']['channel'])
-        self.ircFactory.handle = self
-        reactor.connectTCP(config['irc']['url'], int(config['irc']['port']),
-                           self.ircFactory)
+        if config['irc']['channel']:
+            self.ircFactory = IrcFactory(config['irc']['channel'])
+            self.ircFactory.handle = self
+            reactor.connectTCP(config['irc']['url'], int(config['irc']['port']),
+                               self.ircFactory)
 
     def rinstantiate(self, port):
         """ Start server for Rin (steam-bot) """

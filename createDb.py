@@ -189,6 +189,14 @@ con.execute("""
         imgUrl TEXT,
         flag INTEGER DEFAULT 0 NOT NULL);""")
 
+con.execute("""
+        CREATE TABLE IF NOT EXISTS CyAnnouncement(
+        announceId INTEGER PRIMARY KEY,
+        announceTime INTEGER NOT NULL,
+        setBy TEXT,
+        title TEXT,
+        text TEXT);""")
+
 con.commit()
 print "Tables created."
 

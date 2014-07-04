@@ -137,6 +137,39 @@ class CyProtocol(WebSocketClientProtocol):
         anoncount = usercount - len(self.userdict)
         database.insertUsercount(getTime(), usercount, anoncount)
 
+    def _cyCall_announcement(self, fdict):
+        d = database.getLastAnnouncement()
+        d.addCallback(self.compareAnnoucements, fdict)
+
+    def compareAnnoucements(self, res, fdict):
+        args = fdict['args'][0]
+        by = args.get('from', '')
+        title = args.get('title', '')
+        text = args.get('text', '')
+        if res:
+            bySaved = res[0][2]
+            titleSaved = res[0][3]
+            textSaved = res[0][4]
+
+            if bySaved == by and titleSaved == title and textSaved == text:
+                clog.debug('Received same annoucement', syst)
+                return
+
+        d = database.insertAnnouncement(by, title, text, getTime())
+        d.addCallback(self.relayAnnoucement, by, title, text)
+
+    def relayAnnoucement(self, ignored, by, title, text):
+        tools.chatFormat.feed(text)
+        text = tools.chatFormat.get_text()
+        tools.chatFormat.close()
+        tools.chatFormat.result = []
+        tools.chatFormat.reset()
+        msg = '[Announcement: %s] %s (%s)' % (title, text, by)
+        if not self.factory.handle.irc: # wait a bit for join
+            reactor.callLater(10, self.factory.handle.sendToIrc, msg)
+        else:
+            self.factory.handle.sendToIrc(msg)
+
     def _cyCall_chatMsg(self, fdict):
         if not self.receivedChatBuffer:
             return
@@ -1173,7 +1206,7 @@ class WsFactory(WebSocketClientFactory):
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
                        % self.handle.cyRetryWait, syst)
             # reconnect
-            reactor.callLater(self.handle.cyRetryWait, self.handle.cyPost)
+            reactor.callLater(self.handle.cyRetryWait, self.handle.cyPost, None)
             self.handle.cyRetryWait += 2
             self.handle.cyRetryWait = self.handle.cyRetryWait**2
             if self.handle.cyRetryWait >= 5*60:
