@@ -486,7 +486,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.doSendChat(reply, source, username, modflair)
 
     def returnPoints(self, points, username, source):
-        clog.info('(returnPoints) %s has %d points.' %(username, points), syts)
+        clog.info('(returnPoints) %s has %d points.' %(username, points), syst)
         self.doSendChat('%s: %d' % (username, points), source=source,
                                                        username=username)
 
