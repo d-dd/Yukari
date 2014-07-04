@@ -1,17 +1,19 @@
-from ircClient import IrcProtocol, IrcFactory
-from cyClient import CyProtocol, WsFactory
-from ext.rinception import LineReceiver, LineReceiverFactory
-from twisted.web.server import Site
-from conf import config
-import database, tools, apiClient
-from tools import clog
+# Standard Library
 import random, re, time, subprocess
 from datetime import timedelta
-from twisted.internet import reactor
+# Twisted Library
+from twisted.internet import reactor, defer
 from twisted.internet.defer import Deferred
 from twisted.web.client import Agent, readBody
 from twisted.manhole import telnet
+from ircClient import IrcFactory
 from autobahn.twisted.websocket import connectWS
+# Yukari
+from ext.rinception import LineReceiver, LineReceiverFactory
+from cyClient import CyProtocol, WsFactory
+from conf import config
+import database, tools, apiClient, cyProfileChange
+from tools import clog
 
 sys = 'Yukari'
 class Connections:
@@ -47,7 +49,44 @@ class Connections:
         # return between 2 and 300
         return min(max(2, waitTime), 300)
 
-    def cyPost(self):
+    def cyChangeProfile(self):
+        """ Change Yukari's profile picture and text on CyTube """
+        d = database.getCurrentAndMaxProfileId()
+        d.addCallback(self.cbChangeProfile)
+        if not self.cy:
+            d.addBoth(self.cyPost)
+
+    def cbChangeProfile(self, res):
+        #clog.debug('(cbChangeProfile) %s' % res, sys)
+        if len(res) < 2: # no flagged row
+            clog.error('(cbChangeProfile) CyProfile table incorrect.', sys)
+            return defer.fail(None)
+        currentRow = res[0][0]
+        maxRow = res[1][0]
+        if currentRow == maxRow:
+            nextRow = 1
+        else:
+            nextRow = currentRow + 1
+        d = database.getProfile(nextRow)
+        d.addCallback(self.setNewProfile, currentRow, nextRow)
+        return d
+
+    def setNewProfile(self, res, currentRow, nextRow):
+        clog.debug('(setNewProfile) %s' % res, sys)
+        name = config['Cytube']['username']
+        password = config['Cytube']['password']
+        text = res[0][1]
+        imgurl = res[0][2]
+        d = cyProfileChange.changeProfile(name, password, text, imgurl)
+        d.addCallback(self.setProfileFlags, currentRow, nextRow)
+        return d
+    
+    def setProfileFlags(self, ignored, currentRow, nextRow):
+        # set/unset flags only after setNewProfile succeeds
+        database.setProfileFlag(currentRow, 0) # unset current profile flag
+        database.setProfileFlag(nextRow, 1) # set next profile flag
+
+    def cyPost(self, res):
         """ Send a POST request to Cytube for a server session id
         and start the connection process """
         agent = Agent(reactor)
@@ -352,7 +391,8 @@ def createShellServer(obj):
 clog.error('test custom log', 'cLog tester')
 clog.warning('test custom log', 'cLog tester')
 yukari = Connections()
-yukari.cyPost()
+yukari.cyChangeProfile()
+#yukari.cyPost()
 yukari.ircConnect()
 yukari.rinstantiate(int(config['rinserver']['port']))
 reactor.callWhenRunning(createShellServer, yukari)

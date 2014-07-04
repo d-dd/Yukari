@@ -1,15 +1,17 @@
-import database, apiClient, tools, vdbapi
-from tools import clog
-from tools import getTime
-from conf import config
+# Standard Library
 import json, time, re, argparse, random
 from collections import deque
+# Twisted Libraries
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
+# Yukari
+import database, apiClient, tools, vdbapi
+from tools import clog, getTime
+from conf import config
 
-sys = 'CytubeClient'
+syst = 'CytubeClient'
 vdb = config['UserAgent']['vocadb']
 
 class CyProtocol(WebSocketClientProtocol):
@@ -42,7 +44,7 @@ class CyProtocol(WebSocketClientProtocol):
 
 
     def onOpen(self):
-        clog.info('(onOpen) Connected to Cytube!', sys)
+        clog.info('(onOpen) Connected to Cytube!', syst)
         self.connectedTime = time.time()
         self.lastUserlistTime = 0
         self.factory.prot = self
@@ -60,18 +62,18 @@ class CyProtocol(WebSocketClientProtocol):
             self.processFrame(fdict)
 
     def onClose(self, wasClean, code, reason):
-        clog.info('(onClose) Closed Protocol connection: %s' % reason, sys)
+        clog.info('(onClose) Closed Protocol connection: %s' % reason, syst)
 
     def sendf(self, dict): # 'sendFrame' is a WebSocket method name
         frame = json.dumps(dict)
         frame = '5:::' + frame
-        clog.debug('(sendf) [->] %s' % frame, sys)
+        clog.debug('(sendf) [->] %s' % frame, syst)
         self.sendMessage(frame)
 
     def doSendChat(self, msg, source='chat', username=None, modflair=False,
                    toIrc=True):
         clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, source,
-                    username), sys)
+                    username), syst)
 
         if source == 'chat':
             if modflair:
@@ -117,7 +119,7 @@ class CyProtocol(WebSocketClientProtocol):
         m = self.ytUrl.search(msg)
         if m:
             ytId = m.group(6)
-            clog.debug('(searchYoutube) matched: %s' % ytId, sys)
+            clog.debug('(searchYoutube) matched: %s' % ytId, syst)
             d = apiClient.requestYtApi(ytId)
             d.addCallbacks(self.doSendChat, self.errYtInfo)
             d.addErrback(self.errcatch)
@@ -156,7 +158,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
                                           modflair, 0))
             if not self.chatLoop.running:
-                clog.info('(_cy_chatMsg) starting chatLoop', sys)
+                clog.info('(_cy_chatMsg) starting chatLoop', syst)
                 self.chatLoop.start(3, now=False)
         else:
             assert keyId is None
@@ -200,17 +202,19 @@ class CyProtocol(WebSocketClientProtocol):
         if username in self.userdict:
             keyId = self.userdict[username]['keyId']
             if keyId is not None:
-                clog.debug('(_cyCall_pm) key for %s:%s' % (username, keyId), sys)
+                clog.debug('(_cyCall_pm) key for %s:%s' % (username, keyId), syst)
                 database.insertPm(keyId, pmTime, pmCyTime, msg, flag)
             else:
-                clog.error('(_cyCall_pm) no key for %s' % username, sys)
+                # This happens frequently on join
+                # Skips PM log but otherwise okay
+                clog.warning('(_cyCall_pm) no key for %s' % username, syst)
         else:
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
             return
 
         if msg.startswith('%%'):
             if msg == '%%subscribeLike':
-                clog.debug('Received subscribeLike from %s' % username, sys)
+                clog.debug('Received subscribeLike from %s' % username, syst)
                 if username in self.userdict:
                     if not self.userdict[username]['subscribeLike']:
                         self.userdict[username]['subscribeLike'] = True
@@ -233,8 +237,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def checkCommand(self, username, msg, source):
         command = msg.split()[0][1:]
-        clog.debug('(checkCommand) received %s command %s from %s' %
-                    (source, command, username), sys)
+        clog.info('(checkCommand) received %s command %s from %s' %
+                    (source, command, username), syst)
         argsList = msg.split(' ', 1)
         if len(argsList) == 2:
             args = argsList[1]
@@ -257,10 +261,10 @@ class CyProtocol(WebSocketClientProtocol):
         try:
             songId = int(args)
         except IndexError:
-            clog.error('(_com_vocadb) Index Error by %s' % username, sys)
+            clog.warning('(_com_vocadb) Index Error by %s' % username, syst)
             return
         except ValueError:
-            clog.error('(_com_vocadb) Value Error by %s' % username, sys)
+            clog.warning('(_com_vocadb) Value Error by %s' % username, syst)
             return
         userId = self.userdict[username]['keyId']
         timeNow = getTime()
@@ -271,7 +275,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def checkVocadbCommand(self, res, mType, mId):
         # no match or connection error
-        #clog.debug('checkVdbCommand: %s' % res[0][0], sys)
+        #clog.debug('checkVdbCommand: %s' % res[0][0], syst)
         if res[0][0] < 1:
             # TODO do a full request 
             return
@@ -305,7 +309,7 @@ class CyProtocol(WebSocketClientProtocol):
             maxAdd = 20
         if args is None:
             args = '-n 3'
-        clog.info(args, sys)
+        #clog.info(args, syst)
         title, arguments = self.parseTitle(args)
         args = arguments.split()
 
@@ -339,12 +343,12 @@ class CyProtocol(WebSocketClientProtocol):
         if rank < 2:
             args.omit = False
 
-        reply = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
+        info = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
                 'pos:%s, title:%s, include ommited:%s'
                 % (args.number, args.sample, args.user, args.guest,
                    args.temporary, args.next, title, args.omit))
         #self.doSendChat(reply)
-        clog.debug('(_com_add) %s' % reply, sys)
+        clog.debug('(_com_add) %s' % info, syst)
         isRegistered = not args.guest
 
         if args.next:
@@ -421,7 +425,7 @@ class CyProtocol(WebSocketClientProtocol):
             mType, mId = args.split(', ')
         else:
             mType, mId, __ = self.nowPlayingMedia
-        clog.info('(_com_like):type:%s, id:%s' % (mType, mId), sys) 
+        clog.info('(_com_like):type:%s, id:%s' % (mType, mId), syst) 
         uid = self.getUidFromTypeId(mType, mId) 
         i = self.getIndexFromUid(uid)
         if i is None:
@@ -469,7 +473,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat(reply, source, username)
     
     def returnGreeting(self, points, username, source):
-        clog.info('(returnGreeting) %s has %d points' % (username, points), sys)
+        clog.info('(returnGreeting) %s: %d points' % (username, points), syst)
         modflair = False
         if not points or points < 0:
             reply = 'Hello %s.' % username
@@ -481,11 +485,10 @@ class CyProtocol(WebSocketClientProtocol):
             reply = 'Hi %s! <3' % username
         self.doSendChat(reply, source, username, modflair)
 
-    def returnPoints(self, res, username, source):
-        points = res
-        clog.info('(returnPoints) %s has %d points.' %(username, points), sys)
+    def returnPoints(self, points, username, source):
+        clog.info('(returnPoints) %s has %d points.' %(username, points), syts)
         self.doSendChat('%s: %d' % (username, points), source=source,
-                         username=username)
+                                                       username=username)
 
     def calculatePoints(self, username, isRegistered):
         d1 = database.calcUserPoints(None, username.lower(), isRegistered)
@@ -497,7 +500,7 @@ class CyProtocol(WebSocketClientProtocol):
     def sumPoints(self, res, username, isRegistered):
         # sample res [(True, [(420,)]), (True, [(258.7464,)])]
         # [(True, [(0,)]), (True, [(None,)])] # no add/queue, no userinoutrow
-        clog.debug('(sumPoints %s)' % res, sys)
+        clog.debug('(sumPoints %s)' % res, syst)
         try:
             points = res[0][1][0][0] + res [1][1][0][0]
         except(TypeError):
@@ -572,11 +575,11 @@ class CyProtocol(WebSocketClientProtocol):
         try:
             return int(self.userdict[username]['rank'])
         except(KeyError):
-            clog.error('(_getRank) %s not found in userdict' % username, sys)
+            clog.error('(_getRank) %s not found in userdict' % username, syst)
 
     def bulkLogChat(self):
         if self.chatLoop.running:
-            clog.debug('(bulkLogChat) stopping chatLoop', sys)
+            #clog.debug('(bulkLogChat) stopping chatLoop', syst)
             self.chatLoop.stop()
         chatlist = self.unloggedChat[:]
         self.unloggedChat = []
@@ -599,10 +602,10 @@ class CyProtocol(WebSocketClientProtocol):
 
     def deferredChatRes(self, res, key):
         if not res:
-            clog.info('(deferredChatRes): wrote chat to database!', sys)
+            clog.info('(deferredChatRes): wrote chat to database!', syst)
             return defer.succeed(key)
         else:
-            clog.err('(deferredChatRes): error writing to database!', sys)
+            clog.err('(deferredChatRes): error writing to database!', syst)
             return defer.fail(key)
 
     def _cyCall_addUser(self, fdict):
@@ -641,7 +644,7 @@ class CyProtocol(WebSocketClientProtocol):
         assert res, 'no res at cacheKey'
         if res[0]:
             clog.debug("(cacheKey) cached %s's key %s" % (user['name'], res[0]),
-                      sys)
+                      syst)
             self.userdict[user['name']]['keyId'] = res[0]
         return defer.succeed(res[0])
 
@@ -650,7 +653,7 @@ class CyProtocol(WebSocketClientProtocol):
         assert userId == keyId, ('KeyId mismatch at userleave! %s, %s' %
                                                         (userId, keyId))
         timeJoined = leftUser['timeJoined']
-        clog.debug('(userLeave) userId %s left: %d' % (keyId, timeNow), sys)
+        clog.debug('(userLeave) userId %s left: %d' % (keyId, timeNow), syst)
         d = database.insertUserInOut(keyId, timeJoined, timeNow)
         d.addCallback(lambda __: defer.succeed(keyId))
         d.addErrback(self.errcatch)
@@ -668,24 +671,24 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('_cyCall_userLeave %s does not exist!' % username)
             return
         clog.debug('_cyCall_userLeave) user %s has left. Adding callbacks' 
-                   % username, sys)
+                   % username, syst)
         leftUser = self.userdict[username]
         d.addCallback(self.userLeave, leftUser, timeNow)
         d.addErrback(self.errcatch)
         self.removeUser(None, username) # remove user immediatley
 
     def removeUser(self, res, username):
-        clog.debug('(removeUser) Removing user', sys)
+        clog.debug('(removeUser) Removing user', syst)
         try:
             del self.userdict[username]
-            clog.debug('(removeUser) deleted %s' % username, sys)
+            clog.debug('(removeUser) deleted %s' % username, syst)
         except(KeyError):
-            clog.error('(removeUser) Failed: user %s not in userdict' % username, sys)
+            clog.error('(removeUser) Failed: user %s not in userdict' % username, syst)
 
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlistTime < 3: # most likely the same userlist
              # with ip/aliases if mod+
-            clog.info('(_cy_userlist) Duplicate userlist detected', sys)
+            clog.info('(_cy_userlist) Duplicate userlist detected', syst)
             return
         self.lastUserlistTime = time.time()
         userlist = fdict['args'][0]
@@ -708,7 +711,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.playlist = []
         self.nowPlayingMedia = None
         pl = fdict['args'][0]
-        clog.debug('(_cyCall_playlist) received playlist from Cytube', sys)
+        clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
         dbpl, qpl = [], []
         for entry in pl:
             entry['qDeferred'] = defer.Deferred()
@@ -743,10 +746,10 @@ class CyProtocol(WebSocketClientProtocol):
             self.playlist[i]['qDeferred'] = d
             d.addCallback(self.obtainQueueId, mType, mId)
             d.addCallback(self.assignQueueId, uid)
-            #d.addCallback(lambda x: clog.info('obtained queueId %s' % x, sys))
+            #d.addCallback(lambda x: clog.info('obtained queueId %s' % x, syst))
 
     def obtainQueueId(self, res, mType, mId):
-        clog.debug('(checkQueueId) res is %s' % res, sys)
+        clog.debug('(checkQueueId) res is %s' % res, syst)
         if not res: # there is no queue history
             d = database.queryMediaId(mType, mId)
             # 1 = Yukari, 2 = flag for this type of queue
@@ -772,12 +775,12 @@ class CyProtocol(WebSocketClientProtocol):
         # it fails to encode some characters (usually symbols)
         clog.debug('(addToPlaylist) Inserting uid %s %s after index %s' %
                    (item['uid'], item['media']['title'].encode('utf-8'),
-                     index), sys)
+                     index), syst)
 
     def movePlaylistItems(self, beforeUid, afterUid):
         # 'before' is just the uid of the video that is going to move
         clog.info('(movePlaylistItems) move uid:%s, after uid%s' %
-                  (beforeUid, afterUid), sys)
+                  (beforeUid, afterUid), syst)
         if afterUid == 'prepend':
             indexAfter = 0
         else:
@@ -792,11 +795,11 @@ class CyProtocol(WebSocketClientProtocol):
         try:
             media = (i for i in self.playlist if i['uid'] == uid).next()
             index =  self.playlist.index(media)
-            clog.debug('(getIndexFromUid) Looking up uid %s, index is %s'
-                        % (uid, index), sys)
+            #clog.debug('(getIndexFromUid) Looking up uid %s, index is %s'
+            #            % (uid, index), syst)
             return index
         except StopIteration as e:
-            clog.error('(getIndexFromUid) media UID %s not found' % uid, sys)
+            clog.error('(getIndexFromUid) media UID %s not found' % uid, syst)
 
     def getUidFromTypeId(self, mType, mId):
         for media in self.playlist:
@@ -832,7 +835,7 @@ class CyProtocol(WebSocketClientProtocol):
         if userId:
             d = self.queryOrInsertMedia(media, userId)
         else:
-            clog.error('(_cyCall_queue) user id not cached.', sys)
+            clog.error('(_cyCall_queue) user id not cached.', syst)
             return
         flag = 1 if isTemp else 0
         dq = defer.Deferred()
@@ -865,7 +868,7 @@ class CyProtocol(WebSocketClientProtocol):
     def checkFlag(self, res, mType, mId):
         """ Check flag for omit or blacklist """
         if not res:
-            clog.error('(continueBlacklist) Media not found!', sys)
+            clog.error('(continueBlacklist) Media not found!', syst)
         else:
             if res[0][0] & 4: # blacklisted
                 self.doDeleteMedia(mType, mId)
@@ -886,7 +889,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.ytq.append(mId)
             d = task.deferLater(reactor, 1 * (len(self.ytq)-1), 
                                 self.collectYtQueue, mId)
-            clog.debug('(checkMedia) Length of ytq %s' % len(self.ytq), sys)
+            clog.debug('(checkMedia) Length of ytq %s' % len(self.ytq), syst)
             return d
         else:
             return defer.succeed('EmbedOk') # TODO
@@ -896,10 +899,10 @@ class CyProtocol(WebSocketClientProtocol):
             database.unflagMedia(0b1, mType, mId)
 
         elif res == 'Status503':
-            clog.error('(flagOrDelete) Youtube service unavailable.', sys)
+            clog.error('(flagOrDelete) Youtube service unavailable.', syst)
 
         elif res == 'NetworkError':
-            clog.error('(flagOrDelete) There was a network error.', sys)
+            clog.error('(flagOrDelete) There was a network error.', syst)
 
         elif res in ('NoEmbed', 'Status403', 'Status404'):
             self.doDeleteMedia(media['type'], media['id'])
@@ -920,7 +923,7 @@ class CyProtocol(WebSocketClientProtocol):
         index = self.getIndexFromUid(uid)
         deletedMedia = self.playlist.pop(index)
         clog.info('(_cyCall_delete) Removed uid %s, index %s from my playlist' %
-                  (uid, index), sys)
+                  (uid, index), syst)
         assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
     def queryOrInsertMedia(self, media, userId):
@@ -941,7 +944,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def saveQueueId(self, res, mediaId, uid):
         queueId = res[0]
-        clog.info('(saveQueueId) QId of uid %s is %s' % (uid, queueId), sys)
+        clog.info('(saveQueueId) QId of uid %s is %s' % (uid, queueId), syst)
         i = self.getIndexFromUid(uid)
         if i is not None:
               # None when media is already gone from Yukari's playlist
@@ -950,14 +953,14 @@ class CyProtocol(WebSocketClientProtocol):
         return defer.succeed(queueId)
         
     def printRes(self, res):
-        clog.info('(printRes) %s' % res, sys)
+        clog.info('(printRes) %s' % res, syst)
         return defer.succeed(res)
         
     def errYtInfo(self, err):
-        clog.error('(errYtInfo) %s' % err, sys)
+        clog.error('(errYtInfo) %s' % err, syst)
 
     def dbErr(self, err):
-        clog.error('(dbErr): %s' % err.value, sys)
+        clog.error('(dbErr): %s' % err.value, syst)
 
     def _cyCall_changeMedia(self, fdict):
         # set self.nowPlayingMedia
@@ -969,7 +972,7 @@ class CyProtocol(WebSocketClientProtocol):
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
-        clog.info('(_cyCall_changeMedia) %s' % s, sys)
+        clog.info('(_cyCall_changeMedia) %s' % s, syst)
         d = self.checkMedia(mType, mId)
         d.addErrback(self.errcatch)
         d.addCallback(self.flagOrDelete, media, mType, mId)
@@ -986,7 +989,7 @@ class CyProtocol(WebSocketClientProtocol):
             queueId = self.playlist[i]['qid']
             d = database.getLikes(queueId)
         except(KeyError):
-            clog.error('(loadLikes) Key is not ready!', sys)
+            clog.error('(loadLikes) Key is not ready!', syst)
             d = self.playlist[i]['qDeferred']
             d.addCallback(database.getLikes)
         # result  [(userId, 1), (6, 1)]
@@ -1060,7 +1063,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_queueFail(self, fdict):
         msg = fdict['args'][0]['msg']
-        clog.error('(_cyCall_queueFail) %s' % msg, sys)
+        clog.warning('(_cyCall_queueFail) %s' % msg, syst)
 
     def cleanUp(self):
         # set restart to False
@@ -1085,8 +1088,7 @@ class CyProtocol(WebSocketClientProtocol):
             try:
                 user = self.userdict[username]
             except KeyError as e:
-                clog.error('(checkRegistered): %s' % e, sys)
-                #raise
+                clog.error('(checkRegistered): %s' % e, syst)
             if user['rank'] == 0:
                 return 0
             else:
@@ -1158,7 +1160,7 @@ class WsFactory(WebSocketClientFactory):
     def clientConnectionLost(self, connector, reason):
         self.handle.cyLastDisconnect = time.time()
         clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s'
-                     % reason, sys)
+                     % reason, syst)
         if not self.handle.cyRestart:
             self.handle.doneCleanup('cy')
         else:
@@ -1169,7 +1171,7 @@ class WsFactory(WebSocketClientFactory):
                 pass
             self.handle.cyAnnouceLeftRoom()
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
-                       % self.handle.cyRetryWait, sys)
+                       % self.handle.cyRetryWait, syst)
             # reconnect
             reactor.callLater(self.handle.cyRetryWait, self.handle.cyPost)
             self.handle.cyRetryWait += 2
@@ -1181,4 +1183,4 @@ class WsFactory(WebSocketClientFactory):
 
     def clientConnectionFailed(self, connector, reason):
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
-                    % reason, sys)
+                    % reason, syst)

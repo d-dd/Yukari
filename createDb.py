@@ -182,6 +182,13 @@ con.execute("""
         """)
 
 
+con.execute("""
+        CREATE TABLE IF NOT EXISTS CyProfile(
+        profileId INTEGER PRIMARY KEY,
+        text TEXT,
+        imgUrl TEXT,
+        flag INTEGER DEFAULT 0 NOT NULL);""")
+
 con.commit()
 print "Tables created."
 

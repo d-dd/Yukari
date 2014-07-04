@@ -451,6 +451,19 @@ def insertPm(userId, pmTime, pmCyTime, msg, flag):
     binds = (None, userId, pmTime, pmCyTime, msg, flag)
     return operate(sql, binds)
 
+def getCurrentAndMaxProfileId():
+    sql = ('SELECT profileId FROM CyProfile WHERE flag=1 UNION ALL '
+           'SELECT MAX(profileId) FROM CyProfile')
+    return query(sql, tuple())
+
+def getProfile(profileId):
+    sql = 'SELECT profileId, text, imgUrl FROM CyProfile WHERE profileId=?'
+    return query(sql, (profileId,))
+
+def setProfileFlag(profileId, flag):
+    sql = 'UPDATE CyProfile SET flag=? WHERE profileId=?'
+    return operate(sql, (flag, profileId))
+
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 dbpool.runInteraction(turnOnFK)
