@@ -171,6 +171,17 @@ class Connections:
         if needProcessing:
             self.processCommand(user, msg)
 
+    def recCyChangeMedia(self, media):
+        if self.irc and media:
+            mType, mId, title = media
+            if mType == 'yt':
+                link = 'https://youtu.be/%s' % mId
+                msg = '[Now Playing]: %s  %s' % (title, link)
+            else:
+                msg = '[Now Playing]: %s (%s, %s)' % (title, mType, mId)
+            msg = tools.returnStr(msg)
+            self.ircFactory.prot.sayNowPlaying(msg)
+
     def processCommand(self, user, msg):
         if msg.startswith('$'):
             msg = msg.encode('utf-8')

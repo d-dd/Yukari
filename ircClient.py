@@ -20,6 +20,7 @@ class IrcProtocol(irc.IRCClient):
     def __init__(self):
         self.nickname = str(config['irc']['nick'])
         self.channelName = str(config['irc']['channel'])
+        self.channelNp = str(config['irc']['np'])
         self.chatQueue = deque()
         self.bucketToken = int(config['irc']['bucket'])
         self.bucketTokenMax = int(config['irc']['bucket'])
@@ -72,6 +73,9 @@ class IrcProtocol(irc.IRCClient):
         d = database.operate(sql, binds) # must be in unicode
         self.say(channel, msg) # must not be in unicode
         
+    def sayNowPlaying(self, msg):
+        self.say(self.channelNp, msg)
+
     def irc_RPL_NAMREPLY(self, prefix, params):
         channel = params[2]
         nicks = params[3].split(' ')
@@ -86,8 +90,17 @@ class IrcProtocol(irc.IRCClient):
         irc.IRCClient.connectionMade(self)
 
     def signedOn(self):
-        self.join(self.channelName)
+        self.identify()
+        # wait 1 second to finish identifying
+        # not really important, but joining before ident won't show the VHOST :)
+        # For some reason I don't get a privmsg reply from NickServ, it might be
+        # a special callback...
+        reactor.callLater(1, self.join, self.channelName)
+        reactor.callLater(1, self.join, (str(config['irc']['np'])))
         self.factory.prot = self
+
+    def identify(self):
+        self.msg('NickServ', 'IDENTIFY %s' % str(config['irc']['pass']))
 
     def userJoined(self, user, channel):
         clog.info('%s has joined %s' % (user, channel), sys)
@@ -114,7 +127,7 @@ class IrcProtocol(irc.IRCClient):
         self.join(self.channelName)
 
     def privmsg(self, user, channel, msg):
-        clog.debug('(privmsg) message from %s in %s' % (user, channel), sys)
+        clog.warning('(privmsg) message from %s in %s' % (user, channel), sys)
         if channel != self.channelName:
             return
         self.factory.handle.recIrcMsg(user, channel, msg)

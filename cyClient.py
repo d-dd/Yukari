@@ -40,8 +40,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def errcatch(self, err):
         clog.error('caught something')
+        err.printTraceback()
         self.err.append(err)
-
 
     def onOpen(self):
         clog.info('(onOpen) Connected to Cytube!', syst)
@@ -178,11 +178,10 @@ class CyProtocol(WebSocketClientProtocol):
         username = args['username']
         msg = args['msg']
         chatCyTime = int((args['time'])/10.0)
-        if 'modflair' in args['meta']:
-            modflair = args['meta']['modflair']
-        else:
-            modflair = None
-        action = True if 'action' in args['meta'] else False
+        meta = args['meta']
+        modflair = meta.get('modflair', None)
+        action = meta.get('action', None)
+        #action = True if 'action' in args['meta'] else False
         if username == '[server]':
             keyId = 2
         elif username in self.userdict:
@@ -320,7 +319,6 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             d = vdbapi.requestApiBySongId(None, res[0][0], getTime())
             d.addCallback(self.loadVocaDb, mType, mId)
-
 
     def parseTitle(self, command):
         # argparse doesn't support spaces in arguments, so we search
@@ -880,7 +878,6 @@ class CyProtocol(WebSocketClientProtocol):
         dCheck = self.checkMedia(mType, mId)
         dCheck.addCallback(self.flagOrDelete, media, mType, mId)
 
-
         if mType == 'yt' and vdb:
             timeNow = getTime()
             # since this callback is added after checkMedia which has a delay,
@@ -1004,6 +1001,9 @@ class CyProtocol(WebSocketClientProtocol):
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
+        # send to seconday IRC channel
+        self.factory.handle.recCyChangeMedia(self.nowPlayingMedia)
+
         clog.info('(_cyCall_changeMedia) %s' % s, syst)
         d = self.checkMedia(mType, mId)
         d.addErrback(self.errcatch)
