@@ -150,12 +150,19 @@ class Connections:
         if self.irc and user != 'Yukarin':
             #s = TagStrip()
             clog.debug('recCyMsg: %s' % msg, sys)
+            msg = tools.returnUnicode(msg)
             tools.chatFormat.feed(msg)
-            cleanMsg = tools.chatFormat.get_text()
+            try:
+                cleanMsg = tools.chatFormat.get_text()
+            except(UnicodeDecodeError):
+                clog.warning('(recCyMsg) received non-ascii command', sys)
+
             # reset so we can use the same instance
             tools.chatFormat.close()
             tools.chatFormat.result = []
             tools.chatFormat.reset()
+
+
             if not action:
                 cleanMsg = '(%s) %s' % (user, cleanMsg)
             elif action:

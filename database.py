@@ -40,7 +40,7 @@ def queryResult(res):
         #clog.debug('(queryResult) No match found', sys)
         return defer.fail(NoRowException)
     else:
-        clog.debug('(queryResult) match found %s' % res, sys)
+        #clog.debug('(queryResult) match found %s' % res, sys)
         return defer.succeed(res[0])
 
 def _makeInsert(table, *args):
@@ -136,7 +136,7 @@ def queryLastQueue(mType, mId):
 
 def insertSong(res, lastUpdate):
     if res == 0:
-        clog.error('(insertSong) VocaDB returned null. Skipping.', sys)
+        clog.warning('(insertSong) VocaDB returned null. Skipping.', sys)
         return defer.succeed([0])
     return dbpool.runInteraction(_insertSong, res, lastUpdate)
 
@@ -288,8 +288,8 @@ def addByUserQueue(nameLower, registered, words, limit):
            'ORDER BY RANDOM() LIMIT ?)') % (name, title)
     binds.append(limit)
     binds = tuple(binds)
-    clog.info(sql, 'sql')
-    clog.info(binds, 'sql')
+    #clog.info(sql, 'sql')
+    #clog.info(binds, 'sql')
     return query(sql, binds)
 
 def addByUserAdd(nameLower, registered, words, limit):
@@ -310,8 +310,8 @@ def addByUserAdd(nameLower, registered, words, limit):
           'ORDER BY RANDOM() LIMIT ?') % (name, title)
     binds.append(limit)
     binds = tuple(binds)
-    clog.info(sql, 'sql')
-    clog.info(binds, 'sql')
+    #clog.info(sql, 'sql')
+    #clog.info(binds, 'sql')
     return query(sql, binds)
 
 def getMediaById(mediaId):

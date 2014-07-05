@@ -23,7 +23,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.lastChatLogTime = 0
         self.receivedChatBuffer = False
         self.queueMediaList = deque()
-        self.canBurst = False
+        self.burstCounter = 0
         self.lastQueueTime = time.time() - 20 #TODO
         self.nowPlayingMedia = None
         self.currentLikes = []
@@ -72,8 +72,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def doSendChat(self, msg, source='chat', username=None, modflair=False,
                    toIrc=True):
-        clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, source,
-                    username), syst)
+        clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, 
+                   source, username), syst)
 
         if source == 'chat':
             if modflair:
@@ -202,6 +202,7 @@ class CyProtocol(WebSocketClientProtocol):
         isCyCommand = False
         thunk = None
         if msg.startswith('$'):
+            msg= tools.returnStr(msg)
             # unescape only if chat is a command
             # so Yukari can show return value properly ([Ask: >v<] Yes.)
             msg = tools.unescapeMsg(msg)
@@ -270,8 +271,12 @@ class CyProtocol(WebSocketClientProtocol):
 
     def checkCommand(self, username, msg, source):
         command = msg.split()[0][1:]
-        clog.info('(checkCommand) received %s command %s from %s' %
-                    (source, command, username), syst)
+        try:
+            clog.info('(checkCommand) received %s command %s from %s' %
+                        (source, command, username), syst)
+        except(UnicodeDecodeError):
+            clog.warning('(checkCommand) received non-ascii command', syst)
+
         argsList = msg.split(' ', 1)
         if len(argsList) == 2:
             args = argsList[1]
@@ -760,8 +765,9 @@ class CyProtocol(WebSocketClientProtocol):
         self.findSonglessMedia(dbpl)
 
     def findSonglessMedia(self, playlist):
-        d = database.bulkQueryMediaSong(None, playlist)
-        d.addCallback(self.requestEmptySongs)
+        if vdb:
+            d = database.bulkQueryMediaSong(None, playlist)
+            d.addCallback(self.requestEmptySongs)
 
     def requestEmptySongs(self, res):
         timeNow = getTime()
@@ -804,11 +810,8 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             index = self.getIndexFromUid(afterUid)
         self.playlist.insert(index + 1, item)
-        # I want to print media['title'] but depending on the terminal
-        # it fails to encode some characters (usually symbols)
         clog.debug('(addToPlaylist) Inserting uid %s %s after index %s' %
-                   (item['uid'], item['media']['title'].encode('utf-8'),
-                     index), syst)
+                   (item['uid'], item['media']['title'], index), syst)
 
     def movePlaylistItems(self, beforeUid, afterUid):
         # 'before' is just the uid of the video that is going to move
@@ -839,10 +842,6 @@ class CyProtocol(WebSocketClientProtocol):
             if media['media']['id'] == mId:
                 if media['media']['type'] == mType:
                     return media['uid']
-
-    def displaypl(self):
-        for item in self.playlist:
-            print item['media']['title'].encode('utf-8')
 
     def _cyCall_queue(self, fdict):
         timeNow = getTime()
@@ -1048,7 +1047,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def processVocadb(self, res, mType, mId):
         if not res:
-            clog.error('(processVocadb) Vocadb db query returned []')
+            clog.info('(processVocadb) Vocadb db query returned []')
             self.currentVocadb = 'vocapack =' + json.dumps({'res': False})
         else:
             setby = res[0][0]
@@ -1095,8 +1094,23 @@ class CyProtocol(WebSocketClientProtocol):
         self.movePlaylistItems(beforeUid, afterUid)
 
     def _cyCall_queueFail(self, fdict):
-        msg = fdict['args'][0]['msg']
-        clog.warning('(_cyCall_queueFail) %s' % msg, syst)
+        args = fdict['args'][0]
+        msg = args.get('msg', '')
+        link = args.get('link', '')
+        clog.warning('(_cyCall_queueFail) %s: %s' % (msg, link), syst)
+        # Flag videos when CyTube rejects them.
+        # This usually doesn't happen becuase CyTube caches videos to the
+        # channel library, and will only check against the service API once.
+        # This could happen if the channel is changed or library items are
+        # removed which forces CyTube to re-check the video.
+        if 'Private video' in msg or 'Video not found' in msg and link:
+            if 'http://youtu' in link:
+                mType = 'yt'
+                m = self.ytUrl.search(link)
+                ytId = m.group(6)
+                d = database.flagMedia(1, mType, ytId)
+                d.addCallback(lambda ignored:
+                    clog.warning('Flagged invalid media %s %s' % (mType, ytId)))
 
     def cleanUp(self):
         # set restart to False
@@ -1135,26 +1149,34 @@ class CyProtocol(WebSocketClientProtocol):
         lenBefore = len(self.queueMediaList)
         self.queueMediaList.extend(media)
         if time.time() - self.lastQueueTime > 20:
-            self.canBurst = True
+            self.burstCounter = 10
         # burst!
-        bursted = 0
-        if self.canBurst and self.queueMediaList:
-            for i in range(min(len(self.queueMediaList), 10)):
+        if self.burstCounter and self.queueMediaList:
+            for i in range(min(len(self.queueMediaList), self.burstCounter)):
                 mType, mId = self.queueMediaList.popleft()
                 self.sendf({'name': 'queue', 'args': {'type': mType, 
                                     'id': mId, 'pos': pos, 'temp': temp}})
-                bursted += 1
-            self.canBurst = False
+                self.burstCounter -= 1
             self.lastQueueTime = time.time()
 
+        def sustainQueue(pos, temp):
+            clog.debug('sustainQueue looped', syst)
+            if time.time() - self.lastQueueTime < 2: # Prevent queueing too quickly
+                return
+            else:
+                mType, mId = self.queueMediaList.popleft()
+                self.sendf({'name': 'queue', 'args': {'type': mType, 
+                                            'id': mId, 'pos': pos, 'temp': temp}})
+                self.lastQueueTime = time.time()
+                if not self.queueMediaList:
+                    sustainedLoop.stop()
+
+
         # sustain
-        # we can't use enumerate here; the list gets shorter each iteration
-        for i in range(len(media)-bursted):
-            # add a little slower than 2/sec to account for network latency
-            # and Twisted callLater time is not guaranteed
-            wait = (i + lenBefore + 3)/1.7 
-            d = reactor.callLater(wait, self.doAddSustained, pos, temp)
-    
+        if self.queueMediaList:
+            sustainedLoop = task.LoopingCall(sustainQueue, pos, temp)
+            sustainedLoop.start(2.05, now=True)
+        
     def doAddSustained(self, pos, temp):
         mType, mId = self.queueMediaList.popleft()
         self.sendf({'name': 'queue', 'args': {'type': mType, 

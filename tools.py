@@ -35,17 +35,23 @@ class LevelFileLogObserver(log.FileLogObserver):
 class CustomLog():
     """ logging shortcut """
     def debug(self, msg, sys=None):
+        msg = returnStr(msg)
         log.msg(msg, level=logging.DEBUG, system=sys)
     def info(self, msg, sys=None):
+        msg = returnStr(msg)
         log.msg(msg, level=logging.INFO, system=sys)
     def warning(self, msg, sys=None):
+        msg = returnStr(msg)
         log.msg(msg, level=logging.WARNING, system=sys)
     def error(self, msg, sys=None):
+        msg = returnStr(msg)
         log.msg(msg, level=logging.ERROR, system=sys)
     # using log.err emits the error message twice. :?
     def errorm(self, msg, sys=None):
+        msg = returnStr(msg)
         log.err(msg, level=logging.ERROR, system=sys)
     def critical(self, msg, sys=None):
+        msg = returnStr(msg)
         log.msg(msg, level=logging.CRITICAL, system=sys)
 
 def unescapeMsg(htmlStr):
@@ -81,6 +87,18 @@ class TagStrip(HTMLParser.HTMLParser):
 
 def getTime():
     return int(time.time()*100)
+
+def returnStr(text):
+    if isinstance(text, unicode):
+        return text.encode('utf-8')
+    else:
+        return text
+
+def returnUnicode(text):
+    if isinstance(text, str):
+        return text.decode('utf-8')
+    else:
+        return text
 
 clog = CustomLog()
 # only debug will show Twisted-produced messages
