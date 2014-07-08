@@ -181,34 +181,39 @@ class CyProtocol(WebSocketClientProtocol):
         meta = args['meta']
         modflair = meta.get('modflair', None)
         action = meta.get('action', None)
-        #action = True if 'action' in args['meta'] else False
+        # shadowmute is effective but is a little hard to keep it hidden:
+        # -Yukari will ignore shadowmuted commands
+        # -It will not relay to IRC
+        shadow = meta.get('shadow', None)
+        flag = 1 if shadow else 0
         if username == '[server]':
             keyId = 2
         elif username in self.userdict:
             keyId = self.userdict[username]['keyId']
         if keyId:
             self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
-                                          modflair, 0))
+                                          modflair, flag))
             if not self.chatLoop.running:
                 clog.info('(_cy_chatMsg) starting chatLoop', syst)
                 self.chatLoop.start(3, now=False)
         else:
             assert keyId is None
-            chatArgs = (timeNow, chatCyTime, msg, modflair, 0)
+            chatArgs = (timeNow, chatCyTime, msg, modflair, flag)
             self.userdict[username]['deferred'].addCallback(self.deferredChat,
                                                                 chatArgs)
         # check for commands
         isCyCommand = False
         thunk = None
-        if msg.startswith('$'):
+        if msg.startswith('$') and not shadow:
             msg= tools.returnStr(msg)
             # unescape only if chat is a command
             # so Yukari can show return value properly ([Ask: >v<] Yes.)
             msg = tools.unescapeMsg(msg)
             thunk, args, source = self.checkCommand(username, msg, 'chat')
-        if username != self.name and username != '[server]':
+        # send to yukari.py
+        if username != self.name and username != '[server]' and not shadow:
             #clog.debug('Sending chat to IRC, username: %s' % username)
-            self.factory.handle.recCyMsg(username, msg, not thunk, action=action)
+            self.factory.handle.recCyMsg(username, msg, not thunk,action=action)
         # send to IRC before executing the command
         # to maintain proper chat queue (user command before Yukari's reply)
         if thunk is not None:
