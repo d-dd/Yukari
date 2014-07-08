@@ -336,7 +336,8 @@ class CyProtocol(WebSocketClientProtocol):
         if tEnd == -1:
             tEnd = len(command)
         shortMsg = command[:tBeg-3] + command[tEnd+1:]
-        return command[tBeg:tEnd], shortMsg
+        title = tools.returnUnicode(command[tBeg:tEnd])
+        return title, shortMsg
 
     def _com_add(self, username, args, source):
         if source != 'chat':
