@@ -26,11 +26,11 @@
  - `-N, --next` add as next
 
 ##**CyTube PM Commands:**
-- `$points`  Show points. Adding and queuing media will generate more points. Staying in the channel will yields a small amount of points.  
+- `$points`  Show points. Adding and queuing media will generate more points. Staying in the channel will yield a small amount of points.  
 - `$read` Tell Yukari that I have read this.
 
 ##**CyTube Moderator commands:**
-- `$replay` Set the currently playing media to replay once. If Yukari detects a non-natural mediaChange, the replay will be cancelled.
+- `$replay` Set the currently playing media to replay once. If Yukari detects a non-natural changeMedia, the replay will be cancelled.
 - `$omit [type, id]` Add the omit flag to the specified media. If nothing is specified, the flag is applied to the currently playing media. Omitted media will not be selected by `$add`.
 - `$unomit [type, id]` Remove omit flag.
 - `$blacklist [type, id]` Add the blacklist flag to the specified media. If nothing is specified, the flag is appiled to the currently playing media. Blacklisted media will be deleted, and any subsequent queues will be automatically removed from the playlist.
