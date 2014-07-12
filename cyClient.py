@@ -334,10 +334,12 @@ class CyProtocol(WebSocketClientProtocol):
         rank = self._getRank(username)
         if rank < 2:
             return
+        title = self.nowPlayingMedia['title']
         self.willReplay = (self.nowPlayingMedia['type'], 
-                          self.nowPlayingMedia['id'],
-                          self.nowPlayingMedia['title'])
-        self.doSendChat('This media has been set to replay once.', toIrc=False)
+                          self.nowPlayingMedia['id'], title)
+        self.doSendChat(wisp('%s has been set to replay once.' % title),
+                                                            toIrc=False)
+
 
     def _com_vote(self, username, args, source):
         if source != 'chat':
