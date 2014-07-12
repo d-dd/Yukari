@@ -30,6 +30,7 @@
 - `$read` Tell Yukari that I have read this.
 
 ##**CyTube Moderator commands:**
+- `$replay` Set the currently playing media to replay once. If Yukari detects a non-natural mediaChange, the replay will be cancelled.
 - `$omit [type, id]` Add the omit flag to the specified media. If nothing is specified, the flag is applied to the currently playing media. Omitted media will not be selected by `$add`.
 - `$unomit [type, id]` Remove omit flag.
 - `$blacklist [type, id]` Add the blacklist flag to the specified media. If nothing is specified, the flag is appiled to the currently playing media. Blacklisted media will be deleted, and any subsequent queues will be automatically removed from the playlist.

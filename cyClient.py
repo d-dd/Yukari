@@ -14,6 +14,10 @@ from conf import config
 syst = 'CytubeClient'
 vdb = config['UserAgent']['vocadb']
 
+def wisp(msg):
+    """Decorate msg with system-whisper trigger"""
+    return '@3939%s#3939' % msg
+
 class CyProtocol(WebSocketClientProtocol):
 
     def __init__(self):
@@ -37,6 +41,11 @@ class CyProtocol(WebSocketClientProtocol):
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
         self.ytq = deque()
+        self.activePoll = None
+        self.pollState = None
+        self.usercount = 0
+        self.willReplay = False
+        self.mediaRemainingTime = 0
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -134,6 +143,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_usercount(self, fdict):
         usercount = fdict['args'][0]
+        self.usercount = usercount
         anoncount = usercount - len(self.userdict)
         database.insertUsercount(getTime(), usercount, anoncount)
 
@@ -273,6 +283,32 @@ class CyProtocol(WebSocketClientProtocol):
             if thunk is not None:
                 thunk(username, args, 'pm')
 
+    def _cyCall_newPoll(self, fdict):
+        poll = fdict['args'][0]
+        self.activePoll = poll
+        if poll['initiator']  == self.name:
+            if poll['title'].startswith('Replay'):
+                self.pollState = {'type':'replay'}
+                if poll['options'] == ['No!', 'Yes!']:
+                    self.pollState['order'] = 0
+                elif poll['options'] == ['Yes!', 'No!']:
+                    self.pollState['order'] = 1
+
+
+    def _cyCall_updatePoll(self, fdict):
+        pollType = self.pollState.get('type', None)
+        if pollType == 'replay':
+            self.pollState['counts'] = fdict['args'][0]['counts']
+
+    def _cyCall_closePoll(self, fdict):
+        self.activePoll = None
+
+    def _cyCall_mediaUpdate(self, fdict):
+        if self.willReplay:
+            currentTime = fdict['args'][0]['currentTime']
+            totalTime = self.nowPlayingMedia['seconds']
+            self.mediaRemainingTime = totalTime - currentTime
+
     def checkCommand(self, username, msg, source):
         command = msg.split()[0][1:]
         try:
@@ -292,11 +328,53 @@ class CyProtocol(WebSocketClientProtocol):
             thunk(username, args, source)
             return True
             
+    def _com_replay(self, username, args, source):
+        if source != 'chat':
+            return
+        rank = self._getRank(username)
+        if rank < 2:
+            return
+        self.willReplay = (self.nowPlayingMedia['type'], 
+                          self.nowPlayingMedia['id'],
+                          self.nowPlayingMedia['title'])
+        self.doSendChat('This media has been set to replay once.', toIrc=False)
+
+    def _com_vote(self, username, args, source):
+        if source != 'chat':
+            return
+        rank = self._getRank(username)
+        if rank < 2:
+            return
+        if not args:
+            return
+        if self.activePoll:
+            self.doSendChat('There is an active poll. Please end it first.',
+                            toIrc=False)
+            return
+        if args == 'replay':
+            self.makeReplayPoll()
+
+    def makeReplayPoll(self):
+        """ Make a poll asking users if they would like the current video
+        to be replayed """
+        boo = random.randint(0, 1)
+        # our channel allows anons to vote, so use usercount
+        # TODO save permission settings on join and adjust accordingly
+        opts = ('Yes!', 'No!') if boo else ('No!', 'Yes!')
+        target = '3:1' if boo else '1:3'
+        self.doMakePoll('Replay %s? (need %s to replay)' % 
+                    (self.nowPlayingMedia['title'], target), False, False, opts)
+
+    def doMakePoll(self, title, obscured, timer, *args):
+        self.sendf({'name': 'newPoll', 'args': {'title': title,
+                    'opts': args[0], 'obscured': obscured}})
+
     def _com_vocadb(self, username, args, source):
         if not vdb:
             return
         if args is None:
-            mType, mId, __ = self.nowPlayingMedia
+            mType = self.nowPlayingMedia['type']
+            mId = self.nowPlayingMedia['id']
             d = database.getSongId(mType, mId)
             d.addCallback(self.checkVocadbCommand, mType, mId)
             return
@@ -310,7 +388,8 @@ class CyProtocol(WebSocketClientProtocol):
             return
         userId = self.userdict[username]['keyId']
         timeNow = getTime()
-        mType, mId, __  = self.nowPlayingMedia
+        mType = self.nowPlayingMedia['type']
+        mId = self.nowPlayingMedia['id']
         d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
         # method 4 = manual set
         d.addCallback(self.loadVocaDb, mType, mId)
@@ -466,7 +545,8 @@ class CyProtocol(WebSocketClientProtocol):
         if args is not None:
             mType, mId = args.split(', ')
         else:
-            mType, mId, __ = self.nowPlayingMedia
+            mType = self.nowPlayingMedia['type']
+            mId = self.nowPlayingMedia['id']
         clog.info('(_com_like):type:%s, id:%s' % (mType, mId), syst) 
         uid = self.getUidFromTypeId(mType, mId) 
         i = self.getIndexFromUid(uid)
@@ -577,28 +657,28 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat('%s is not omitted' % res[0][4], source,
                             username, toIrc=False)
         else:
+            np = self.nowPlayingMedia
             title = res[0][4]
             if dir == 'flag':
                 database.flagMedia(2, mType, mId)
-                if (mType, mId) == self.nowPlayingMedia[:2]:
+                if (mType, mId) == (np['type'], np['id']):
                     self.currentOmitted = True
                     self.updateJs()
-                self.doSendChat('@3939Omitted %s#3939' % title, source, 
+                self.doSendChat(wisp('Omitted %s') % title, source, 
                                 username, toIrc=False)
 
             elif dir == 'unflag':
                 database.unflagMedia(2, mType, mId)
-                if (mType, mId) == self.nowPlayingMedia[:2]:
+                if (mType, mId) == (np['type'], np['id']):
                     self.currentOmitted = False
                     self.updateJs()
-                self.doSendChat('@3939Unomitted %s#3939' % title, source,
+                self.doSendChat(wisp('Unomitted %s') % title, source,
                                 username, toIrc=False)
 
     def _omit_args(self, args):
         if not args:
             if self.nowPlayingMedia:
-                mType, mId, mTitle = self.nowPlayingMedia
-                return mType, mId
+                return self.nowPlayingMedia['type'], self.nowPlayingMedia['id']
             else:
                 return False
         elif args:
@@ -861,7 +941,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.addToPlaylist(item, afterUid)
 
         # Announce queue
-        msg = '@3939%s added %s!#3939' % (queueby, title)
+        msg = wisp('%s added %s!' % (queueby, title))
         self.doSendChat(msg, source='chat', toIrc=False)
 
         if queueby: # anonymous add is an empty string
@@ -942,7 +1022,7 @@ class CyProtocol(WebSocketClientProtocol):
         elif res in ('NoEmbed', 'Status403', 'Status404'):
             self.doDeleteMedia(media['type'], media['id'])
             mediaTitle = media['title'].encode('utf-8')
-            msg = '@3939Removing non-playable media %s#3939' % mediaTitle
+            msg = wisp('Removing non-playable media %s' % mediaTitle)
             database.flagMedia(0b1, mType, mId)
             self.doSendChat(msg, toIrc=False)
             clog.info(msg)
@@ -1003,20 +1083,45 @@ class CyProtocol(WebSocketClientProtocol):
         mType = media['type']
         mId = media['id']
         mTitle = media['title']
-        self.nowPlayingMedia = (mType, mId, mTitle) # these are unicode
+        self.nowPlayingMedia = fdict['args'][0]
+        nps = (mType, mId, mTitle) # these are unicode
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
-        # send to seconday IRC channel
-        self.factory.handle.recCyChangeMedia(self.nowPlayingMedia)
 
         clog.info('(_cyCall_changeMedia) %s' % s, syst)
-        d = self.checkMedia(mType, mId)
-        d.addErrback(self.errcatch)
-        d.addCallback(self.flagOrDelete, media, mType, mId)
-        d.addErrback(self.errcatch)
-        d.addCallback(self.loadLikes, mType, mId)
-        d.addCallback(self.loadVocaDb, mType, mId)
+
+        if self.willReplay:
+            if self.mediaRemainingTime > 6:
+                # Setting $replay and immediatley switching, before
+                # allowing a mediaUpdate will not trigger this.
+                msg = ('(_cyCall_changeMedia) Detected user activity.'
+                      ' Cancelling replay.')
+                clog.warning(msg, syst)
+                self.doSendChat(wisp('Cancelling replay - user intervention.'),
+                                toIrc=False)
+            else:
+                mType, mId, title = self.willReplay
+                uid = self.getUidFromTypeId(mType, mId)
+                self.doSendChat(wisp('Replaying %s!' % title), toIrc=False)
+                self.jumpToMedia(uid)
+
+            self.willReplay = False
+        
+        else:
+            # send now playing info to seconday IRC channel
+            self.factory.handle.recCyChangeMedia(nps)
+
+            d = self.checkMedia(mType, mId)
+            d.addErrback(self.errcatch)
+            d.addCallback(self.flagOrDelete, media, mType, mId)
+            d.addErrback(self.errcatch)
+            d.addCallback(self.loadLikes, mType, mId)
+            d.addCallback(self.loadVocaDb, mType, mId)
+
+    def jumpToMedia(self, uid):
+        clog.debug('(jumpToMedia) Playing uid %s' % uid, syst)
+        self.sendf({'name': 'jumpTo', 'args': [uid]})
 
     def loadLikes(self, res, mType, mId):
         if res != 'EmbedOk':
