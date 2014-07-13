@@ -29,7 +29,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.queueMediaList = deque()
         self.burstCounter = 0
         self.lastQueueTime = time.time() - 20 #TODO
-        self.nowPlayingMedia = None
+        self.nowPlayingMedia = {}
         self.currentLikes = []
         self.err = []
         self.currentVocadb = ''
@@ -890,7 +890,7 @@ class CyProtocol(WebSocketClientProtocol):
         # We don't add all media to the queue table automatically since it'll
         # end up adding multiple times each join/restart during shuffle.
         self.playlist = []
-        self.nowPlayingMedia = None
+        self.nowPlayingMedia = {}
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
         dbpl, qpl = [], []
@@ -906,6 +906,10 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.bulkLogMedia(dbpl)
         self.findQueueId(qpl)
         self.findSonglessMedia(dbpl)
+
+        # if there is a replay-poll active, end it
+        if self.pollState.get('type', None) == 'replay':
+            self.doClosePoll()
 
     def findSonglessMedia(self, playlist):
         if vdb:
@@ -1100,6 +1104,9 @@ class CyProtocol(WebSocketClientProtocol):
                   (uid, index), syst)
         assert uid == deletedMedia['uid'], 'Deleted media not correct!'
 
+        # if there is a replay-poll active, and its media gets deleted,
+        # it will automatically changeMedia, so we don't need to do anything
+
     def queryOrInsertMedia(self, media, userId):
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'],
                              id=media['id'])
@@ -1164,8 +1171,14 @@ class CyProtocol(WebSocketClientProtocol):
             else:
                 mType, mId, title = self.willReplay
                 uid = self.getUidFromTypeId(mType, mId)
-                self.doSendChat(wisp('Replaying %s!' % title), toIrc=False)
-                self.jumpToMedia(uid)
+                if uid:
+                    self.doSendChat(wisp('Replaying %s!' % title), toIrc=False)
+                    self.jumpToMedia(uid)
+                else:
+                    # uid is None when media was set to temporary.
+                    # A workaround by "untemp, replay, temp"
+                    # is not worth implementing
+                    self.doSendChat(wisp('%s not found.' % title), toIrc=False)
 
             self.willReplay = False
         
