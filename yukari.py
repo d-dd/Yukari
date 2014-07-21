@@ -140,7 +140,7 @@ class Connections:
             if not modifier:
                 msgf = '(%s) %s' % (user, msg)
                 self.wsFactory.prot.relayToCyChat(msgf)
-                self.processCommand(user, msg)
+                self.processCommand(user, tools.returnUnicode(msg))
             elif modifier == 'action':
                 msgf = '_(%s)_ %s' % (user, msg)
                 self.wsFactory.prot.relayToCyChat(msgf)
@@ -148,26 +148,26 @@ class Connections:
 
     def recCyMsg(self, user, msg, needProcessing, action=False):
         if self.irc and user != 'Yukarin':
-            #s = TagStrip()
             clog.debug('recCyMsg: %s' % msg, sys)
-            msg = tools.returnUnicode(msg)
             tools.chatFormat.feed(msg)
             try:
-                cleanMsg = tools.chatFormat.get_text()
+                cleanMsg = tools.returnUnicode(tools.chatFormat.get_text())
             except(UnicodeDecodeError):
                 clog.warning('(recCyMsg) received non-ascii command', sys)
+                needProcessing = False
 
             # reset so we can use the same instance
             tools.chatFormat.close()
             tools.chatFormat.result = []
             tools.chatFormat.reset()
 
-
             if not action:
                 cleanMsg = '(%s) %s' % (user, cleanMsg)
             elif action:
                 cleanMsg = '( * %s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
+
+        clog.warning(msg, 'recCyMsg')
         if needProcessing:
             self.processCommand(user, msg)
 
@@ -184,7 +184,8 @@ class Connections:
 
     def processCommand(self, user, msg):
         if msg.startswith('$'):
-            msg = msg.encode('utf-8')
+            msg = tools.returnUnicode(msg)
+            #msg = msg.encode('utf-8')
             command = msg.split()[0][1:]
             argsList = msg.split(' ', 1)
             if len(argsList) == 2:

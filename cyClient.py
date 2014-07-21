@@ -1,5 +1,5 @@
 # Standard Library
-import json, time, re, argparse, random
+import json, time, re, argparse, random, urlparse
 from collections import deque
 # Twisted Libraries
 from twisted.internet import reactor, defer, task
@@ -46,6 +46,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.usercount = 0
         self.willReplay = False
         self.mediaRemainingTime = 0
+        self.motd = ''
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -140,6 +141,8 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_setMotd(self, fdict):
         # setMotd comes after the chat buffer when joining a channel
         self.receivedChatBuffer = True
+        clog.debug('(_cyCall_setMotd) MOTD set')
+        self.motd = fdict['args'][0]['motd']
 
     def _cyCall_usercount(self, fdict):
         usercount = fdict['args'][0]
@@ -215,18 +218,23 @@ class CyProtocol(WebSocketClientProtocol):
         isCyCommand = False
         thunk = None
         if msg.startswith('$') and not shadow:
-            msg= tools.returnStr(msg)
+            msg = tools.returnStr(msg)
             # unescape only if chat is a command
             # so Yukari can show return value properly ([Ask: >v<] Yes.)
+            msg = tools.returnUnicode(msg)
             msg = tools.unescapeMsg(msg)
             thunk, args, source = self.checkCommand(username, msg, 'chat')
         # send to yukari.py
         if username != self.name and username != '[server]' and not shadow:
             #clog.debug('Sending chat to IRC, username: %s' % username)
-            self.factory.handle.recCyMsg(username, msg, not thunk,action=action)
+            needProcessing = not thunk
+            if thunk is False: # non-ascii command
+                needProcessing = False
+            self.factory.handle.recCyMsg(username, msg, needProcessing, 
+                                                         action=action)
         # send to IRC before executing the command
         # to maintain proper chat queue (user command before Yukari's reply)
-        if thunk is not None:
+        if thunk:
             thunk(username, args, 'chat')
 
     def _cyCall_pm(self, fdict):
@@ -338,7 +346,7 @@ class CyProtocol(WebSocketClientProtocol):
                     self.setToReplay()
 
     def ignorePollResults(self):
-        msg = 'Poll has been interrupted by another user. Disregarding results.'
+        msg = 'Poll has been interrupted by a user. Disregarding results.'
         self.doSendChat(wisp(msg), toIrc=False)
 
     def _cyCall_mediaUpdate(self, fdict):
@@ -353,6 +361,7 @@ class CyProtocol(WebSocketClientProtocol):
                         (source, command, username), syst)
         except(UnicodeDecodeError):
             clog.warning('(checkCommand) received non-ascii command', syst)
+            return False, None, source
 
         argsList = msg.split(' ', 1)
         if len(argsList) == 2:
@@ -361,10 +370,40 @@ class CyProtocol(WebSocketClientProtocol):
             args = None
         thunk = getattr(self, '_com_%s' % (command,), None)
         return thunk, args, source
-        if thunk is not None:
-            thunk(username, args, source)
-            return True
             
+    def _com_thread(self, username, args, source):
+        rank = self._getRank(username)
+        if rank < 2:
+            return
+        p = tools.MotdParser('threadref')
+        p.feed(self.motd)
+        link = p.link
+        if not args:
+            self.doSendChat('[thread] %s ' % link)
+        elif args:
+            # Cytube will make the url a link, so we remove tags
+            args = tools.returnUnicode(args)
+            strip = tools.TagStrip()
+            strip.feed(args)
+            url = strip.get_text()
+            strip = None
+            parts = urlparse.urlsplit(url)
+            clog.debug(parts, args)
+            if not parts.scheme or not parts.netloc:
+                self.doSendChat('[thread] Invalid url')
+            elif link is None:
+                clog.warning('(_com_thread) Could not match anchor/id in MOTD')
+                self.doSendChat("[thread] Error: Check MOTD for anchor with id"
+                                " 'threadref' and a non-empty href after it.")
+            else:
+                # Cytube automatically evens out the spaces, 
+                # and removes empty quotes from the MOTD
+                pattern = r"""(threadref['"] href\s?=\s?)(".+?"|'.+?')"""
+                newMotd = re.sub(pattern, r'\1'+url, self.motd)
+                clog.debug('(_com_thread) Setting new MOTD with thread url %s'
+                            % url)
+                self.sendf({'name': 'setMotd', 'args': {'motd': newMotd}})
+        
     def _com_replay(self, username, args, source):
         if source != 'chat':
             return
@@ -375,6 +414,10 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat(wisp('Cancelled replay.'), toIrc=False)
             self.willReplay = False
             return
+
+        # if there is a replay poll, end it
+        if self.pollState.get('type', None) == 'replay':
+            self.doClosePoll()
         self.setToReplay()
 
     def setToReplay(self):
@@ -400,8 +443,14 @@ class CyProtocol(WebSocketClientProtocol):
             self.doSendChat('There is an active poll. Please end it first.',
                             toIrc=False)
             return
-        if args == 'replay' and self.mediaRemainingTime > 30:
-            self.makeReplayPoll()
+        if args == 'replay':
+            if self.willReplay:
+                msg = wisp('This is already set to replay.')
+                self.doSendChat(msg, toIrc=False)
+            elif self.mediaRemainingTime > 30:
+                self.makeReplayPoll()
+            elif self.mediaRemainingTime <= 30:
+               self.doSendChat('There is no time left for a poll.', toIrc=False)
 
     def makeReplayPoll(self):
         """ Make a poll asking users if they would like the current video

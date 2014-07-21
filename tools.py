@@ -100,6 +100,19 @@ def returnUnicode(text):
     else:
         return text
 
+class MotdParser(HTMLParser.HTMLParser):
+    def __init__(self, searchId):
+        HTMLParser.HTMLParser.__init__(self)
+        self.searchId = searchId
+        self.link = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':
+            d = dict(attrs)
+            anchorId = d.get('id', None)
+            if anchorId == self.searchId:
+                self.link = d.get('href', None)
+
 clog = CustomLog()
 # only debug will show Twisted-produced messages
 logger = LevelFileLogObserver(sys.stdout, level=logging.DEBUG)
@@ -107,3 +120,4 @@ log.addObserver(logger.emit)
 
 h = HTMLParser.HTMLParser()
 chatFormat = TagStrip()
+
