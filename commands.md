@@ -33,6 +33,7 @@
 - `$replay` Set the currently playing media to replay once. If Yukari detects a non-natural changeMedia, the replay will be cancelled.
 - `$vote replay` Makes a poll asking users if the current media should be replayed. Needs at least 30 seconds of runtime left. Maximum poll time is 100 seconds. Ending the poll early or switching media manually will cancel the vote.
 - `$repeat` Alias of `$replay`
+- `$thread [url]` Returns current thread link in the MOTD, or sets the current thread link given `url`. MOTD must be set up correctly (check readme).
 - `$omit [type, id]` Add the omit flag to the specified media. If nothing is specified, the flag is applied to the currently playing media. Omitted media will not be selected by `$add`.
 - `$unomit [type, id]` Remove omit flag.
 - `$blacklist [type, id]` Add the blacklist flag to the specified media. If nothing is specified, the flag is appiled to the currently playing media. Blacklisted media will be deleted, and any subsequent queues will be automatically removed from the playlist.
