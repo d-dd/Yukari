@@ -1,6 +1,8 @@
 /*Upload this somewhere and put the link in External Javascript under
   Channel Settings, Admin Settings. */
-var YUKARI = 'Yukari'; //Put name here
+var YUKARI = "Yukari"; //Put name here
+
+var allowVdbLike = 2; // Number of failures before vdblike button is hidden
 
 //overwrite pm callback to silence private PMs
 Callbacks.pm = function (data) {
@@ -59,10 +61,13 @@ function groupArtists(artists) {
     var newArr = [],
         roles = {},
         newItem, i, j, cur;
-    for (i=0, j=artists.length; i<j; i++) {
+    for (i = 0, j = artists.length; i < j; i++) {
         cur = artists[i];
         if (!(cur.role in roles)) {
-            roles[cur.role] = {role: cur.role, name: []};
+            roles[cur.role] = {
+                role: cur.role,
+                name: []
+            };
             newArr.push(roles[cur.role]);
         }
         roles[cur.role].name.push([cur.name, cur.id]);
@@ -72,16 +77,16 @@ function groupArtists(artists) {
 
 function combineArtists(groupedArtists) {
     var artistString = '';
-    for (i=0, j=groupedArtists.length; i<j; i++) {
+    for (i = 0, j = groupedArtists.length; i < j; i++) {
         cur = groupedArtists[i]
         var names = '',
-        x, y, curname;
-        for (x=0, y=cur.name.length; x<y; x++) {
+            x, y, curname;
+        for (x = 0, y = cur.name.length; x < y; x++) {
             curname = cur.name[x];
             names += '<a target ="_blank" href="http://vocadb.net/ar/' + curname[1] + '/">' + curname[0] + '</a>';
             if (x + 1 < y) {
                 names += ', ';
-            }else {
+            } else {
                 names += '   ';
             }
         }
@@ -91,7 +96,8 @@ function combineArtists(groupedArtists) {
 }
 
 function combineTitles(titles) {
-    var groupedTitles = '', i, j, cur;
+    var groupedTitles = '',
+        i, j, cur;
     for (i = 0, j = titles.length; i < j; i++) {
         cur = titles[i];
         groupedTitles += cur;
@@ -101,8 +107,10 @@ function combineTitles(titles) {
     }
     return groupedTitles;
 }
+
 function makeBadge(songType) {
-    var songLetter = '', label = 'label-primary';
+    var songLetter = '',
+        label = 'label-primary';
     if (songType === 'Original') {
         songLetter = 'O';
     } else if (songType === 'Remaster') {
@@ -137,34 +145,52 @@ function setVocadb(groupedTitles, artistString) {
     $("#music-note-btn").addClass("btn-primary");
     $("#yukarin").remove();
     var songLetter = makeBadge(vocapack.vocadbInfo.songType);
-    var badge = '   <a href="http://vocadb.net/S/' + vocapack.vocadbId + 
-        '/" target="_blank" style="text-decoration: none"><span id="songType-span" class="label '
-        + songLetter[1] + '">' + songLetter[0] + '</span></a>   ';
-    $("#vdb-div").append("<div id='yukarin'>" + groupedTitles + badge + "</br>" + artistString + 
-    "<a href='http://vocadb.net/S/" + vocapack.vocadbId + " ' target='_blank' title='link by: " + vocapack.setby + "</div>");
+    var badge = '   <a href="http://vocadb.net/S/' + vocapack.vocadbId +
+        '/" target="_blank" style="text-decoration: none"><span id="songType-span" class="label ' + songLetter[1] + '">' + songLetter[0] + '</span></a>   ';
+    if (allowVdbLike > 0) {
+        //vdblike-outer: where button resides
+        //vdblike-inner: display status message with .html
+        var likeBtn = '<span id="vdblike-outer"><button id="vdblike-btn" class="btn btn-xs btn-default glyphicon glyphicon-star" ' +
+            'data-toggle="button" title="Like on VocaDB!"><span id="vdblike-btn-span"></span></button><span id="vdblike-inner"></span></span>';
+    } else {
+        var likeBtn = "";
+    }
+    $("#vdb-div").append("<div id='yukarin'>" + groupedTitles + badge + likeBtn + "</br>" + artistString +
+        "<a href='http://vocadb.net/S/" + vocapack.vocadbId + " ' target='_blank' title='link by: " + vocapack.setby + "</div>");
+
+    //bind click
+    $("#vdblike-btn").click(function () {
+        console.log("Vdb-like " + vocapack.vocadbId);
+        tryVdbLike(vocapack.vocadbId);
+    });
 }
+
 function setBlankVocadb() {
     $("#music-note-btn").removeClass("btn-primary");
     $("#music-note-btn").addClass("btn-default");
     $("#yukarin").remove();
     $("#vdb-div").append("<div id='yukarin'>No match</div>");
-    }
+}
+
 function setVocadbPanel() {
     if (!findUserlistItem(YUKARI)) {
+        console.log('setvocadbpanel if tri');
         setBlankVocadb();
         return;
     }
-    
+
     $("#likescore").text(yukariLikeScore);
     if (yukariOmit) {
         $("#music-note-span").removeClass("glyphicon-music");
-        $("#music-note-span").addClass("glyphicon-thumbs-down");
+        $("#music-note-span").addClass("glyphicon-ban-circle");
     } else {
-        $("#music-note-span").removeClass("glyphicon-thumbs-down");
+        $("#music-note-span").removeClass("glyphicon-ban-circle");
         $("#music-note-span").addClass("glyphicon-music");
     }
     if (vocapack.res) {
-        var groupedArtists, artistString='', groupedTitles='';
+        console.log('setvocadbpanel if vocapack');
+        var groupedArtists, artistString = '',
+            groupedTitles = '';
         groupedArtists = groupArtists(vocapack.vocadbInfo.artists);
         artistString = combineArtists(groupedArtists);
         groupedTitles = combineTitles(vocapack.vocadbInfo.titles);
@@ -175,8 +201,74 @@ function setVocadbPanel() {
     }
 }
 
+//VocaDB Like
+function tryVdbLike(songId) {
+    //Send GET request to URL to check whether the song is already liked/favorited
+    // to avoid overwriting user preference. If there is no rating, it will like the song.
+    var userVdbSongPreference = $.ajax({
+        type: "GET",
+        url: "http://vocadb.net/api/users/current/ratedSongs/" + songId,
+        xhrFields: {
+            withCredentials: true
+        },
+        dataType: "json"
+    });
 
- //When Yukari leaves, disable buttons
+    userVdbSongPreference.fail(function (jqXHR, textStatus) {
+        console.log("Request failed: " + textStatus);
+        // "You're probably not logged in!"
+        $("#vdblike-btn").attr("disabled", true);
+        $("#vdblike-inner").html("<span class='server-whisper'>Error: Make sure you're logged in VocaDB.net</span>");
+        allowVdbLike = allowVdbLike - 1;
+
+    });
+
+    userVdbSongPreference.done(function (res) {
+        processVdbLike(res, songId);
+    });
+}
+
+function processVdbLike(pref, songId) { //'Like', 'Favorite', 'Nothing'
+    console.log(pref);
+    if (pref === "Nothing") {
+        console.log(songId + " No rating; let's like!");
+        likeVdbSong(songId);
+    } else if (pref == "Like") {
+        console.log("already liked!");
+        $("#vdblike-inner").html("<span class='server-whisper'>This song is already liked!</span>");
+        $("#vdblike-btn").attr("disabled", true);
+    } else if (pref == "Favorite") {
+        console.log("This is favorited!");
+        $("#vdblike-inner").html("<span class='server-whisper'>This song is favorited!</span>");
+        $("#vdblike-btn").attr("disabled", true);
+    }
+}
+
+// Don't use this directly because it can overwrite a favorite
+function likeVdbSong(songId) {
+    console.log("Liking song " + songId);
+    $.ajax({
+        type: "POST",
+        url: "http://vocadb.net/api/users/current/ratedSongs/" + songId + "?rating=Like",
+        xhrFields: {
+            withCredentials: true
+        },
+        success: function () {
+            console.log('likeVdbSong:ok');
+            $("#vdblike-inner").html("<span class='server-whisper'>Liked! -Thank you for rating!</span>");
+            $("#vdblike-btn").attr("disabled", true);
+
+        },
+        error: function () {
+            console.log('likeVdbSong:error');
+            $("#vdblike-inner").html("<span class='server-whisper'>Error at likeVdbSong [100]!</span>");
+            allowVdbLike = allowVdbLike - 1;
+            $("#vdblike-btn").attr("disabled", true);
+        }
+    });
+}
+
+//When Yukari leaves, disable buttons
 socket.on("userLeave", function (data) {
     if (data.name === YUKARI) {
         disableLikes();
@@ -186,7 +278,7 @@ socket.on("userLeave", function (data) {
 //When Yukari joins, enable buttons
 socket.on("addUser", function (data) {
     if (data.name === YUKARI) {
-        yukariLikeScore = 'unavailable';
+        yukariLikeScore = "unavailable";
         enableLikes();
     }
 });
@@ -212,7 +304,7 @@ $("#like-btn").click(function () {
         }
         sendPmToYukari("%%like");
         $("#like-btn").css("color", "Green");
-    //unpush the button!
+        //unpush the button!
     } else if (isHere && likeIsPressed) {
         sendPmToYukari("%%unlike");
         $("#like-btn").css("color", "");
@@ -238,10 +330,12 @@ $("#dislike-btn").click(function () {
     }
 });
 
+
+
 ////events on Yukari's PMs
 //Yukari sends us PM
 socket.on("pm", function (data) {
-    if (data.username === YUKARI && data.msg === '%%1') {
+    if (data.username === YUKARI && data.msg === "%%1") {
         $("#like-btn").removeClass("active").addClass("active");
         $("#like-btn").css("color", "Green");
         $("#dislike-btn").removeClass("active");
@@ -250,7 +344,7 @@ socket.on("pm", function (data) {
 });
 
 socket.on("pm", function (data) {
-    if (data.username === YUKARI && data.msg === '%%-1') {
+    if (data.username === YUKARI && data.msg === "%%-1") {
         $("#dislike-btn").removeClass("active").addClass("active");
         $("#dislike-btn").css("color", "Red");
         $("#like-btn").removeClass("active");
@@ -276,8 +370,8 @@ socket.on("login", function (data) {
     var isHere = findUserlistItem(YUKARI);
     if (data.success === true && isHere) {
         sendPmToYukari("%%subscribeLike");
-        $("#like-btn").attr('disabled', false);
-        $("#dislike-btn").attr('disabled', false);
+        $("#like-btn").attr("disabled", false);
+        $("#dislike-btn").attr("disabled", false);
     }
 });
 
@@ -300,29 +394,29 @@ $("#rightcontrols").append(' <span id="likescore" class="label label-info">unava
 $("#likescore").text(yukariLikeScore);
 
 ////initialize
-$("#like-btn").attr('disabled', true);
-$("#dislike-btn").attr('disabled', true);
+$("#like-btn").attr("disabled", true);
+$("#dislike-btn").attr("disabled", true);
 
 //send PM if not guest
 if (CLIENT.rank > -1) {
     var isHere = findUserlistItem(YUKARI);
     if (isHere) {
         sendPmToYukari("%%subscribeLike");
-        $("#like-btn").attr('disabled', false);
-        $("#dislike-btn").attr('disabled', false);
+        $("#like-btn").attr("disabled", false);
+        $("#dislike-btn").attr("disabled", false);
     }
 }
 
 //////////////VocaDB Info pane
 //make Pane
 $("#rightpane-inner").prepend('<div id="vdbcontrol" class="plcontrol-collapse col-lg-12 col-md-12 collapse" ' +
-                              'style="height: auto;"><div class="vertical-spacer"></div><div class="input-group">' +
-                              '<div id="vdb-div" class="well"></div></div></div>');                       
+    'style="height: auto;"><div class="vertical-spacer"></div><div class="input-group">' +
+    '<div id="vdb-div" class="well"></div></div></div>');
 $("#plcontrol").append('<button id="music-note-btn" data-toggle="collapse" data-target="#vdbcontrol" ' +
-                       'class="btn btn-sm btn-default"><span id="music-note-span" ' +
-                       'class="glyphicon glyphicon-music" title="VocaDB"></span></button>');
-                       
-                       
-                       
+    'class="btn btn-sm btn-default"><span id="music-note-span" ' +
+    'class="glyphicon glyphicon-music" title="VocaDB"></span></button>');
+
+
+
 //initial on join
 setVocadbPanel();
