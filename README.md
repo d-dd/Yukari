@@ -26,6 +26,11 @@ Set a filter: <pre>@3939([^`]+)#3939, g, <span class="server-whisper">$1</span><
 
 This is for the gray server-like messages when users queue media to the playlist, and when Yukari removes something from the playlist.  
 Put the url of external.js into the external JS box.
+
+In the MOTD, set an anchor like the following:
+<pre><code>&lt;a id="threadref" href="http://google.com/" target="_blank">Click me!&lt;/a></code></pre>
+Now, you can type `$thread` to get the current href (url), or type `$thread url` to set a new url.
+
 ##**Usage:**
 Run with <pre>python yukari.py</pre>
 Yukari is being developed and tested in a Linux environment, so it may have problems running on Windows or Mac.
