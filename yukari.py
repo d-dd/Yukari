@@ -39,6 +39,9 @@ class Connections:
         self.version = subprocess.check_output(['git', 'rev-parse', 
                                                 '--short', 'HEAD']).strip()
 
+        # Users in IRC chat channel
+        self.ircUserCount = 0
+
     def restartConnection(self, method, waitTime):
         clog.error('restarting connection in %s' % waitTime)
         msg = ('[status] Could not connect to server. Attempting to reconnect '

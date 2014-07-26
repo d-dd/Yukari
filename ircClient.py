@@ -26,9 +26,9 @@ class IrcProtocol(irc.IRCClient):
         self.bucketTokenMax = int(config['irc']['bucket'])
         self.throttleLoop = task.LoopingCall(self.addToken)
         self.underSpam = False
-        self.nicklist = []
         self.nickdict = {} # {('nick','user','host'): id}
         self.ircConnect = time.time()
+        self._namescallback = {}
 
     def addQueue(self, msg):
         if not self.underSpam and self.bucketToken != 0:
@@ -76,15 +76,47 @@ class IrcProtocol(irc.IRCClient):
     def sayNowPlaying(self, msg):
         self.say(self.channelNp, msg)
 
+    def getNicks(self, channel):
+        channel = channel.lower()
+        d = defer.Deferred()
+        if channel not in self._namescallback:
+            self._namescallback[channel] = ([], [])
+
+        self._namescallback[channel][0].append(d)
+        self.sendLine('NAMES %s' % channel)
+        return d
+
     def irc_RPL_NAMREPLY(self, prefix, params):
-        channel = params[2]
-        nicks = params[3].split(' ')
-        self.nicklist.extend(nicks)
-        clog.debug('(irc_RPL_NAMREPLY) nicklist:%s' % self.nicklist, sys)
+        channel = params[2].lower()
+        nicklist = params[3].split(' ')
+        if channel not in self._namescallback:
+            return
+        
+        n = self._namescallback[channel][1]
+        n += nicklist
+
+        clog.debug('(irc_RPL_NAMREPLY) nicklist:%s' % nicklist, sys)
 
     def irc_RPL_ENDOFNAMES(self, prefix, params):
+        channel = params[1].lower()
+        if channel not in self._namescallback:
+            return
+
+        callbacks, namelist = self._namescallback[channel]
+        for cb in callbacks:
+            cb.callback(namelist)
+
+        del self._namescallback[channel]
+
         clog.debug('(irc_RPL_ENDOFNAMES) prefix::%s, params %s.' 
                     % (prefix, params), sys)
+
+    def updateNicks(self, namelist, channel):
+        if channel != self.channelName:
+            return
+        # assume @ users are bots (not entierly accurate)
+        users = [u for u in namelist if not u.startswith('&')]
+        self.factory.handle.ircUserCount = len(users)
 
     def connectionMade(self):
         irc.IRCClient.connectionMade(self)
@@ -104,9 +136,11 @@ class IrcProtocol(irc.IRCClient):
 
     def userJoined(self, user, channel):
         clog.info('%s has joined %s' % (user, channel), sys)
+        self.factory.handle.ircUserCount += 1
 
     def userLeft(self, user, channel):
         clog.info('%s has left the %s' % (user, channel), sys)
+        self.factory.handle.ircUserCount -= 1
         
     def userRenamed(self, oldname, newname):
         clog.info('%s is now known as %s' % (oldname, newname), sys)
@@ -117,6 +151,7 @@ class IrcProtocol(irc.IRCClient):
     def joined(self, channel):
         clog.info('Joined IRC channel: %s' % channel, sys)
         self.factory.handle.irc = True
+        self.getNicks(channel).addCallback(self.updateNicks, channel)
 
     def left(self, channel):
         clog.info('Left IRC channel: %s' % channel, sys)

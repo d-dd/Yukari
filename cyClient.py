@@ -676,7 +676,12 @@ class CyProtocol(WebSocketClientProtocol):
 
     def updateJs(self):
         omit = 'yukariOmit=' + str(self.currentOmitted).lower()
-        js = '%s; %s; %s;' % (self.currentVocadb, self.currentLikeJs, omit)
+        try:
+            ircUserCount = 'yukarIRC=' + str(self.factory.handle.ircUserCount)
+        except(NameError):
+            ircUserCount = '0'
+        js = '%s;%s;%s;%s;' % (self.currentVocadb, self.currentLikeJs, omit,
+                               ircUserCount)
         self.doSendJs(js)
 
     def doSendJs(self, js):
