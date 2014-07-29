@@ -136,11 +136,24 @@ class IrcProtocol(irc.IRCClient):
 
     def userJoined(self, user, channel):
         clog.info('%s has joined %s' % (user, channel), sys)
-        self.factory.handle.ircUserCount += 1
+        if channel == self.channelName:
+            self.factory.handle.ircUserCount += 1
 
     def userLeft(self, user, channel):
-        clog.info('%s has left the %s' % (user, channel), sys)
-        self.factory.handle.ircUserCount -= 1
+        clog.info('%s has left %s' % (user, channel), sys)
+        if channel == self.channelName:
+            self.factory.handle.ircUserCount -= 1
+
+    def userQuit(self, user, channel):
+        clog.info('%s has left %s' % (user, channel), sys)
+        if channel == self.channelName:
+            self.factory.handle.ircUserCount -= 1
+
+    def userKicked(self, kickee, channel, kicker, message):
+        clog.info('%s was kicked by %s from %s: %s' %
+                  (kickee, kicker, channel, message))
+        if channel == self.channelName:
+            self.factory.handle.ircUserCount -= 1
         
     def userRenamed(self, oldname, newname):
         clog.info('%s is now known as %s' % (oldname, newname), sys)
