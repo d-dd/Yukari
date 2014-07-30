@@ -27,6 +27,7 @@ class IrcProtocol(irc.IRCClient):
         self.throttleLoop = task.LoopingCall(self.addToken)
         self.underSpam = False
         self.nickdict = {} # {('nick','user','host'): id}
+        self.nicklist = []
         self.ircConnect = time.time()
         self._namescallback = {}
 
@@ -96,6 +97,8 @@ class IrcProtocol(irc.IRCClient):
         n += nicklist
 
         clog.debug('(irc_RPL_NAMREPLY) nicklist:%s' % nicklist, sys)
+        if channel == self.channelName:
+            self.nicklist = nicklist
 
     def irc_RPL_ENDOFNAMES(self, prefix, params):
         channel = params[1].lower()
@@ -138,15 +141,22 @@ class IrcProtocol(irc.IRCClient):
         clog.info('%s has joined %s' % (user, channel), sys)
         if channel == self.channelName:
             self.factory.handle.ircUserCount += 1
+            self.nicklist.append(user)
 
     def userLeft(self, user, channel):
         clog.info('%s has left %s' % (user, channel), sys)
         if channel == self.channelName:
             self.factory.handle.ircUserCount -= 1
+            try:
+                self.nicklist.remove(user)
+            except(ValueError):
+                clog.error('(userLeft) User %s not in nicklist' % user)
 
     def userQuit(self, user, channel):
-        clog.info('%s has left %s' % (user, channel), sys)
-        if channel == self.channelName:
+        # channel is not specified on quit
+        clog.info('%s has quit %s' % (user, channel), sys)
+        if user in self.nicklist:
+            self.nicklist.remove(user)
             self.factory.handle.ircUserCount -= 1
 
     def userKicked(self, kickee, channel, kicker, message):
@@ -154,6 +164,10 @@ class IrcProtocol(irc.IRCClient):
                   (kickee, kicker, channel, message))
         if channel == self.channelName:
             self.factory.handle.ircUserCount -= 1
+            try:
+                self.nicklist.remove(kickee)
+            except(ValueError):
+                clog.error('(userKiced) User %s not in nicklist' % kickee)
         
     def userRenamed(self, oldname, newname):
         clog.info('%s is now known as %s' % (oldname, newname), sys)
