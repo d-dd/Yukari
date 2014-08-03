@@ -255,9 +255,10 @@ def getLikes(queueId):
     return query(sql, binds)
 
 def calcUserPoints(res, nameLower, isRegistered):
-    sql = ('SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by = %s) * 20)'
-       '+ (SELECT (SELECT COUNT(*) FROM Queue WHERE userId = %s) * 3)'
-       % ((_USERIDSQL,) * 2))
+    sql = ('SELECT (SELECT (SELECT COUNT(*) FROM Media WHERE by = %s AND '
+           'flag IN (0,1)) * 20) + (SELECT (SELECT COUNT(*) FROM Queue JOIN '
+           'Media on Queue.mediaId = Media.mediaId WHERE Media.flag = 0 AND '
+           'Queue.userId = %s) * 3)' % ((_USERIDSQL,) * 2))
     binds = (nameLower, isRegistered) * 2
     return query(sql, binds)
 
