@@ -25,11 +25,16 @@
  - `-T, --temporary` add as temporary
  - `-N, --next` add as next
 
+- `$points`  Show points and basic user statistics. Adding and queuing media will generate more points. Staying in the channel will yield a small amount of points.  
+- The stats are <b>a</b>dds, <b>q</b>ueues, <b>l</b>ikes (received), <b>d</b>islikes (received), <b>L</b>iked, <b>D</b>isliked
+
+
 ##**CyTube PM Commands:**
-- `$points`  Show points. Adding and queuing media will generate more points. Staying in the channel will yield a small amount of points.  
+- `$points`
 - `$read` Tell Yukari that I have read this.
 
 ##**CyTube Moderator commands:**
+- `points [user]` Retrieves points and stats information of `user`. `user` is assumed to be registered. Registered `user` not found in the database will return `0`'s.
 - `$replay` Set the currently playing media to replay once. If Yukari detects a non-natural changeMedia, the replay will be cancelled.
 - `$vote replay` Makes a poll asking users if the current media should be replayed. Needs at least 30 seconds of runtime left. Maximum poll time is 100 seconds. Ending the poll early or switching media manually will cancel the vote.
 - `$repeat` Alias of `$replay`
