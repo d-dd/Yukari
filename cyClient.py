@@ -617,10 +617,20 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
 
     def _com_points(self, username, args, source):
+        querier = username
+        # if admin+ pm's $points user, yukari will pm back user's points
+        if args and source == 'pm':
+            if self._getRank(username) >= 3:
+               username = args
         reg = self.checkRegistered(username)
-        d = self.calculatePoints(username, reg)
-        d.addCallback(self.returnPoints, username, source)
-        d.addErrback(self.errcatch)
+        if reg is None:
+            # assume registered
+            reg = 1
+        d1 = self.calculatePoints(username, reg)
+        d2 = self.calculateStats(username, reg)
+        dl = defer.DeferredList([d1, d2])
+        dl.addCallback(self.returnPoints, querier, username, source)
+        dl.addErrback(self.errcatch)
 
     def _com_read(self, username, args, source):
         if source != 'pm':
@@ -720,10 +730,21 @@ class CyProtocol(WebSocketClientProtocol):
             reply = 'Hi %s! <3' % username
         self.doSendChat(reply, source, username, modflair)
 
-    def returnPoints(self, points, username, source):
+    def returnPoints(self, stats, querier, username, source):
+        # e.g. [(True, 1401.87244), (True, [(True, [(19,)]), (True, [(96,)]),
+        # (True, [(22,)]), (True, [(3,)]), (True, [(23,)]), (True, [(2,)])])]
+        points = stats[0][1]
+        adds = stats[1][1][0][1][0][0]
+        queues = stats[1][1][1][1][0][0]
+        likes = stats[1][1][2][1][0][0]
+        dislikes = stats[1][1][3][1][0][0]
+        liked = stats[1][1][4][1][0][0]
+        disliked = stats[1][1][5][1][0][0]
+
         clog.info('(returnPoints) %s has %d points.' %(username, points), syst)
-        self.doSendChat('%s: %d' % (username, points), source=source,
-                                                       username=username)
+        self.doSendChat('[%s] points:%d (a%d / q%d / l%d / d%d / L%d / D%d)' %
+           (username, points, adds, queues, likes, dislikes, liked, disliked),
+            source=source, username=querier)
 
     def calculatePoints(self, username, isRegistered):
         d1 = database.calcUserPoints(None, username.lower(), isRegistered)
@@ -742,6 +763,18 @@ class CyProtocol(WebSocketClientProtocol):
             points = res[0][1][0][0]
         return points
 
+    def calculateStats(self, username, isRegistered):
+        user = (username.lower(), isRegistered)
+        dAdded = database.getUserAddSum(*user)
+        dQueued = database.getUserQueueSum(*user)
+        dLikes = database.getUserLikesReceivedSum(*user, value=1)
+        dDislikes = database.getUserLikesReceivedSum(*user, value=-1)
+        dLiked = database.getUserLikedSum(*user, value=1)
+        dDisliked = database.getUserLikedSum(*user, value=-1)
+        dl = defer.DeferredList([dAdded, dQueued, dLikes, dDislikes,
+                                 dLiked, dDisliked])
+        return dl
+    
     def _omit(self, username, args, dir, source):
         rank = self._getRank(username)
         clog.info('(_com_omit) %s' % args)
@@ -1379,6 +1412,7 @@ class CyProtocol(WebSocketClientProtocol):
                 user = self.userdict[username]
             except KeyError as e:
                 clog.error('(checkRegistered): %s' % e, syst)
+                return
             if user['rank'] == 0:
                 return 0
             else:
