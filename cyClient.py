@@ -1495,26 +1495,23 @@ class WsFactory(WebSocketClientFactory):
         self.handle.cyAnnounceConnect()
 
     def clientConnectionLost(self, connector, reason):
+        self.handle.cy = False
         if time.time() - self.handle.cyLastDisconnect > 60:
             self.handle.cyRetryWait = 0
         self.handle.cyLastDisconnect = time.time()
         clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s'
                      % reason, syst)
-        if not self.handle.cyRestart:
+        try:
+            self.prot.logUserInOut()
+        except(AttributeError):
+            # prot doesn't exist yet
             pass
-           # self.handle.doneCleanup('cy')
-        else:
-            try:
-                self.prot.logUserInOut()
-            except(AttributeError):
-                # prot doesn't exist yet
-                pass
-            self.handle.cyAnnouceLeftRoom()
-            clog.error('clientConnectionLost! Reconnecting in %d seconds'
-                       % self.handle.cyRetryWait, syst)
-            # reconnect
-            reactor.callLater(self.handle.cyRetryWait,
-                                                    self.handle.cyChangeProfile)
+        self.handle.cyAnnouceLeftRoom()
+        clog.error('clientConnectionLost! Reconnecting in %d seconds'
+                   % self.handle.cyRetryWait, syst)
+        # reconnect
+        reactor.callLater(self.handle.cyRetryWait,
+                                                self.handle.cyChangeProfile)
 
     def clientConnectionFailed(self, connector, reason):
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
