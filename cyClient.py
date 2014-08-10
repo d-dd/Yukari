@@ -1394,13 +1394,18 @@ class CyProtocol(WebSocketClientProtocol):
         # disconnect first so we don't get any more join/leaves
         self.sendClose()
         # log everyone's access time before shutting down
-        self.logUserInOut()
-        self.cyRestart = False
+        dl = self.logUserInOut()
+        dl.addCallback(self.doneClean)
+
+    def doneClean(self, res):
+        self.factory.handle.doneCleanup('cy')
 
     def logUserInOut(self):
         timeNow = getTime() 
+        l = []
         for name, user in self.userdict.iteritems():
-            user['deferred'].addCallback(self.userLeave, user, timeNow)
+            l.append(user['deferred'].addCallback(self.userLeave, user, timeNow))
+        return defer.DeferredList(l)
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given
@@ -1485,16 +1490,19 @@ class WsFactory(WebSocketClientFactory):
         WebSocketClientFactory.__init__(self, arg)
 
     def startedConnecting(self, connector):
-        clog.debug('WsFactory...startedConnecting')
+        clog.debug('WsFactory...started Connecting')
         self.handle.cyLastConnect = time.time()
         self.handle.cyAnnounceConnect()
 
     def clientConnectionLost(self, connector, reason):
+        if time.time() - self.handle.cyLastDisconnect > 60:
+            self.handle.cyRetryWait = 0
         self.handle.cyLastDisconnect = time.time()
         clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s'
                      % reason, syst)
         if not self.handle.cyRestart:
-            self.handle.doneCleanup('cy')
+            pass
+           # self.handle.doneCleanup('cy')
         else:
             try:
                 self.prot.logUserInOut()
@@ -1505,13 +1513,8 @@ class WsFactory(WebSocketClientFactory):
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
                        % self.handle.cyRetryWait, syst)
             # reconnect
-            reactor.callLater(self.handle.cyRetryWait, self.handle.cyPost, None)
-            self.handle.cyRetryWait += 2
-            self.handle.cyRetryWait = self.handle.cyRetryWait**2
-            if self.handle.cyRetryWait >= 5*60:
-                self.handle.cyRetryWait = 5*60
-            if self.handle.cyLastConnect - self.handle.cyLastDisconnect > 2*60:
-                self.handle.cyRetryWait = 0
+            reactor.callLater(self.handle.cyRetryWait,
+                                                    self.handle.cyChangeProfile)
 
     def clientConnectionFailed(self, connector, reason):
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'

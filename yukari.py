@@ -25,13 +25,17 @@ class Connections:
         self.irc = False
         self.cy = False
 
+        #
+        self.inIrcChan = False
+        self.inIrcNp = False
+
         # Wether to restart when disconnected
         self.ircRestart = True
         self.cyRestart = True
         # Reconnect Timers
         self.cyRetryWait = 0
         self.cyLastConnect = 0
-        self.cyLastDisconect = 0
+        self.cyLastDisconnect = 0
 
         self.startTime = time.time()
 
@@ -90,33 +94,42 @@ class Connections:
         database.setProfileFlag(nextRow, 1) # set next profile flag
 
     def cyPost(self, res):
-        """ Send a POST request to Cytube for a server session id
-        and start the connection process """
+        """ Send a POST request to Cytube socket.io server for a session id
+        """
         agent = Agent(reactor)
-        url = 'http://%s:%s/socket.io/1/' % (config['Cytube']['url'],
+        url = 'http://%s:%s/socket.io/1/' % (config['Cytube']['domain'],
                                              config['Cytube']['port'])
         d = agent.request('POST', str(url))
         d.addCallbacks(readBody, self.cyPostErr) # POST response
-        d.addCallback(self.processBody)
-        d.addCallback(self.cySocketIo)
+        d.addCallbacks(self.processBody, self.cyRePost)
+        #d.addCallback(self.cySocketIo)
 
     def cyPostErr(self, err):
         clog.error(err, sys)
-        if self.cyLastConnect - self.cyLastDisconnect > 2*60:
+        return err
+    
+    def cyRePost(self, err):
+        if self.cyLastConnect - self.cyLastDisconnect > 60:
             self.cyRetryWait = 0
-        self.cyRetryWait = self.restartConnection(self.cyPost, self.cyRetryWait)
+        wait = self.cyRetryWait**(1+random.random())
+        # return between 2 and 300
+        self.cyRetryWait = min(max(2, wait), 300)
+        clog.error('(cyRePost) Failed to obtain session ID. Retrying in %s '
+                   'seconds' % self.cyRetryWait, sys)
+        msg = ('[status] Could not connect to server. Attempting to reconnect '
+              'in %d seconds.' % self.cyRetryWait)
+        self.sendToIrc(msg)
+        reactor.callLater(self.cyRetryWait, self.cyPost, None)
 
     def processBody(self, body):
         clog.debug('(processBody) Received session string %s ' % body, sys)
-        try:
-            msg = body.split(',')
-        except(AttributeError):
-            clog.error('(processBody) No response from CyTube!', sys)
+        if body is None:
             return
-        sid = msg[0][:msg[0].find(':')]
-        ws = 'ws://%s:%s/socket.io/1/websocket/%s/' % (config['Cytube']['url'],
-              int(config['Cytube']['port']), sid)
-        return ws
+        session = body.split(',')
+        sid = session[0][:session[0].find(':')]
+        ws = ('ws://%s:%s/socket.io/1/websocket/%s/' %
+               (config['Cytube']['domain'], int(config['Cytube']['port']), sid))
+        self.cySocketIo(ws)
 
     def cySocketIo(self, url):
         clog.debug('(cySocketIo) Cytube ws uri: %s' % url, sys)
@@ -150,7 +163,7 @@ class Connections:
                 # don't process action for commands
 
     def recCyMsg(self, user, msg, needProcessing, action=False):
-        if self.irc and user != 'Yukarin':
+        if self.inIrcChan and user != 'Yukarin':
             clog.debug('recCyMsg: %s' % msg, sys)
             tools.chatFormat.feed(msg)
             try:
@@ -175,7 +188,7 @@ class Connections:
             self.processCommand(user, msg)
 
     def recCyChangeMedia(self, media):
-        if self.irc and media:
+        if self.inIrcNp and media:
             mType, mId, title = media
             if mType == 'yt':
                 link = 'https://youtu.be/%s' % mId
@@ -357,7 +370,7 @@ class Connections:
         self.sendChats(msg)
 
     def sendToIrc(self, msg):
-        if self.irc:
+        if self.inIrcChan:
             self.ircFactory.prot.sendChat(str(config['irc']['channel']), msg)
 
     def sendToCy(self, msg, modflair=False):
@@ -379,6 +392,7 @@ class Connections:
 
     def cleanup(self):
         """ Prepares for shutdown """
+        # Starts pre-shutdown cleanup
         clog.info('(cleanup) Cleaning up for shutdown!', sys)
         self.done = Deferred()
         if self.irc:
@@ -391,13 +405,14 @@ class Connections:
         """ Fires the done deferred, which unpauses the shutdown sequence """
         # If the application is stuck after Ctrl+C due to a bug,
         # use telnet(manhole) to manually fire the 'done' deferred.
+        clog.warning('(doneCleanup) CLEANUP FROM %s' % protocol, sys)
         if protocol == 'irc':
             self.irc = None
             clog.info('(doneCleanup) Done shutting down IRC.', sys)
         elif protocol == 'cy':
             self.cy = None
             clog.info('(doneCleanup) Done shutting down Cy.', sys)
-        if self.irc is not True and self.cy is not True:
+        if not self.irc and not self.cy:
             self.done.callback(None)
 
 def createShellServer(obj):

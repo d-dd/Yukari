@@ -15,6 +15,10 @@ from tools import clog
 syst = 'cyProfileChange'
 NAME = config['Cytube']['username']
 PASSWORD = config['Cytube']['password']
+URL = str(config['Cytube']['loginurl'])
+
+if URL.endswith('/'):
+    URL = url[:-1]
 
 class WebClientContextFactory(ClientContextFactory):
     def getContext(self, hostname, port):
@@ -41,7 +45,7 @@ def cbBody(body):
 def setProfile(response, agent, profileText, profileImgUrl):
     d = agent.request(
             'POST',
-            'https://ssl.cytu.be:8443/account/profile',
+            '%s/account/profile' % URL,
             Headers({'content-type': ['application/x-www-form-urlencoded']}),
             FileBodyProducer(StringIO(urllib.urlencode(dict(text=profileText,
                               image=profileImgUrl, action='account/profile')))))
@@ -55,7 +59,7 @@ def changeProfile(username, password, profileText, profileImgUrl):
     agent = CookieAgent(Agent(reactor, contextFactory), cookieJar)
     d = agent.request(
             'POST',
-            'https://ssl.cytu.be:8443/login/',
+            '%s/login' % URL,
             Headers({'content-type': ['application/x-www-form-urlencoded']}),
             FileBodyProducer(StringIO(urllib.urlencode(dict(name=NAME, 
                                                password=PASSWORD)))))

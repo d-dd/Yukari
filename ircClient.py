@@ -122,6 +122,7 @@ class IrcProtocol(irc.IRCClient):
         self.factory.handle.ircUserCount = len(users)
 
     def connectionMade(self):
+        self.factory.handle.irc = True
         irc.IRCClient.connectionMade(self)
 
     def signedOn(self):
@@ -177,12 +178,18 @@ class IrcProtocol(irc.IRCClient):
 
     def joined(self, channel):
         clog.info('Joined IRC channel: %s' % channel, sys)
-        self.factory.handle.irc = True
+        if channel == config['irc']['channel']:
+            self.factory.handle.inIrcChan = True
+        elif channel == config['irc']['np']:
+            self.factory.handle.inIrcNp = True
         self.getNicks(channel).addCallback(self.updateNicks, channel)
 
     def left(self, channel):
         clog.info('Left IRC channel: %s' % channel, sys)
-        self.factory.handle.irc = False
+        if channel == config['irc']['channel']:
+            self.factory.handle.inIrcChan = False
+        elif channel == config['irc']['np']:
+            self.factory.handle.inIrcNp = False
 
     def kickedFrom(self, channel, kicker, message):
         clog.info('kickedFrom %s by %s: %s' % (channel, kicker, message), sys)
@@ -210,6 +217,7 @@ class IrcProtocol(irc.IRCClient):
     def partLeave(self, reason='Goodbye!'):
         self.leave(self.channelName, reason)
         self.quit(message='Shutting down...!')
+        self.factory.handle.ircRestart = False
 
     def logProcess(self, user, msg, flag):
         timeNow = getTime()
@@ -296,7 +304,8 @@ class IrcFactory(ClientFactory):
 
     def clientConnectionLost(self, connector, reason):
         clog.warning('Connection Lost to IRC. Reason: %s' % reason, sys)
-        self.handle.doneCleanup('irc')
+        if not self.handle.ircRestart:
+            self.handle.doneCleanup('irc')
 
     def clientConnectionFailed(self, connector, reason):
         clog.warning('Connection Failed to IRC. Reason: %s' % reason, sys)
