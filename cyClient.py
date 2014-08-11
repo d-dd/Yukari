@@ -199,6 +199,8 @@ class CyProtocol(WebSocketClientProtocol):
         # -It will not relay to IRC
         shadow = meta.get('shadow', None)
         flag = 1 if shadow else 0
+
+        # logging chat to database
         if username == '[server]':
             keyId = 2
         elif username in self.userdict:
@@ -217,6 +219,12 @@ class CyProtocol(WebSocketClientProtocol):
         # check for commands
         isCyCommand = False
         thunk = None
+        # strip HTML tags
+        tools.chatFormat.feed(msg)
+        msg = tools.chatFormat.get_text()
+        tools.chatFormat.close()
+        tools.chatFormat.result = []
+        tools.chatFormat.reset()
         if msg.startswith('$') and not shadow:
             msg = tools.returnStr(msg)
             # unescape only if chat is a command
@@ -1507,11 +1515,12 @@ class WsFactory(WebSocketClientFactory):
             # prot doesn't exist yet
             pass
         self.handle.cyAnnouceLeftRoom()
-        clog.error('clientConnectionLost! Reconnecting in %d seconds'
-                   % self.handle.cyRetryWait, syst)
-        # reconnect
-        reactor.callLater(self.handle.cyRetryWait,
-                                                self.handle.cyChangeProfile)
+        if self.handle.cyRestart:
+            clog.error('clientConnectionLost! Reconnecting in %d seconds'
+                       % self.handle.cyRetryWait, syst)
+            # reconnect
+            reactor.callLater(self.handle.cyRetryWait,
+                                                    self.handle.cyChangeProfile)
 
     def clientConnectionFailed(self, connector, reason):
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
