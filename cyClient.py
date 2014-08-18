@@ -172,11 +172,7 @@ class CyProtocol(WebSocketClientProtocol):
         d.addCallback(self.relayAnnoucement, by, title, text)
 
     def relayAnnoucement(self, ignored, by, title, text):
-        tools.chatFormat.feed(text)
-        text = tools.chatFormat.get_text()
-        tools.chatFormat.close()
-        tools.chatFormat.result = []
-        tools.chatFormat.reset()
+        text = tools.strip_tags(text)
         msg = '[Announcement: %s] %s (%s)' % (title, text, by)
         if not self.factory.handle.irc: # wait a bit for join
             reactor.callLater(10, self.factory.handle.sendToIrc, msg)
@@ -220,11 +216,7 @@ class CyProtocol(WebSocketClientProtocol):
         isCyCommand = False
         thunk = None
         # strip HTML tags
-        tools.chatFormat.feed(msg)
-        msg = tools.chatFormat.get_text()
-        tools.chatFormat.close()
-        tools.chatFormat.result = []
-        tools.chatFormat.reset()
+        msg = tools.strip_tag_entity(msg)
         if msg.startswith('$') and not shadow:
             msg = tools.returnStr(msg)
             # unescape only if chat is a command

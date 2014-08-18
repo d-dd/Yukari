@@ -165,17 +165,7 @@ class Connections:
     def recCyMsg(self, user, msg, needProcessing, action=False):
         if self.inIrcChan and user != 'Yukarin':
             clog.debug('recCyMsg: %s' % msg, sys)
-            tools.chatFormat.feed(msg)
-            try:
-                cleanMsg = tools.returnUnicode(tools.chatFormat.get_text())
-            except(UnicodeDecodeError):
-                clog.warning('(recCyMsg) received non-ascii command', sys)
-                needProcessing = False
-
-            # reset so we can use the same instance
-            tools.chatFormat.result = []
-            tools.chatFormat.reset()
-
+            cleanMsg = msg
             if not action:
                 cleanMsg = '(%s) %s' % (user, cleanMsg)
             elif action:

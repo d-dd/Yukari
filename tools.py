@@ -85,6 +85,32 @@ class TagStrip(HTMLParser.HTMLParser):
     def get_text(self):
         return ''.join(self.result)
 
+class MLStripper(HTMLParser.HTMLParser):
+    """ Strips tags and removes (deletes) HTML entities"""
+    def __init__(self):
+        self.reset()
+        self.fed = []
+
+    def handle_data(self, d):
+        self.fed.append(d)
+
+    def get_data(self):
+        return ''.join(self.fed)
+
+def strip_tags(html):
+    self = mls
+    self.reset()
+    self.fed = []
+    self.feed(html)
+    return self.get_data()
+
+def strip_tag_entity(html):
+    self = chatFormat
+    self.result = []
+    self.reset()
+    self.feed(html)
+    return self.get_text()
+
 def getTime():
     return int(time.time()*100)
 
@@ -121,3 +147,5 @@ log.addObserver(logger.emit)
 h = HTMLParser.HTMLParser()
 chatFormat = TagStrip()
 
+# instantiate once and reuse same instance
+mls = MLStripper()
