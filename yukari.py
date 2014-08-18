@@ -173,7 +173,6 @@ class Connections:
                 needProcessing = False
 
             # reset so we can use the same instance
-            tools.chatFormat.close()
             tools.chatFormat.result = []
             tools.chatFormat.reset()
 
@@ -208,17 +207,28 @@ class Connections:
                 args = argsList[1]
             else:
                 args = None
-            thunk = getattr(self, '_com_%s' % (command,), None)
-            if thunk is not None:
+            try:
+                thunk = getattr(self, '_com_%s' % (command,), None)
+            except(UnicodeEncodeError):
+                clog.warning('(processCommand) received non-ascii command', sys)
+                thunk = False
+
+            if thunk:
                 thunk(user, args)
 
     def _com_greet(self, user, args):
         msg = 'Hi, %s.' % user
-        reactor.callLater(0.00, self.sendChats, msg)
+        reactor.callLater(0.2, self.sendChats, msg)
 
     def _com_bye(self, user, args):
-        msg = 'Goodbye, %s.' % user
-        self.sendChats(msg)
+        farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
+                                  'See you later', 'See you soon', 'Take care',
+                                  ))
+        msg = '%s, %s.' % (farewell, user)
+        reactor.callLater(0.2, self.sendChats, msg)
+
+    def _com_goodnight(self, user, args):
+        reactor.callLater(0.2, self.sendChats, 'Goodnight, %s.' % user)
 
     def _com_ask(self, user, args):
         if not args:

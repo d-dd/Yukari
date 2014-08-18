@@ -194,9 +194,9 @@ class CyProtocol(WebSocketClientProtocol):
         meta = args['meta']
         modflair = meta.get('modflair', None)
         action = meta.get('action', None)
-        # shadowmute is effective but is a little hard to keep it hidden:
+        # shadowmute is effective to control chat but is hard to keep it hidden:
         # -Yukari will ignore shadowmuted commands
-        # -It will not relay to IRC
+        # -Shadowmute messages will not relay to IRC
         shadow = meta.get('shadow', None)
         flag = 1 if shadow else 0
 
@@ -296,7 +296,7 @@ class CyProtocol(WebSocketClientProtocol):
 
         if msg.startswith('$') and fromUser != self.name:
             thunk, args, source = self.checkCommand(username, msg, 'pm')
-            if thunk is not None:
+            if thunk:
                 thunk(username, args, 'pm')
 
     def _cyCall_newPoll(self, fdict):
@@ -376,7 +376,12 @@ class CyProtocol(WebSocketClientProtocol):
             args = argsList[1]
         else:
             args = None
-        thunk = getattr(self, '_com_%s' % (command,), None)
+        try:
+            thunk = getattr(self, '_com_%s' % (command,), None)
+        except(UnicodeEncodeError):
+            clog.warning('(checkCommand) received non-ascii command(2)', syst)
+            return False, None, source
+
         return thunk, args, source
             
     def _com_thread(self, username, args, source):
