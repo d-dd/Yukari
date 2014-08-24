@@ -1,5 +1,5 @@
 # Standard Library
-import random, re, time, subprocess, os, importlib
+import random, re, time, subprocess, os, importlib, ast
 from datetime import timedelta
 # Twisted Library
 from twisted.internet import reactor, defer
@@ -74,7 +74,7 @@ class Connections:
         d = database.getCurrentAndMaxProfileId()
         d.addCallback(self.cbChangeProfile)
         if not self.cy:
-            d.addBoth(self.cyPost)
+            d.addBoth(self.connectCy)
 
     def cbChangeProfile(self, res):
         #clog.debug('(cbChangeProfile) %s' % res, sys)
@@ -106,47 +106,16 @@ class Connections:
         database.setProfileFlag(currentRow, 0) # unset current profile flag
         database.setProfileFlag(nextRow, 1) # set next profile flag
 
-    def cyPost(self, res):
-        """ Send a POST request to Cytube socket.io server for a session id
-        """
-        agent = Agent(reactor)
-        url = 'http://%s:%s/socket.io/1/' % (config['Cytube']['domain'],
-                                             config['Cytube']['port'])
-        d = agent.request('POST', str(url))
-        d.addCallbacks(readBody, self.cyPostErr) # POST response
-        d.addCallbacks(self.processBody, self.cyRePost)
-        #d.addCallback(self.cySocketIo)
-
     def cyPostErr(self, err):
         clog.error(err, sys)
         return err
-    
-    def cyRePost(self, err):
-        if self.cyLastConnect - self.cyLastDisconnect > 60:
-            self.cyRetryWait = 0
-        wait = self.cyRetryWait**(1+random.random())
-        # return between 2 and 300
-        self.cyRetryWait = min(max(2, wait), 300)
-        clog.error('(cyRePost) Failed to obtain session ID. Retrying in %s '
-                   'seconds' % self.cyRetryWait, sys)
-        msg = ('[status] Could not connect to server. Attempting to reconnect '
-              'in %d seconds.' % self.cyRetryWait)
-        self.sendToIrc(msg)
-        reactor.callLater(self.cyRetryWait, self.cyPost, None)
 
-    def processBody(self, body):
-        clog.debug('(processBody) Received session string %s ' % body, sys)
-        if body is None:
-            return
-        session = body.split(',')
-        sid = session[0][:session[0].find(':')]
-        ws = ('ws://%s:%s/socket.io/1/websocket/%s/' %
-               (config['Cytube']['domain'], int(config['Cytube']['port']), sid))
-        self.cySocketIo(ws)
-
-    def cySocketIo(self, url):
-        clog.debug('(cySocketIo) Cytube ws uri: %s' % url, sys)
-        self.wsFactory = WsFactory(url)
+    def connectCy(self, ignored):
+        host = config['Cytube']['domain']
+        port = config['Cytube']['port']
+        ws = 'ws://%s:%s/socket.io/?transport=websocket' % (host, port)
+        clog.debug('(cySocketIo) Cytube ws uri: %s' % ws, sys)
+        self.wsFactory = WsFactory(ws)
         self.wsFactory.handle = self
         connectWS(self.wsFactory)
 
@@ -345,7 +314,7 @@ clog.warning('test custom log', 'cLog tester')
 modules = import_commands()
 for module in modules:
     print module
-    getattr(module, 'add_method', None)(Connections, dir(module), module)
+    getattr(module, '__add_method', None)(Connections, dir(module), module)
 yukari = Connections()
 yukari.cyChangeProfile()
 yukari.ircConnect()

@@ -1,5 +1,5 @@
 # Standard Library
-import json, time, re, argparse, random, urlparse
+import json, time, re, argparse, random, urlparse, ast
 from collections import deque
 # Twisted Libraries
 from twisted.internet import reactor, defer, task
@@ -59,26 +59,49 @@ class CyProtocol(WebSocketClientProtocol):
         self.lastUserlistTime = 0
         self.factory.prot = self
         self.factory.handle.cy = True
+        self.heartbeat = task.LoopingCall(self.sendHeartbeat)
+        self.lifeline = reactor.callLater(20, self.sendClose)
+        self.heartbeat.start(20.0)
         self.initialize()
 
+    def sendHeartbeat(self):
+        self.sendMessage('2')
+        # Wait for server's heartbeat response after sendHeartbeat
+        # Put the amount of time Yukari should wait for the response
+        # Remember that heavy load on the machine often causes
+        # schedules to fall behind greatly
+        self.lifeline.reset(10)
+
     def onMessage(self, msg, binary):
-        if msg == '2::':
-            self.sendMessage(msg) # return heartbeat
-        elif msg.startswith('5:::{'):
-            fstr = msg[4:]
-            fdict = json.loads(fstr)
-            #if fdict['name'] in ('chatMsg', 'userlist', 'addUser', 'userLeave'):
-                #print fstr
+        if binary:
+            clog.warning('Binary received: {0} bytes'.format(len(msg)))
+            return
+        #!!!!! Socket.IO encodes UTF8 twice~~ :( #!!!
+        if msg == '3':
+            self.lifeline.reset(30)
+        msg = msg.decode('utf8').encode('unicode-escape')
+        msg = msg.decode('string-escape').decode('utf8')
+        if msg.startswith('42'):
+            try:
+                msg = json.loads(msg[2:])
+            except(ValueError):
+                clog.error('(onMessage) Received non-JSON frame!', syst)
+                raise ValueError
+                return
+            name = msg[0]
+            args = msg[1]
+            fdict = {'name': name, 'args': [args]}
+            #clog.debug(fdict, 'fdict:%s' % name)
             self.processFrame(fdict)
 
     def onClose(self, wasClean, code, reason):
         clog.info('(onClose) Closed Protocol connection: %s' % reason, syst)
 
-    def sendf(self, dict): # 'sendFrame' is a WebSocket method name
-        frame = json.dumps(dict)
-        frame = '5:::' + frame
-        clog.debug('(sendf) [->] %s' % frame, syst)
-        self.sendMessage(frame)
+    def sendf(self, fdict):
+        l = '["%s",%s]' % (fdict["name"], json.dumps(fdict["args"]).encode('utf8'))
+        frame = "42"+ l
+        clog.debug("(sendf) [->] %s" % frame, syst)
+        self.sendMessage(str(frame))
 
     def doSendChat(self, msg, source='chat', username=None, modflair=False,
                    toIrc=True):
@@ -109,7 +132,7 @@ class CyProtocol(WebSocketClientProtocol):
     def initialize(self):
         pw = config['Cytube']['password']
         self.sendf({'name': 'login',
-                    'args': {'name': self.name, 'pw': pw}})
+                   'args': {'name': self.name, 'pw': pw}})
 
     def processFrame(self, fdict):
         name = fdict['name']
@@ -124,6 +147,9 @@ class CyProtocol(WebSocketClientProtocol):
     def joinRoom(self):
         channel = config['Cytube']['channel']
         self.sendf({'name': 'joinChannel', 'args': {'name':channel}})
+        self.sendf({'name': 'initUserPLCallbacks', 'args': {}})
+        self.sendf({'name': 'listPlaylists', 'args': {}})
+                
 
     def searchYoutube(self, msg):
         m = self.ytUrl.search(msg)
@@ -197,6 +223,7 @@ class CyProtocol(WebSocketClientProtocol):
         flag = 1 if shadow else 0
 
         # logging chat to database
+        keyId = None
         if username == '[server]':
             keyId = 2
         elif username in self.userdict:
@@ -926,7 +953,8 @@ class CyProtocol(WebSocketClientProtocol):
         assert userId == keyId, ('KeyId mismatch at userleave! %s, %s' %
                                                         (userId, keyId))
         timeJoined = leftUser['timeJoined']
-        clog.debug('(userLeave) userId %s left: %d' % (keyId, timeNow), syst)
+        clog.debug('(userLeave) userId %s left: %d. Logging to database' %
+                                                         (keyId, timeNow), syst)
         d = database.insertUserInOut(keyId, timeJoined, timeNow)
         d.addCallback(lambda __: defer.succeed(keyId))
         d.addErrback(self.errcatch)
@@ -961,7 +989,7 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_userlist(self, fdict):
         if time.time() - self.lastUserlistTime < 3: # most likely the same userlist
              # with ip/aliases if mod+
-            clog.info('(_cy_userlist) Duplicate userlist detected', syst)
+            clog.error('(_cy_userlist) Duplicate userlist detected', syst)
             return
         self.lastUserlistTime = time.time()
         userlist = fdict['args'][0]
@@ -1509,8 +1537,9 @@ class WsFactory(WebSocketClientFactory):
         try:
             self.prot.logUserInOut()
         except(AttributeError):
+            clog.warning(('clientConnectionLost: cannot logUserInOut().'
+                         ' "prot" does not exist.', syst))
             # prot doesn't exist yet
-            pass
         self.handle.cyAnnouceLeftRoom()
         if self.handle.cyRestart:
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
