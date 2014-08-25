@@ -84,7 +84,6 @@ class CyProtocol(WebSocketClientProtocol):
                    toIrc=True):
         clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, 
                    source, username), syst)
-
         if source == 'chat':
             if modflair:
                 modflair = 3 ### TODO remove hardcode rank
@@ -117,9 +116,6 @@ class CyProtocol(WebSocketClientProtocol):
         thunk = getattr(self, '_cyCall_%s' % (name,), None)
         if thunk is not None:
             thunk(fdict)
-        else:
-            pass
-            #print 'No method defined for %s.' % name
 
     def joinRoom(self):
         channel = config['Cytube']['channel']
@@ -174,7 +170,10 @@ class CyProtocol(WebSocketClientProtocol):
     def relayAnnoucement(self, ignored, by, title, text):
         text = tools.strip_tags(text)
         msg = '[Announcement: %s] %s (%s)' % (title, text, by)
+        
         if not self.factory.handle.irc: # wait a bit for join
+            # wait a little bit in case Yukari needs to join the IRC channel
+            # announcements are often related to Cytube server reboots
             reactor.callLater(10, self.factory.handle.sendToIrc, msg)
         else:
             self.factory.handle.sendToIrc(msg)
@@ -195,53 +194,53 @@ class CyProtocol(WebSocketClientProtocol):
         # -Shadowmute messages will not relay to IRC
         shadow = meta.get('shadow', None)
         flag = 1 if shadow else 0
+        self.logChatMsg(username, chatCyTime, msg, modflair, flag, timeNow)
+        self.checkCommands(username, msg, shadow, action)
 
+    def logChatMsg(self, username, chatCyTime, msg, modflair, flag, timeNow):
         # logging chat to database
         if username == '[server]':
             keyId = 2
         elif username in self.userdict:
             keyId = self.userdict[username]['keyId']
+        else:
+            keyId = None
         if keyId:
             self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
                                           modflair, flag))
             if not self.chatLoop.running:
-                clog.info('(_cy_chatMsg) starting chatLoop', syst)
+                clog.debug('(_cy_chatMsg) starting chatLoop', syst)
                 self.chatLoop.start(3, now=False)
         else:
-            assert keyId is None
             chatArgs = (timeNow, chatCyTime, msg, modflair, flag)
             self.userdict[username]['deferred'].addCallback(self.deferredChat,
                                                                 chatArgs)
+    def checkCommands(self, username, msg, shadow, action):
         # check for commands
-        isCyCommand = False
-        thunk = None
         # strip HTML tags
         msg = tools.strip_tag_entity(msg)
         if msg.startswith('$') and not shadow:
-            msg = tools.returnStr(msg)
-            # unescape only if chat is a command
-            # so Yukari can show return value properly ([Ask: >v<] Yes.)
-            msg = tools.returnUnicode(msg)
+            # unescape to show return value properly ([Ask: >v<] Yes.)
             msg = tools.unescapeMsg(msg)
             thunk, args, source = self.checkCommand(username, msg, 'chat')
-        # send to yukari.py
-        if username != self.name and username != '[server]' and not shadow:
-            #clog.debug('Sending chat to IRC, username: %s' % username)
-            needProcessing = not thunk
-            if thunk is False: # non-ascii command
-                needProcessing = False
-            self.factory.handle.recCyMsg(username, msg, needProcessing, 
-                                                         action=action)
-        # send to IRC before executing the command
-        # to maintain proper chat queue (user command before Yukari's reply)
-        if thunk:
-            thunk(username, args, 'chat')
+            # send to yukari.py
+            if username != self.name and username != '[server]' and not shadow:
+                needProcessing = not thunk
+                if thunk is False: # non-ascii command
+                    needProcessing = False
+                #clog.debug('Sending chat to IRC, username: %s' % username)
+                self.factory.handle.recCyMsg(username, msg, needProcessing, 
+                                                             action=action)
+            # send to IRC before executing the command
+            # to maintain proper chat queue (user command before Yukari's reply)
+            if thunk:
+                thunk(username, args, 'chat')
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
         pmTime = args['time']
         pmCyTime = int((args['time'])/10.0)
-        timenow = getTime()
+        timeNow = getTime()
         fromUser = args['username']
         toUser = args['to']
         msg = tools.unescapeMsg(args['msg'])
@@ -254,7 +253,10 @@ class CyProtocol(WebSocketClientProtocol):
             # Yukari sent the PM
             flag = 1
             username = toUser
-        
+        self.logPmChat(username, msg, pmTime, pmCyTime, timeNow, flag)
+        self.processPm(username, msg)
+
+    def logPmChat(self, username, msg, pmTime, pmCyTime, timeNow, flag):
         if username in self.userdict:
             keyId = self.userdict[username]['keyId']
             if keyId is not None:
@@ -266,19 +268,17 @@ class CyProtocol(WebSocketClientProtocol):
                 clog.warning('(_cyCall_pm) no key for %s' % username, syst)
         else:
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
-            return
 
+    def processPm(self, username, msg):
         if msg.startswith('%%'):
             if msg == '%%subscribeLike':
                 clog.debug('Received subscribeLike from %s' % username, syst)
                 if username in self.userdict:
-                    if not self.userdict[username]['subscribeLike']:
-                        self.userdict[username]['subscribeLike'] = True
-                        # send value for current media
-                        if username in self.currentLikes:
-                            msg = '%%%%%s' % self.currentLikes[username]
-                            self.doSendPm(msg, username)
-                return
+                    self.userdict[username]['subscribeLike'] = True
+                    # send value for current media
+                    if username in self.currentLikes:
+                        msg = '%%%%%s' % self.currentLikes[username]
+                        self.doSendPm(msg, username)
             elif msg == '%%like':
                 self._com_like(username, None, 'ppm')
             elif msg == '%%unlike':
@@ -286,7 +286,7 @@ class CyProtocol(WebSocketClientProtocol):
             elif msg == '%%dislike':
                 self._com_dislike(username, None, 'ppm')
 
-        if msg.startswith('$') and fromUser != self.name:
+        elif msg.startswith('$') and username != self.name:
             thunk, args, source = self.checkCommand(username, msg, 'pm')
             if thunk:
                 thunk(username, args, 'pm')

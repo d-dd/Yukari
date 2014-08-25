@@ -23,9 +23,7 @@ def import_commands():
         clog.error('(import_commands) Could not find commands directory', syst)
     moduleNames = ['commands.'+i[:-3] for i in files if i.endswith('.py') and 
                                                          i != '__init__.py']
-    print moduleNames
     modules = map(importlib.import_module, moduleNames)
-    print type(modules)
     return modules
 
 sys = 'Yukari'
@@ -344,8 +342,7 @@ clog.warning('test custom log', 'cLog tester')
 # import modules and add the methods to the Connections class
 modules = import_commands()
 for module in modules:
-    print module
-    getattr(module, 'add_method', None)(Connections, dir(module), module)
+    getattr(module, '__add_method', None)(Connections, dir(module), module)
 yukari = Connections()
 yukari.cyChangeProfile()
 yukari.ircConnect()
