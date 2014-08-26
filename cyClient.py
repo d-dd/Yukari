@@ -218,19 +218,20 @@ class CyProtocol(WebSocketClientProtocol):
     def checkCommands(self, username, msg, shadow, action):
         # check for commands
         # strip HTML tags
+        thunk = None
         msg = tools.strip_tag_entity(msg)
         if msg.startswith('$') and not shadow:
             # unescape to show return value properly ([Ask: >v<] Yes.)
             msg = tools.unescapeMsg(msg)
             thunk, args, source = self.checkCommand(username, msg, 'chat')
             # send to yukari.py
-            if username != self.name and username != '[server]' and not shadow:
-                needProcessing = not thunk
-                if thunk is False: # non-ascii command
-                    needProcessing = False
-                #clog.debug('Sending chat to IRC, username: %s' % username)
-                self.factory.handle.recCyMsg(username, msg, needProcessing, 
-                                                             action=action)
+        if username != self.name and username != '[server]' and not shadow:
+            needProcessing = not thunk
+            if thunk is False: # non-ascii command
+                needProcessing = False
+            #clog.debug('Sending chat to IRC, username: %s' % username)
+            self.factory.handle.recCyMsg(username, msg, needProcessing, 
+                                                         action=action)
             # send to IRC before executing the command
             # to maintain proper chat queue (user command before Yukari's reply)
             if thunk:

@@ -109,7 +109,7 @@ def _com_poke(self, user, args):
     self.sendChats('%s please be nice!' % user)
     clog.error('asdf')
     
-def add_method(bClass, names, reference):
+def __add_method(bClass, names, reference):
     for name in names:
         if name not in ('reactor', 'random', 'clog') and not name.startswith('__'):
             clog.warning('ADDING METHOD %s!' % name, 'IMPORT')
