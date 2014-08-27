@@ -10,23 +10,26 @@ from ircClient import IrcFactory
 from autobahn.twisted.websocket import connectWS
 # Yukari
 from ext.rinception import LineReceiver, LineReceiverFactory
-from cyClient import CyProtocol, WsFactory
+from connections.cytube.cyClient import CyProtocol, WsFactory
 from conf import config
 import database, tools, apiClient, cyProfileChange
 from tools import clog
 
-def import_commands():
+sys = 'Yukari'
+def import_commands(directory):
     """Import command modules found in commands directory"""
+    # include / at the end of diretory
     try:
-        files = os.listdir('commands')
+        files = os.listdir(directory)
     except(OSError):
-        clog.error('(import_commands) Could not find commands directory', syst)
-    moduleNames = ['commands.'+i[:-3] for i in files if i.endswith('.py') and 
+        clog.error('(import_commands) Could not find commands directory', sys)
+        return
+    path = directory.replace('/', '.')
+    moduleNames = [path + i[:-3] for i in files if i.endswith('.py') and 
                                                          i != '__init__.py']
     modules = map(importlib.import_module, moduleNames)
     return modules
 
-sys = 'Yukari'
 class Connections:
     """ Handles connections to a Cytube server and IRC, as well as
         any communication between them."""
@@ -340,9 +343,14 @@ def createShellServer(obj):
 clog.error('test custom log', 'cLog tester')
 clog.warning('test custom log', 'cLog tester')
 # import modules and add the methods to the Connections class
-modules = import_commands()
-for module in modules:
-    getattr(module, '__add_method', None)(Connections, dir(module), module)
+commandsPaths = [('commands/', Connections), 
+                 ('connections/cytube/commands/', CyProtocol)]
+
+for path in commandsPaths:
+    modules = import_commands(path[0])
+    for module in modules:
+        getattr(module, '__add_method', None)(path[1], dir(module), module)
+
 yukari = Connections()
 yukari.cyChangeProfile()
 yukari.ircConnect()
