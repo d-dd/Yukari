@@ -590,6 +590,8 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
 
     def _com_points(self, username, args, source):
+        if source != 'pm':
+            return
         querier = username
         # if admin+ pm's $points user, yukari will pm back user's points
         if args and source == 'pm':
