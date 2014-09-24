@@ -16,7 +16,7 @@
 - `$add` Queue media queried from the database.  
  `[-s {queue,q,add,a}] [-u USER] [-r REGISTERED]`  
  `[-n NUMBER] [-t TITLE] [-a ARTIST] [-T TEMPORARY] [-N NEXT]`
-  - `-s, --sample {queue,q,add,a}` `queue` (`q`) or `add` (`a`) method of querying media from the database. `queue` searchs media that was ever queued by user. `add` searchs media that was first added, or introduced by user.
+  - `-s, --sample {queue,q,add,a,like,l}` `queue` (`q`), `add` (`a`), `like` (`l`) method of querying media from the database. `queue` searchs media that was ever queued by user. `add` searchs media that was first added, or introduced by user. `like` searches media that was liked by user. `like` cannot be combined with `--title`.
  - `-u, --user USER` Cytube username.
  - `-r, --registered` True/False. Guests are not registered users.
  - `-n, --number` The limit for querying Media table. The maximum number for non-moderaters is 3, and 20 for moderators and above.
@@ -25,12 +25,11 @@
  - `-T, --temporary` add as temporary
  - `-N, --next` add as next
 
-- `$points`  Show points and basic user statistics. Adding and queuing media will generate more points. Staying in the channel will yield a small amount of points.  
-- The stats are <b>a</b>dds, <b>q</b>ueues, <b>l</b>ikes (received), <b>d</b>islikes (received), <b>L</b>iked, <b>D</b>isliked
 
 
 ##**CyTube PM Commands:**
-- `$points`
+- `$points`  Show points and basic user statistics. Adding and queuing media will generate more points. Staying in the channel will yield a small amount of points.  
+- The stats are <b>a</b>dds, <b>q</b>ueues, <b>l</b>ikes (received), <b>d</b>islikes (received), <b>L</b>iked, <b>D</b>isliked
 - `$read` Tell Yukari that I have read this.
 
 ##**CyTube Moderator commands:**

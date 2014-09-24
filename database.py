@@ -318,14 +318,9 @@ def addByUserAdd(nameLower, registered, words, limit):
 def addByUserLike(nameLower, registered, limit):
     """selects up to n (limit) random non-flagged media that is
     liked by user"""
-    if nameLower:
-        name = ('AND by = %s' % _USERIDSQL)
-        binds.extend((nameLower, registered))
-    else:
-        name = ''
     sql = ('SELECT Media.type, Media.id FROM Media CROSS JOIN LIKE '
            'ON Media.mediaId = Like.mediaId AND Like.userId=%s AND '
-           'Like.value=1 ORDER BY RANDOM() LIMIT=?' % _USERIDSQL)
+           'Like.value=1 ORDER BY RANDOM() LIMIT ?' % _USERIDSQL)
     binds = (nameLower, registered, limit)
     return query(sql, binds)
 

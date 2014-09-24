@@ -546,9 +546,9 @@ class CyProtocol(WebSocketClientProtocol):
             args.omit = False
 
         info = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
-                'pos:%s, title:%s, include ommited:%s, like:%s'
+                'pos:%s, title:%s, include ommited:%s'
                 % (args.number, args.sample, args.user, args.guest,
-                   args.temporary, args.next, title, args.omit, args.like))
+                   args.temporary, args.next, title, args.omit))
         #self.doSendChat(reply)
         clog.debug('(_com_add) %s' % info, syst)
         isRegistered = not args.guest
