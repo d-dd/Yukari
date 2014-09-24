@@ -526,7 +526,7 @@ class CyProtocol(WebSocketClientProtocol):
         
         parser = argparse.ArgumentParser()
         parser.add_argument('-s', '--sample', default='queue', 
-                            choices=('queue', 'q', 'add', 'a'))
+                            choices=('queue', 'q', 'add', 'a', 'like', 'l'))
         parser.add_argument('-u', '--user', default='Anyone')
         parser.add_argument('-g', '--guest', default=False, type=bool)
         parser.add_argument('-n', '--number', default=3, type=int)
@@ -546,9 +546,9 @@ class CyProtocol(WebSocketClientProtocol):
             args.omit = False
 
         info = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
-                'pos:%s, title:%s, include ommited:%s'
+                'pos:%s, title:%s, include ommited:%s, like:%s'
                 % (args.number, args.sample, args.user, args.guest,
-                   args.temporary, args.next, title, args.omit))
+                   args.temporary, args.next, title, args.omit, args.like))
         #self.doSendChat(reply)
         clog.debug('(_com_add) %s' % info, syst)
         isRegistered = not args.guest
@@ -1447,6 +1447,9 @@ class CyProtocol(WebSocketClientProtocol):
             d = database.addByUserQueue(username, isRegistered, title, quantity)
         elif sample == 'add' or sample == 'a':
             d = database.addByUserAdd(username, isRegistered, title, quantity)
+        
+        elif sample == 'like' or sample == 'l':
+            d = database.addByUserLike(username, isRegistered, quantity)
         else:
             return
         d.addCallback(self.doAddMedia, temp, pos)
