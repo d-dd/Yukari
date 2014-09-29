@@ -253,6 +253,8 @@ class Connections:
                        (uptime, cyUptime, ircUptime))
 
     def _com_sql(self, user, args):
+        if not args:
+            return
         if 'drop table' in args.lower() and args.endswith(';'):
             tables = ('user', 'chat', 'song', 'media', 'video', 'song', 'music')
             if True in [c in args.lower() for c in tables]:
