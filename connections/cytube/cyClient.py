@@ -952,7 +952,6 @@ class CyProtocol(WebSocketClientProtocol):
         # We don't add all media to the queue table automatically since it'll
         # end up adding multiple times each join/restart during shuffle.
         self.playlist = []
-        self.nowPlayingMedia = {}
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
         dbpl, qpl = [], []
