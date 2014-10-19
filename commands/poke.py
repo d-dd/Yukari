@@ -106,6 +106,7 @@ def rollDice(self, times, sides):
             return [random.randrange(1, sides+1) for x in range(1, times+1)]
 
 def _com_poke(self, user, args):
+    return
     self.sendChats('%s please be nice!' % user)
     clog.error('asdf')
     
