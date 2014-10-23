@@ -64,7 +64,7 @@ class Connections:
         clog.error('restarting connection in %s' % waitTime)
         msg = ('[status] Could not connect to server. Attempting to reconnect '
               'in %d seconds.' % waitTime)
-        self.sendToIrc(msg)
+        #self.sendToIrc(msg)
         reactor.callLater(waitTime, method, None)
         waitTime = waitTime**(1+random.random())
         # return between 2 and 300
@@ -132,7 +132,7 @@ class Connections:
                    'seconds' % self.cyRetryWait, sys)
         msg = ('[status] Could not connect to server. Attempting to reconnect '
               'in %d seconds.' % self.cyRetryWait)
-        self.sendToIrc(msg)
+        #self.sendToIrc(msg)
         reactor.callLater(self.cyRetryWait, self.cyPost, None)
 
     def processBody(self, body):
