@@ -21,6 +21,10 @@ class IrcProtocol(irc.IRCClient):
         self.nickname = str(config['irc']['nick'])
         self.channelName = str(config['irc']['channel'])
         self.channelNp = str(config['irc']['np'])
+        if not self.channelName.startswith('#'):
+            self.channelName = '#' + self.channelName
+        if not self.channelNp.startswith('#'):
+            self.channelNp = '#' + self.channelNp
         self.chatQueue = deque()
         self.bucketToken = int(config['irc']['bucket'])
         self.bucketTokenMax = int(config['irc']['bucket'])
@@ -75,7 +79,8 @@ class IrcProtocol(irc.IRCClient):
         self.say(channel, msg) # must not be in unicode
         
     def sayNowPlaying(self, msg):
-        self.say(self.channelNp, msg)
+        if self.channelNp:
+            self.say(self.channelNp, msg)
 
     def getNicks(self, channel):
         channel = channel.lower()
@@ -132,7 +137,8 @@ class IrcProtocol(irc.IRCClient):
         # For some reason I don't get a privmsg reply from NickServ, it might be
         # a special callback...
         reactor.callLater(1, self.join, self.channelName)
-        reactor.callLater(1, self.join, (str(config['irc']['np'])))
+        if self.channelNp:
+            reactor.callLater(1, self.join, self.channelNp)
         self.factory.prot = self
 
     def identify(self):
@@ -178,9 +184,9 @@ class IrcProtocol(irc.IRCClient):
 
     def joined(self, channel):
         clog.info('Joined IRC channel: %s' % channel, sys)
-        if channel == config['irc']['channel']:
+        if channel == self.channelName:
             self.factory.handle.inIrcChan = True
-        elif channel == config['irc']['np']:
+        elif channel == self.channelNp:
             self.factory.handle.inIrcNp = True
         self.getNicks(channel).addCallback(self.updateNicks, channel)
 
