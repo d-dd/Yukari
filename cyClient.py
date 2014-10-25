@@ -73,14 +73,12 @@ class CyProtocol(WebSocketClientProtocol):
         self.lifeline.reset(10)
 
     def onMessage(self, msg, binary):
+        msg = msg.decode('utf8')
         if binary:
             clog.warning('Binary received: {0} bytes'.format(len(msg)))
             return
-        #!!!!! Socket.IO encodes UTF8 twice~~ :( #!!!
         if msg == '3':
             self.lifeline.reset(30)
-        msg = msg.decode('utf8').encode('unicode-escape')
-        msg = msg.decode('string-escape').decode('utf8')
         if msg.startswith('42'):
             try:
                 msg = json.loads(msg[2:])

@@ -311,10 +311,10 @@ def createShellServer(obj):
 clog.error('test custom log', 'cLog tester')
 clog.warning('test custom log', 'cLog tester')
 # import modules and add the methods to the Connections class
-modules = import_commands()
-for module in modules:
-    print module
-    getattr(module, '__add_method', None)(Connections, dir(module), module)
+#modules = import_commands()
+#for module in modules:
+#    print module
+#    getattr(module, '__add_method', None)(Connections, dir(module), module)
 yukari = Connections()
 yukari.cyChangeProfile()
 yukari.ircConnect()
