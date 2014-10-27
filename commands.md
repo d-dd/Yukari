@@ -5,7 +5,7 @@
 - `$ask question` Answers Yes or No randomly to question.
 - `$choose choices` Selects one choice from `choices`. `choices` may be separated by whitespace or commas.
 - `$permute choices` Permutes `choices`. `choices` may be separated by whitespace or commas.
-- `$anagram words` Returns an anagram of `words`. www.anagramgenius.com is the server that solves the anagrams.
+- `$anagram words` Returns an anagram of `words`. www.anagramgenius.com is the server that solves the anagrams.<<the server is currently down.>>
 - `$8ball question` Answers the question using a magic 8-ball.
 - `$dice [rolls, sides]` Rolls dice and outputs sum. Rolls 1d6 without arguments. 
 - `$uptime` Lists the uptimes of Yukari and other connected serviecs.
@@ -43,4 +43,8 @@
 - `$blacklist [type, id]` Add the blacklist flag to the specified media. If nothing is specified, the flag is appiled to the currently playing media. Blacklisted media will be deleted, and any subsequent queues will be automatically removed from the playlist.
 - `$vocadb [VocaDB Song Id]` Match the currently playing media with a VocaDB Id. This will update the VocaDB Panel.
   -   `-f` Force update the cache #TODO
-  -   `-p` PV match. Use this when the PV is the same as the entry in VocaDB (and not just the song). Without this the VocaDB panel will not display non-audio related artists such as illustrators and animators #TODO
+  -   `-p` PV match. Use this when the PV is the same as the entry in VocaDB (and not just the song). Without this the VocaDB panel will not display non-audio related artists such as illustrators and animators #TODO  
+
+
+#####**experimental - use with care **
+- `$reprint [smid]` Downloads a NicoNicoDouga video, and uploads it to Youtube. There is a delay of 5 minutes after the video has been uploaded before the video is automatically queued to the playlist, to allow Youtube to finish processing the video. Only admins who have been listed in `allowed.txt` can use this command. More information can be found at https://github.com/d-dd/Yukari/blob/master/connections/cytube/commands/loaders/README.md.
