@@ -89,7 +89,10 @@ class CyProtocol(WebSocketClientProtocol):
                 raise ValueError
                 return
             name = msg[0]
-            args = msg[1]
+            try:
+                args = msg[1]
+            except(IndexError):
+                args = {}
             fdict = {'name': name, 'args': [args]}
             #clog.debug(fdict, 'fdict:%s' % name)
             self.processFrame(fdict)
