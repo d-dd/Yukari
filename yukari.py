@@ -149,14 +149,18 @@ class Connections:
     def recIrcMsg(self, user, channel, msg, modifier=None):
         if self.cy:
             user = user.split('!', 1)[0] # takes out the extra info in the name
+            msgl = list(msg)
+            # cytube char limit per line is 244, so break up into multiple lines
+            while msgl:
+                name = '(_%s_)' % user if modifier else '(%s)' % user
+                cont = '[..]' if len(name) + len(msgl) > 235 else ''
+                idx = 235 -len(name) - len(cont)
+                line = '%s %s %s' % (name, ''.join(msgl[:idx]), cont)
+                msgl = msgl[idx:]
+                self.wsFactory.prot.relayToCyChat(line)
+            # don't process commands from action (/me) messages
             if not modifier:
-                msgf = '(%s) %s' % (user, msg)
-                self.wsFactory.prot.relayToCyChat(msgf)
                 self.processCommand(user, tools.returnUnicode(msg))
-            elif modifier == 'action':
-                msgf = '_(%s)_ %s' % (user, msg)
-                self.wsFactory.prot.relayToCyChat(msgf)
-                # don't process action for commands
 
     def recCyMsg(self, user, msg, needProcessing, action=False):
         if self.inIrcChan and user != 'Yukarin':
