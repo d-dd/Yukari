@@ -1,0 +1,37 @@
+[Cytube]
+domain = 
+port = 
+channel = 
+channelpass = #TODO
+username = 
+password = 
+loginurl = 
+
+[irc]
+url = 
+bucket = 16
+ssl = False #TODO
+port = 6667
+channel = 
+nick = 
+offlinenick = 
+pass =
+np = 
+
+[UserAgent]
+vocadb = 
+
+[api]
+youtube = 
+
+[telnet]
+port = 9998
+username =
+password =
+
+[rinserver]
+port = 18019
+
+[reprinter]
+nicoid = 
+nicopass =

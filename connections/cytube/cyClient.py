@@ -104,7 +104,7 @@ class CyProtocol(WebSocketClientProtocol):
             except(IndexError):
                 args = {}
             fdict = {'name': name, 'args': [args]}
-            clog.debug(fdict, 'fdict:%s' % name)
+            #clog.debug(fdict, 'fdict:%s' % name)
             self.processFrame(fdict)
 
     def onClose(self, wasClean, code, reason):
