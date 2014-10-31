@@ -55,8 +55,13 @@ class CyProtocol(WebSocketClientProtocol):
         err.printTraceback()
         self.err.append(err)
 
+    def onConnect(self, response):
+        clog.info('(onConnect) Connected to Cytube: %s' % response, syst)
+
     def onOpen(self):
-        clog.info('(onOpen) Connected to Cytube!', syst)
+        clog.info('(onOpen) Handshake successful!', syst)
+        self.factory.handle.cyLastConnect = time.time()
+        self.factory.handle.cyAnnounceConnect()
         self.connectedTime = time.time()
         self.lastUserlistTime = 0
         self.factory.prot = self
@@ -72,7 +77,12 @@ class CyProtocol(WebSocketClientProtocol):
         # Put the amount of time Yukari should wait for the response
         # Remember that heavy load on the machine often causes
         # schedules to fall behind greatly
-        self.lifeline.reset(10)
+        try:
+            self.lifeline.reset(10)
+        # this catches the leftover heartbeat from a disconnected instance
+        # (when Yukari reconnects)
+        except(AlreadyCalled, AlreadyCancelled):
+            pass
 
     def onMessage(self, msg, binary):
         msg = msg.decode('utf8')
@@ -94,7 +104,7 @@ class CyProtocol(WebSocketClientProtocol):
             except(IndexError):
                 args = {}
             fdict = {'name': name, 'args': [args]}
-            #clog.debug(fdict, 'fdict:%s' % name)
+            clog.debug(fdict, 'fdict:%s' % name)
             self.processFrame(fdict)
 
     def onClose(self, wasClean, code, reason):
@@ -1496,35 +1506,34 @@ class WsFactory(WebSocketClientFactory):
         WebSocketClientFactory.__init__(self, arg)
 
     def startedConnecting(self, connector):
-        clog.debug('WsFactory...started Connecting')
-        self.handle.cyLastConnect = time.time()
-        self.handle.cyAnnounceConnect()
+        clog.debug('WsFactory started connecting to Cytube..', syst)
 
     def clientConnectionLost(self, connector, reason):
+        clog.warning('(clientConnectionLost) Connection lost. %s' % reason, syst)
+        self.reconnect(connector, reason)
+        self.handle.cyAnnouceLeftRoom()
+
+
+    def clientConnectionFailed(self, connector, reason):
+        self.reconnect(connector, reason)
+        clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
+                    % reason, syst)
+
+    def reconnect(self, connector, reason):
         self.handle.cy = False
         if time.time() - self.handle.cyLastDisconnect > 60:
             self.handle.cyRetryWait = 0
         self.handle.cyLastDisconnect = time.time()
-        clog.warning('(clientConnectionLost) Connection lost to Cyutbe. %s'
-                     % reason, syst)
         try:
             self.prot.logUserInOut()
         except(AttributeError):
             clog.warning(('clientConnectionLost: cannot logUserInOut().'
                          ' "prot" does not exist.', syst))
             # prot doesn't exist yet
-        self.handle.cyAnnouceLeftRoom()
         if self.handle.cyRestart:
             clog.error('clientConnectionLost! Reconnecting in %d seconds'
                        % self.handle.cyRetryWait, syst)
             # reconnect
-            reactor.callLater(self.handle.cyRetryWait,
-                                                    self.handle.cyChangeProfile)
-
-    def clientConnectionFailed(self, connector, reason):
-        clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
-                    % reason, syst)
-
-# add methods here
-#from connections.cytube.commands import _com_smiley
-#setattr(CyProtocol, '_com_smiley', _com_smiley)
+            self.handle.restartConnection()
+        #    reactor.callLater(self.handle.cyRetryWait,
+        #                                            self.handle.cyChangeProfile)

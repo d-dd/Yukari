@@ -18,7 +18,8 @@ class IrcProtocol(irc.IRCClient):
     nickname = str(config['irc']['nick'])
 
     def __init__(self):
-        self.nickname = str(config['irc']['nick'])
+        self.onlineNick = str(config['irc']['nick'])
+        self.offlineNick = str(config['irc']['offlinenick'])
         self.channelName = str(config['irc']['channel'])
         self.channelNp = str(config['irc']['np'])
         if not self.channelName.startswith('#'):
@@ -126,8 +127,24 @@ class IrcProtocol(irc.IRCClient):
         users = [u for u in namelist if not u.startswith('&')]
         self.factory.handle.ircUserCount = len(users)
 
+    def setOnlineNick(self):
+        """ Sets nick for when Cytube is offline """
+        self.setNick(self.onlineNick)
+
+    def setOfflineNick(self):
+        """ Sets nick for when Cytube is offline """
+        self.setNick(self.offlineNick)
+
+    def setInitialNick(self):
+        clog.warning('(setInitialNick) setting initial nickname', sys)
+        if self.factory.handle.cy:
+            self.setOnlineNick()
+        else:
+            self.setOfflineNick()
+
     def connectionMade(self):
         self.factory.handle.irc = True
+        # since we overwrote the method
         irc.IRCClient.connectionMade(self)
 
     def signedOn(self):
@@ -136,6 +153,7 @@ class IrcProtocol(irc.IRCClient):
         # not really important, but joining before ident won't show the VHOST :)
         # For some reason I don't get a privmsg reply from NickServ, it might be
         # a special callback...
+        reactor.callLater(0.9, self.setInitialNick)
         reactor.callLater(1, self.join, self.channelName)
         if self.channelNp:
             reactor.callLater(1, self.join, self.channelNp)

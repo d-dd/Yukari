@@ -60,15 +60,15 @@ class Connections:
         # Users in IRC chat channel
         self.ircUserCount = 0
 
-    def restartConnection(self, method, waitTime):
-        clog.error('restarting connection in %s' % waitTime)
+    def restartConnection(self):
+        clog.error('restarting connection in %s' % self.cyRetryWait)
         msg = ('[status] Could not connect to server. Attempting to reconnect '
-              'in %d seconds.' % waitTime)
+              'in %d seconds.' % self.cyRetryWait)
         #self.sendToIrc(msg)
-        reactor.callLater(waitTime, method, None)
-        waitTime = waitTime**(1+random.random())
+        reactor.callLater(self.cyRetryWait, self.cyChangeProfile)
+        self.cyRetryWait = (self.cyRetryWait+1)**(1+random.random())
         # return between 2 and 300
-        return min(max(2, waitTime), 300)
+        return min(max(2, self.cyRetryWait), 300)
 
     def cyChangeProfile(self):
         """ Change Yukari's profile picture and text on CyTube """
@@ -110,19 +110,6 @@ class Connections:
     def cyPostErr(self, err):
         clog.error(err, sys)
         return err
-    
-    def cyRePost(self, err):
-        if self.cyLastConnect - self.cyLastDisconnect > 60:
-            self.cyRetryWait = 0
-        wait = self.cyRetryWait**(1+random.random())
-        # return between 2 and 300
-        self.cyRetryWait = min(max(2, wait), 300)
-        clog.error('(cyRePost) Failed to obtain session ID. Retrying in %s '
-                   'seconds' % self.cyRetryWait, sys)
-        msg = ('[status] Could not connect to server. Attempting to reconnect '
-              'in %d seconds.' % self.cyRetryWait)
-        #self.sendToIrc(msg)
-        reactor.callLater(self.cyRetryWait, self.cyPost, None)
 
     def connectCy(self, ignored):
         host = config['Cytube']['domain']
@@ -282,13 +269,16 @@ class Connections:
         self.sendToCy(msg, modflair)
 
     def cyAnnouceLeftRoom(self):
-        msg = ('[status] Left Cytube channel. Rejoin attempt in '
-              '%d seconds.' % self.cyRetryWait)
+        msg = ('[status] Left Cytube channel.')
         self.sendToIrc(msg)
+        if self.irc:
+            self.ircFactory.prot.setOfflineNick()
 
     def cyAnnounceConnect(self):
         msg = ('[status] Connected to Cytube.')
         self.sendToIrc(msg)
+        if self.irc:
+            self.ircFactory.prot.setOnlineNick()
 
     def cleanup(self):
         """ Prepares for shutdown """
@@ -342,7 +332,7 @@ for path in commandsPaths:
 yukari = Connections()
 yukari.cyChangeProfile()
 yukari.ircConnect()
-yukari.rinstantiate(int(config['rinserver']['port']))
+#yukari.rinstantiate(int(config['rinserver']['port']))
 reactor.callWhenRunning(createShellServer, yukari)
 reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
 reactor.run()
