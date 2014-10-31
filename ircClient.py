@@ -143,7 +143,6 @@ class IrcProtocol(irc.IRCClient):
             self.setOfflineNick()
 
     def connectionMade(self):
-        self.factory.handle.irc = True
         # since we overwrote the method
         irc.IRCClient.connectionMade(self)
 
@@ -202,6 +201,7 @@ class IrcProtocol(irc.IRCClient):
 
     def joined(self, channel):
         clog.info('Joined IRC channel: %s' % channel, sys)
+        self.factory.handle.irc = True
         if channel == self.channelName:
             self.factory.handle.inIrcChan = True
         elif channel == self.channelNp:
