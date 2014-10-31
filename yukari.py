@@ -134,8 +134,8 @@ class Connections:
         reactor.listenTCP(port, self.rinFactory)
 
     def recIrcMsg(self, user, channel, msg, modifier=None):
+        user = user.split('!', 1)[0] # takes out the extra info in the name
         if self.cy:
-            user = user.split('!', 1)[0] # takes out the extra info in the name
             msgl = list(msg)
             # cytube char limit per line is 244, so break up into multiple lines
             while msgl:
