@@ -145,9 +145,9 @@ class Connections:
                 line = '%s %s %s' % (name, ''.join(msgl[:idx]), cont)
                 msgl = msgl[idx:]
                 self.wsFactory.prot.relayToCyChat(line)
-            # don't process commands from action (/me) messages
-            if not modifier:
-                self.processCommand(user, tools.returnUnicode(msg))
+        # don't process commands from action (/me) messages
+        if not modifier:
+            self.processCommand(user, tools.returnUnicode(msg))
 
     def recCyMsg(self, user, msg, needProcessing, action=False):
         if self.inIrcChan and user != 'Yukarin':
