@@ -3,6 +3,7 @@ import sys, time
 import logging
 from twisted.words.protocols.irc import attributes as A
 from twisted.python import log
+from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 
 class LevelFileLogObserver(log.FileLogObserver):
     def __init__(self, f, level=logging.INFO):
@@ -138,6 +139,21 @@ class MotdParser(HTMLParser.HTMLParser):
             anchorId = d.get('id', None)
             if anchorId == self.searchId:
                 self.link = d.get('href', None)
+
+def cleanLoops(looplist):
+    """ stops Twisted LoopingCalls """
+    while looplist:
+        loop = looplist.pop()
+        if loop.running:
+            loop.stop()
+
+def cleanLaters(laterslist):
+    """ cancelles all callLater's """
+    while laterslist:
+        try:
+            laterslist.pop().cancel()
+        except(AlreadyCancelled, AlreadyCalled):
+            pass
 
 clog = CustomLog()
 # only debug will show Twisted-produced messages

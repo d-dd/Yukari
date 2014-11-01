@@ -1,5 +1,6 @@
 import database
 import time
+import tools
 from tools import clog
 from tools import getTime
 from conf import config
@@ -16,8 +17,12 @@ sys = 'IrcClient'
 class IrcProtocol(irc.IRCClient):
     lineRate = None # use our own throttle methods
     nickname = str(config['irc']['nick'])
+    heartbeatInterval = 30
 
     def __init__(self):
+        # collect all LoopingCall's and callLater's
+        self.loops = []
+        self.laters = []
         self.onlineNick = str(config['irc']['nick'])
         self.offlineNick = str(config['irc']['offlinenick'])
         self.channelName = str(config['irc']['channel'])
@@ -30,11 +35,35 @@ class IrcProtocol(irc.IRCClient):
         self.bucketToken = int(config['irc']['bucket'])
         self.bucketTokenMax = int(config['irc']['bucket'])
         self.throttleLoop = task.LoopingCall(self.addToken)
+        self.loops.append(self.throttleLoop)
         self.underSpam = False
         self.nickdict = {} # {('nick','user','host'): id}
         self.nicklist = []
         self.ircConnect = time.time()
         self._namescallback = {}
+        self.checkServerLoop = task.LoopingCall(self.checkServer)
+        self.loops.append(self.checkServerLoop)
+        self.lastPong = 0
+
+    def checkServer(self):
+        """ Tests periodically if the last PONG from the server was
+            recent. Otherwise, treats it as a disconnect, and quits the
+            connection. """
+        pongAgo = round(time.time() - self.lastPong, 3)
+        #clog.info('(checkServer) %d seconds since last PONG' % pongAgo, sys)
+        if time.time() - self.lastPong > 35:
+            clog.warning('No PONG response for over 35 seconds!', sys)
+            self.quit(message='No server response...')
+
+    def irc_PONG(self, server, payload):
+        #clog.info('PONG reply %s: %s' % (server, payload), sys)
+        self.lastPong = time.time()
+
+    def pong(self, user, secs):
+        """
+        Called with the results of a CTCP PING query.
+        """
+        clog.info('PONG %s: %s secs' % (user, secs), sys)
 
     def addQueue(self, msg):
         if not self.underSpam and self.bucketToken != 0:
@@ -152,11 +181,15 @@ class IrcProtocol(irc.IRCClient):
         # not really important, but joining before ident won't show the VHOST :)
         # For some reason I don't get a privmsg reply from NickServ, it might be
         # a special callback...
-        reactor.callLater(0.9, self.setInitialNick)
-        reactor.callLater(1, self.join, self.channelName)
+        self.laters.append(reactor.callLater(0.9, self.setInitialNick))
+        self.laters.append(reactor.callLater(1, self.join, self.channelName))
         if self.channelNp:
-            reactor.callLater(1, self.join, self.channelNp)
+            self.laters.append(reactor.callLater(1, self.join, self.channelNp))
         self.factory.prot = self
+        # send an initial ping
+        self.sendLine('PING 0')
+        self.laters.append(reactor.callLater(10, self.checkServerLoop.start,
+                                              30, now=True))
 
     def identify(self):
         self.msg('NickServ', 'IDENTIFY %s' % str(config['irc']['pass']))
@@ -319,17 +352,33 @@ class IrcProtocol(irc.IRCClient):
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
         binds = (None, result, status, timeNow, msg, flag)
         return database.operate(sql, binds)
-
+    
 class IrcFactory(ClientFactory):
     protocol = IrcProtocol
 
     def __init__(self, channel):
         self.channel = channel
+        self.laters = []
 
     def clientConnectionLost(self, connector, reason):
         clog.warning('Connection Lost to IRC. Reason: %s' % reason, sys)
-        if not self.handle.ircRestart:
-            self.handle.doneCleanup('irc')
+        self.reconnect()
 
     def clientConnectionFailed(self, connector, reason):
         clog.warning('Connection Failed to IRC. Reason: %s' % reason, sys)
+        self.reconnect()
+
+    def reconnect(self):
+        # clean protocol loops/laters
+        try:
+            tools.cleanLoops(self.prot.loops)
+            tools.cleanLaters(self.prot.laters)
+        except(AttributeError):
+            pass
+        # clean factory (self) laters
+        tools.cleanLaters(self.laters)
+        if self.handle.ircRestart:
+            self.laters.append(reactor.callLater(5, self.handle.ircConnect))
+        else:
+            self.handle.doneCleanup('irc')
+
