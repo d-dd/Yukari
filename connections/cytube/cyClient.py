@@ -22,9 +22,12 @@ class CyProtocol(WebSocketClientProtocol):
     start_init = []
 
     def __init__(self):
+        self.loops = []
+        self.laters = []
         self.name = config['Cytube']['username']
         self.unloggedChat = []
         self.chatLoop = task.LoopingCall(self.bulkLogChat)
+        self.loops.append(self.chatLoop)
         self.lastChatLogTime = 0
         self.receivedChatBuffer = False
         self.queueMediaList = deque()
@@ -67,7 +70,9 @@ class CyProtocol(WebSocketClientProtocol):
         self.factory.prot = self
         self.factory.handle.cy = True
         self.heartbeat = task.LoopingCall(self.sendHeartbeat)
+        self.loops.append(self.heartbeat)
         self.lifeline = reactor.callLater(20, self.sendClose)
+        self.laters.append(self.lifeline)
         self.heartbeat.start(20.0)
         self.initialize()
 
@@ -210,7 +215,8 @@ class CyProtocol(WebSocketClientProtocol):
         if not self.factory.handle.irc: # wait a bit for join
             # wait a little bit in case Yukari needs to join the IRC channel
             # announcements are often related to Cytube server reboots
-            reactor.callLater(10, self.factory.handle.sendToIrc, msg)
+            self.laters.append(reactor.callLater(10, 
+                                 self.factory.handle.sendToIrc, msg))
         else:
             self.factory.handle.sendToIrc(msg)
 
@@ -476,6 +482,7 @@ class CyProtocol(WebSocketClientProtocol):
 
         self.pollTimer = reactor.callLater(max(pollTime-5, 0), 
                                                       self.announceTimer)
+        self.laters.append(self.pollTimer)
 
     def doMakePoll(self, title, obscured, timer, *args):
         self.sendf({'name': 'newPoll', 'args': {'title': title,
@@ -483,6 +490,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def announceTimer(self):
         self.pollTimer = reactor.callLater(5, self.doClosePoll)
+        self.laters.append(self.pollTimer)
         self.doSendChat('Poll is ending in 5 seconds!', toIrc=False)
 
     def doClosePoll(self):
@@ -1022,7 +1030,8 @@ class CyProtocol(WebSocketClientProtocol):
         for media in res:
             mType, mId = media
             if mType == 'yt':
-                reactor.callLater(i, vdbapi.requestSongByPv, None ,mType, mId, 1, timeNow, 0)
+                self.laters.append(reactor.callLater(i, vdbapi.requestSongByPv,
+                                    None ,mType, mId, 1, timeNow, 0))
                 i += 0.5
 
     def findQueueId(self, qpl):
@@ -1470,6 +1479,7 @@ class CyProtocol(WebSocketClientProtocol):
         # sustain
         if self.queueMediaList:
             sustainedLoop = task.LoopingCall(sustainQueue, pos, temp)
+            self.loops.append(sustainedLoop)
             sustainedLoop.start(2.05, now=True)
         
     def doAddSustained(self, pos, temp):
@@ -1526,6 +1536,8 @@ class WsFactory(WebSocketClientFactory):
         self.handle.cyLastDisconnect = time.time()
         try:
             self.prot.logUserInOut()
+            tools.cleanLoops(self.prot.loops)
+            tools.cleanLaters(self.prot.laters)
         except(AttributeError):
             clog.warning(('clientConnectionLost: cannot logUserInOut().'
                          ' "prot" does not exist.', syst))
@@ -1535,5 +1547,3 @@ class WsFactory(WebSocketClientFactory):
                        % self.handle.cyRetryWait, syst)
             # reconnect
             self.handle.restartConnection()
-        #    reactor.callLater(self.handle.cyRetryWait,
-        #                                            self.handle.cyChangeProfile)
