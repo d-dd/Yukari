@@ -24,6 +24,11 @@ class CyProtocol(WebSocketClientProtocol):
     def __init__(self):
         self.loops = []
         self.laters = []
+        self.underSpam = False
+        self.underHeavySpam = False
+        # how long to wait for heartbeat reply
+        self.hearttime = 20 
+        self.spamCount = 0
         self.name = config['Cytube']['username']
         self.unloggedChat = []
         self.chatLoop = task.LoopingCall(self.bulkLogChat)
@@ -71,10 +76,24 @@ class CyProtocol(WebSocketClientProtocol):
         self.factory.handle.cy = True
         self.heartbeat = task.LoopingCall(self.sendHeartbeat)
         self.loops.append(self.heartbeat)
-        self.lifeline = reactor.callLater(20, self.sendClose)
+        self.lifeline = reactor.callLater(self.hearttime, self.abandon)
         self.laters.append(self.lifeline)
         self.heartbeat.start(20.0)
         self.initialize()
+
+    def abandon(self):
+        """
+        Leave the Cytube server because we did not receive a heartbeat reponse
+        in time.
+        """
+        # If we're under spam, it's most likley that spam is builing up a long
+        # queue and the heartbeat has yet to be processed
+        if self.underSpam or self.underHeavySpam:
+            self.lifeline = reactor.callLater(self.hearttime, self.abandon)
+            self.laters.append(self.lifeline)
+            return
+        clog.error('No heartbeat response... Closing Cytube connection.', syst)
+        self.sendClose()
 
     def sendHeartbeat(self):
         self.sendMessage('2')
@@ -83,7 +102,7 @@ class CyProtocol(WebSocketClientProtocol):
         # Remember that heavy load on the machine often causes
         # schedules to fall behind greatly
         try:
-            self.lifeline.reset(10)
+            self.lifeline.reset(self.hearttime - 10)
         # this catches the leftover heartbeat from a disconnected instance
         # (when Yukari reconnects)
         except(AlreadyCalled, AlreadyCancelled):
@@ -95,7 +114,10 @@ class CyProtocol(WebSocketClientProtocol):
             clog.warning('Binary received: {0} bytes'.format(len(msg)))
             return
         if msg == '3':
-            self.lifeline.reset(30)
+            try:
+                self.lifeline.reset(self.hearttime + 10)
+            except(AlreadyCalled, AlreadyCancelled):
+                pass
         if msg.startswith('42'):
             try:
                 msg = json.loads(msg[2:])
@@ -104,6 +126,9 @@ class CyProtocol(WebSocketClientProtocol):
                 raise ValueError
                 return
             name = msg[0]
+            if self.underHeavySpam and name == 'chatMsg':
+                self.spamCount += 1
+                return
             try:
                 args = msg[1]
             except(IndexError):
@@ -113,7 +138,8 @@ class CyProtocol(WebSocketClientProtocol):
             self.processFrame(fdict)
 
     def onClose(self, wasClean, code, reason):
-        clog.info('(onClose) Closed Protocol connection: %s' % reason, syst)
+        clog.info('(onClose) Closed Protocol connection. wasClean:%s '
+                  'code%s, reason%s' % (wasClean, code, reason), syst)
 
     def sendf(self, fdict):
         l = '["%s",%s]' % (fdict["name"], json.dumps(fdict["args"]).encode('utf8'))
@@ -237,7 +263,11 @@ class CyProtocol(WebSocketClientProtocol):
         shadow = meta.get('shadow', None)
         flag = 1 if shadow else 0
         self.logChatMsg(username, chatCyTime, msg, modflair, flag, timeNow)
-        self.checkCommands(username, msg, shadow, action)
+        if not self.underSpam:
+            self.checkCommands(username, msg, shadow, action)
+        else:
+            self.factory.handle.recCyMsg(username, msg, False, 
+                                                         action=action)
 
     def logChatMsg(self, username, chatCyTime, msg, modflair, flag, timeNow):
         # logging chat to database
@@ -866,14 +896,57 @@ class CyProtocol(WebSocketClientProtocol):
         except(KeyError):
             clog.error('(_getRank) %s not found in userdict' % username, syst)
 
+    def changeLogLevel(self, level):
+        from tools import logger
+        import logging
+        if level == 'debug':
+            logger.logLevel = logging.DEBUG
+        elif level == 'warning':
+            logger.logLevel = logging.WARNING
+
     def bulkLogChat(self):
         if self.chatLoop.running:
             #clog.debug('(bulkLogChat) stopping chatLoop', syst)
             self.chatLoop.stop()
         chatlist = self.unloggedChat[:]
+        if 30 < len(chatlist) <= 300:
+            clog.warning('We are under spam! Blocking commands and relaxing '
+                         'heartbeat timeout.', syst)
+            self.underSpam = True
+            self.changeLogLevel('warning')
+            self.hearttime = 60
+        elif len(chatlist) > 300:
+            clog.warning('We are under HEAVY SPAM! Blocking all subsequent '
+                         'chatMsg frames from being processed. They will not '
+                         'be logged to the database. Heartbeat timeout has '
+                         'been relaxed.', syst)
+            self.underSpam = True
+            self.underHeavySpam = True
+            self.changeLogLevel('warning')
+            self.hearttime = 90 
+            timeNow = getTime()
+            # add a line in chat db
+            msg = '***[SPAM BLOCK]*** trigger length = %s' % len(chatlist)
+            chatlist.append((None, 1, timeNow, timeNow, msg, None, 2))
+            # we need to call this later here since we blocked chat processing
+            reactor.callLater(5, self.bulkLogChat)
+        else:
+            if self.underHeavySpam and self.spamCount > 100:
+                clog.warning('We are still experiencing heavy spam.', syst)
+                self.spamCount = 0
+                reactor.callLater(5, self.bulkLogChat)
+            elif (self.underSpam or self.underHeavySpam) and self.spamCount<=99:
+                self.spamCount = 0
+                self.underSpam = False
+                self.underHeavySpam = False
+                self.changeLogLevel('debug')
+                self.hearttime = 20 
+                clog.warning('Spam seems to have subsided. Returning to normal'
+                             ' operations.', syst)
         self.unloggedChat = []
         # don't return a deferred here! bad things will happen
-        database.bulkLogChat('CyChat', chatlist)
+        if chatlist:
+            database.bulkLogChat('CyChat', chatlist)
 
     def deferredChat(self, res, chatArgs):
         """ Logs chat to database. Since this will be added to the userAdd
@@ -1415,6 +1488,8 @@ class CyProtocol(WebSocketClientProtocol):
         self.factory.handle.cyRestart = False
         # disconnect first so we don't get any more join/leaves
         self.sendClose()
+        # log unlogged chat
+        self.bulkLogChat()
         # log everyone's access time before shutting down
         dl = self.logUserInOut()
         dl.addCallback(self.doneClean)

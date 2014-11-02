@@ -158,8 +158,6 @@ class Connections:
             elif action:
                 cleanMsg = '( * %s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
-
-        clog.warning(msg, 'recCyMsg')
         if needProcessing:
             self.processCommand(user, msg)
 

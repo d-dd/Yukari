@@ -70,7 +70,7 @@ class IrcProtocol(irc.IRCClient):
             self.chatQueue.append(msg)
             self.popQueue()
         elif self.underSpam:
-            clog.warning('(addQueue) chat is throttled', sys)
+            clog.info('(addQueue) chat is throttled', sys)
             return
 
         elif self.bucketToken == 0:

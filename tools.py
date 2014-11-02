@@ -22,15 +22,15 @@ class LevelFileLogObserver(log.FileLogObserver):
             level = eventDict['level']
         else:
             level = logging.INFO
-        if level > self.logLevel and level == logging.ERROR:
+        if level >= self.logLevel and level == logging.ERROR:
             self.write('\033[91m')
             log.FileLogObserver.emit(self, eventDict)
             self.write('\033[0m')
-        elif level == logging.WARNING:
+        elif level >= self.logLevel and level == logging.WARNING:
             self.write('\033[33m')
             log.FileLogObserver.emit(self, eventDict)
             self.write('\033[0m')
-        else:
+        elif level >= self.logLevel:
             log.FileLogObserver.emit(self, eventDict)
 
 class CustomLog():
