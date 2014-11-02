@@ -139,7 +139,7 @@ class Connections:
             msgl = list(msg)
             # cytube char limit per line is 244, so break up into multiple lines
             while msgl:
-                name = '(_%s_)' % user if modifier else '(%s)' % user
+                name = '( _%s_)' % user if modifier else '(%s)' % user
                 cont = '[..]' if len(name) + len(msgl) > 235 else ''
                 idx = 235 -len(name) - len(cont)
                 line = '%s %s %s' % (name, ''.join(msgl[:idx]), cont)
