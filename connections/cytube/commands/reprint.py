@@ -1,4 +1,4 @@
-import sys
+import json, sys
 from twisted.internet import protocol, reactor
 
 from conf import config
