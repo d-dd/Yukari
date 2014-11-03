@@ -27,8 +27,16 @@ def _com_reprint(self, username, args, source):
             return
     except(AttributeError):
         self.reprint = True
-    p = ReprintProtocol(self)
     path = 'connections/cytube/commands/loaders'
+    try:
+        d = json.load(open('%s/videos.json' % path))
+    except(IOError, ValueError): #No file, #not a JSON
+        return
+    if args in d:
+        self.doSendChat('[reprint] This video has already been reprinted',
+                        toIrc=False)
+        return
+    p = ReprintProtocol(self)
     subprocess = reactor.spawnProcess(p, sys.executable,
         ['python', 'reprinter.py', '--smid', args, '--user', 
             config['reprinter']['nicoid'], '--pass',
@@ -76,6 +84,7 @@ class ReprintProtocol(protocol.ProcessProtocol):
             if self.output.find('This video is low resolution.') != -1:
                 self.cy.doSendChat('[reprint] NND is currently in economy mode.'
                                  ' Please try again another time.', toIrc=False)
+                self.cy.reprint = True
                 return
             # process failed to upload, check console
             msg = ('[reprint] Failed to upload video. $reprint funcionality'
