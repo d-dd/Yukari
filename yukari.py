@@ -215,10 +215,16 @@ class Connections:
     def _com_uptime(self, user, args):
         uptime = time.time() - self.startTime
         uptime = str(timedelta(seconds=round(uptime)))
-        cyUptime = time.time() - self.cyLastConnect
-        cyUptime = str(timedelta(seconds=round(cyUptime)))
-        ircUptime = time.time() - self.ircFactory.prot.ircConnect
-        ircUptime = str(timedelta(seconds=round(ircUptime)))
+        if self.cy:
+            cyUptime = time.time() - self.cyLastConnect
+            cyUptime = str(timedelta(seconds=round(cyUptime)))
+        else:
+            cyUptime = 'n/a'
+        if self.irc:
+            ircUptime = time.time() - self.ircFactory.prot.ircConnect
+            ircUptime = str(timedelta(seconds=round(ircUptime)))
+        else:
+            ircUptime = 'n/a'
 
         self.sendChats('[status] UPTIME Yukari: %s, Cytube: %s, IRC: %s' %
                        (uptime, cyUptime, ircUptime))
