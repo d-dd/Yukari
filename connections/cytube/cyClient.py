@@ -142,7 +142,8 @@ class CyProtocol(WebSocketClientProtocol):
                   'code%s, reason%s' % (wasClean, code, reason), syst)
 
     def sendf(self, fdict):
-        l = '["%s",%s]' % (fdict["name"], json.dumps(fdict["args"]).encode('utf8'))
+        l = '["%s",%s]' % (fdict["name"], 
+            json.dumps(fdict.get("args", None)).encode('utf8'))
         frame = "42"+ l
         clog.debug("(sendf) [->] %s" % frame, syst)
         self.sendMessage(str(frame))
