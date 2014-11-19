@@ -1,10 +1,8 @@
 # Standard Library
-import random, re, time, subprocess, os, importlib, ast
-from datetime import timedelta
+import random, re, time, subprocess, os, importlib
 # Twisted Library
 from twisted.internet import reactor, defer
 from twisted.internet.defer import Deferred
-from twisted.web.client import Agent, readBody
 from twisted.manhole import telnet
 from ircClient import IrcFactory
 from autobahn.twisted.websocket import connectWS
@@ -16,17 +14,16 @@ import database, tools, apiClient, cyProfileChange
 from tools import clog
 
 sys = 'Yukari'
-def import_commands(directory):
-    """Import command modules found in commands directory"""
-    # include / at the end of diretory
+def importPlugins(path):
     try:
-        files = os.listdir(directory)
+        files = os.listdir(path)
     except(OSError):
-        clog.error('(import_commands) Could not find commands directory', sys)
-        return
-    path = directory.replace('/', '.')
-    moduleNames = [path + i[:-3] for i in files if i.endswith('.py') and 
-                                                         i != '__init__.py']
+        clog.error('Error importing plugins. Invalid path.', sys)
+        return []
+    importPath = path.replace('/', '.')
+    moduleNames = [importPath + i[:-3] for i in files
+                   if not i.startswith('_') and i.endswith('.py')]
+    print moduleNames
     modules = map(importlib.import_module, moduleNames)
     return modules
 
@@ -35,6 +32,9 @@ class Connections:
         any communication between them."""
     
     def __init__(self):
+        # import plugins
+        self._importPlugins()
+
         # False = Offline, True = Online, None = has shutdown
         self.irc = False
         self.cy = False
@@ -59,6 +59,18 @@ class Connections:
 
         # Users in IRC chat channel
         self.ircUserCount = 0
+
+    def _importPlugins(self):
+        modules = importPlugins('plugins/')
+        self.triggers = {'commands':{}}
+        for module in modules:
+            instance = module.setup()
+            for method in dir(instance):
+                # commands in cytube chat
+                if method.startswith('_com_'):
+                    trigger = '%s' % method[5:]
+                    self.triggers['commands'][trigger] = getattr(instance, method)
+                    clog.info('Imported %s!' % trigger, sys)
 
     def restartConnection(self):
         clog.error('restarting connection in %s' % self.cyRetryWait)
@@ -133,6 +145,15 @@ class Connections:
         self.rinFactory = LineReceiverFactory()
         reactor.listenTCP(port, self.rinFactory)
 
+    def relayChat(self, username, msg, origin, processCommand=True, opts=None):
+    #scrap this func
+        if otps is None:
+            opts = {}
+        if origin == 'cy':
+            clog.debug(msg, sys)
+            msg = parser.stripTags(msg)
+        if origin != 'cy' and self.cy:
+            relay = '(%s) %s' % (username, msg)
     def recIrcMsg(self, user, channel, msg, modifier=None):
         user = user.split('!', 1)[0] # takes out the extra info in the name
         if self.cy:
@@ -182,83 +203,10 @@ class Connections:
                 args = argsList[1]
             else:
                 args = None
-            try:
-                thunk = getattr(self, '_com_%s' % (command,), None)
-            except(UnicodeEncodeError):
-                clog.warning('(processCommand) received non-ascii command', sys)
-                thunk = False
-
-            if thunk:
-                thunk(user, args)
-
-
-    def _com_anagram(self, user, args):
-        if not args:
-            return
-        text = re.sub(r"[^a-zA-Z]", "", args)
-        if len(text) < 7:
-            self.sendChats('Anagram too short.')
-            return
-        elif len(text) >= 30:
-            self.sendChats('Anagram too long.')
-            return
-        d = apiClient.anagram(text)
-        d.addCallback(self.sendAnagram, args)
-
-    def sendAnagram(self, res, args):
-        if res:
-            self.sendChats('[Anagram: %s] %s' % (args, res))
-
-    def _com_status(self, user, args):
-        pass ## TODO
-
-    def _com_uptime(self, user, args):
-        uptime = time.time() - self.startTime
-        uptime = str(timedelta(seconds=round(uptime)))
-        if self.cy:
-            cyUptime = time.time() - self.cyLastConnect
-            cyUptime = str(timedelta(seconds=round(cyUptime)))
-        else:
-            cyUptime = 'n/a'
-        if self.irc:
-            ircUptime = time.time() - self.ircFactory.prot.ircConnect
-            ircUptime = str(timedelta(seconds=round(ircUptime)))
-        else:
-            ircUptime = 'n/a'
-
-        self.sendChats('[status] UPTIME Yukari: %s, Cytube: %s, IRC: %s' %
-                       (uptime, cyUptime, ircUptime))
-
-    def _com_sql(self, user, args):
-        if not args:
-            return
-        if 'drop table' in args.lower() and args.endswith(';'):
-            tables = ('user', 'chat', 'song', 'media', 'video', 'song', 'music')
-            if True in [c in args.lower() for c in tables]:
-                nameLower = config['Cytube']['username'].lower()
-                d = database.getUserFlag(nameLower, 1)
-                d.addCallback(self.performSql, nameLower, args)
-        else:
-            self.sendChats('[sql: Invalid SQL.]')
-
-    def _com_version(self, user, args):
-        self.sendChats('[Version] %s' % self.version)
-
-    def performSql(self, res, username, args):
-        clog.debug(res)
-        if res[0][0] & 16:
-            return
-        else:
-            database.flagUser(16, username, 1)
-            self.sendChats('[sql: %s executed successfuly.]' % args) 
-            reactor.callLater(8, self.sendChats, '[warning] db read failed')
-            reactor.callLater(8.7, self.sendChats, '[fatal] db read failed (20)')
-            reactor.callLater(9, self.sendChats, '[fatal] db write failed (7)')
-
-    def _com_help(self, user, args):
-        msg =('Commands: https://github.com/d-dd/Yukari/blob/master/commands.md'
-                ' Repo: https://github.com/d-dd/Yukari')
-        self.sendChats(msg)
+            if command in self.triggers['commands']:
+                clog.info('triggered command: [%s] args: [%s]' %
+                           (command, args), sys)
+                self.triggers['commands'][command](self, user, args)
 
     def sendToIrc(self, msg):
         if self.inIrcChan:
@@ -324,14 +272,6 @@ def createShellServer(obj):
 
 clog.error('test custom log', 'cLog tester')
 clog.warning('test custom log', 'cLog tester')
-# import modules and add the methods to the Connections class
-commandsPaths = [('commands/', Connections), 
-                 ('connections/cytube/commands/', CyProtocol)]
-
-for path in commandsPaths:
-    modules = import_commands(path[0])
-    for module in modules:
-        getattr(module, '__add_method', None)(path[1], dir(module), module)
 
 yukari = Connections()
 yukari.cyChangeProfile()
