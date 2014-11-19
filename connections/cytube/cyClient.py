@@ -206,7 +206,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.joinRoom()
 
     def _cyCall_setMotd(self, fdict):
-        pass
+        self.receivedChatBuffer = True
 
     def _cyCall_usercount(self, fdict):
         usercount = fdict['args'][0]
