@@ -154,6 +154,7 @@ class Connections:
             msg = parser.stripTags(msg)
         if origin != 'cy' and self.cy:
             relay = '(%s) %s' % (username, msg)
+
     def recIrcMsg(self, user, channel, msg, modifier=None):
         user = user.split('!', 1)[0] # takes out the extra info in the name
         if self.cy:

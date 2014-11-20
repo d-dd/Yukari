@@ -1,5 +1,5 @@
 # Standard Library
-import json, time, re, argparse, random, urlparse, ast
+import json, time, re, argparse, random, os, importlib
 from collections import deque
 # Twisted Libraries
 from twisted.internet import reactor, defer, task
@@ -14,6 +14,28 @@ from conf import config
 syst = 'CytubeClient'
 vdb = config['UserAgent']['vocadb']
 
+def importPlugins(paths):
+    """ Imports any .py file in paths[0], and will also look through
+    the first level directories for .py files to import """
+   # paths = ['connections/cytube/plugins/']
+    try:
+        files = os.listdir(paths[0])
+        clog.info(str(files), 'files')
+    except(OSError):
+        clog.error('Plugin import error! Check that %s exists.' % paths[0],syst)
+        return []
+    # look for directories
+#    subdir = [paths[0]+i+'/' for i in files if os.path.isdir(paths[0]+i)]
+#    paths.extend(subdir)
+    moduleNames = []
+    for path in paths:
+        moduleNames.extend([path + i[:-3] for i in os.listdir(path)
+                        if not i.startswith('_') and i.endswith('.py')])
+    moduleNames = [p.replace('/', '.') for p in moduleNames]
+    modules = map(importlib.import_module, moduleNames)
+    clog.warning(str(modules), 'modules')
+    return modules
+
 def wisp(msg):
     """Decorate msg with system-whisper trigger"""
     return '@3939%s#3939' % msg
@@ -22,6 +44,7 @@ class CyProtocol(WebSocketClientProtocol):
     start_init = []
 
     def __init__(self):
+        self.importCyModules()
         self.loops = []
         self.laters = []
         self.underSpam = False
@@ -57,6 +80,24 @@ class CyProtocol(WebSocketClientProtocol):
         self.mediaRemainingTime = 0
         for fn in CyProtocol.start_init:
             fn(self)
+
+    def importCyModules(self):
+        paths = ['connections/cytube/plugins/']
+        modules = importPlugins(paths)
+        self.triggers = {'commands':{},
+                         'changeMedia': {},
+                         'queue': {}}
+        for module in modules:
+            instance = module.setup()
+            for method in dir(instance):
+                # commands in cytube chat
+                if method.startswith('_com_'):
+                    trigger = '$%s' % method[5:]
+                    self.triggers['commands'][trigger] = getattr(instance, method)
+                elif method.startswith('_cM_'):
+                    self.triggers['changeMedia'][method] = getattr(instance, method)
+                elif method.startswith('_q_'):
+                    self.triggers['queue'][method] = getattr(instance, method)
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -168,6 +209,10 @@ class CyProtocol(WebSocketClientProtocol):
     def relayToCyChat(self, msg, modflair=False):
             self.sendf({'name': 'chatMsg',
                        'args': {'msg': msg, 'meta': {'modflair': modflair}}})
+
+    def sendCyWhisper(self, msg):
+        msg = wisp(msg)
+        self.doSendChat(msg, toIrc=False)
 
     def doSendPm(self, msg, username):
         self.sendf({'name': 'pm',
@@ -290,6 +335,8 @@ class CyProtocol(WebSocketClientProtocol):
             self.userdict[username]['deferred'].addCallback(self.deferredChat,
                                                                 chatArgs)
     def checkCommands(self, username, msg, shadow, action):
+        if username == self.name or username == '[server]':
+            return
         # check for commands
         # strip HTML tags
         thunk = None
@@ -299,7 +346,7 @@ class CyProtocol(WebSocketClientProtocol):
             msg = tools.unescapeMsg(msg)
             thunk, args, source = self.checkCommand(username, msg, 'chat')
             # send to yukari.py
-        if username != self.name and username != '[server]' and not shadow:
+        if not shadow:
             needProcessing = not thunk
             if thunk is False: # non-ascii command
                 needProcessing = False
@@ -310,6 +357,21 @@ class CyProtocol(WebSocketClientProtocol):
             # to maintain proper chat queue (user command before Yukari's reply)
             if thunk:
                 thunk(username, args, 'chat')
+                return
+
+            ##messy but oh well, clean up later
+        command = msg.split()[0]
+        index = msg.find(' ')
+        if index != -1:
+            commandArgs = msg[index+1:]
+        else:
+            commandArgs = ''
+
+        if command in self.triggers['commands']:
+            processCommand = False
+            clog.info('Command triggered: %s ; %s' % (command, commandArgs),
+                    syst)
+            self.triggers['commands'][command](self, username, commandArgs)
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
@@ -1174,6 +1236,9 @@ class CyProtocol(WebSocketClientProtocol):
                     return media['uid']
 
     def _cyCall_queue(self, fdict):
+        for key, method in self.triggers['queue'].iteritems():
+            method(self, fdict)
+
         timeNow = getTime()
         item = fdict['args'][0]['item']
         isTemp = item['temp']
@@ -1187,8 +1252,8 @@ class CyProtocol(WebSocketClientProtocol):
         self.addToPlaylist(item, afterUid)
 
         # Announce queue
-        msg = wisp('%s added %s!' % (queueby, title))
-        self.doSendChat(msg, source='chat', toIrc=False)
+        #msg = wisp('%s added %s!' % (queueby, title))
+        #self.doSendChat(msg, source='chat', toIrc=False)
 
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
