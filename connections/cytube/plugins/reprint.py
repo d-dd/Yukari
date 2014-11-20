@@ -17,7 +17,7 @@ class Reprint(object):
         if rank < 3:
             clog.debug('no rank', syst)
             return
-        with open('connections/cytube/plugins/loaders/allowed.txt') as f:
+        with open('connections/cytube/plugins/loaders/allowed.cfg') as f:
             allowed = f.read().lower().split()
             if username.lower() not in allowed:
                 clog.debug('not in allowed.txt', syst)
