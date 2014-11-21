@@ -29,7 +29,7 @@ class BasicPlugin(object):
     def _com_bye(self, yuka, username, args):
          farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
                                   'See you later', 'See you soon', 'Take care'))
-         msg = '%s, %s.' % (farewell, user)
+         msg = '%s, %s.' % (farewell, username)
          reactor.callLater(0.2, yuka.sendChats, msg)
 
     def _com_coin(self, yuka, username, args):
