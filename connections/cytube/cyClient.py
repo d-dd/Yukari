@@ -15,18 +15,13 @@ syst = 'CytubeClient'
 vdb = config['UserAgent']['vocadb']
 
 def importPlugins(paths):
-    """ Imports any .py file in paths[0], and will also look through
-    the first level directories for .py files to import """
-   # paths = ['connections/cytube/plugins/']
+    """ Imports .py files in paths[0] as plugins"""
     try:
         files = os.listdir(paths[0])
         clog.info(str(files), 'files')
     except(OSError):
         clog.error('Plugin import error! Check that %s exists.' % paths[0],syst)
         return []
-    # look for directories
-#    subdir = [paths[0]+i+'/' for i in files if os.path.isdir(paths[0]+i)]
-#    paths.extend(subdir)
     moduleNames = []
     for path in paths:
         moduleNames.extend([path + i[:-3] for i in os.listdir(path)
@@ -64,6 +59,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.nowPlayingMedia = {}
         self.currentLikes = []
         self.err = []
+        self.currentJs = {}
         self.currentVocadb = ''
         self.currentLikeJs = ''
         self.currentOmitted = False
@@ -86,7 +82,10 @@ class CyProtocol(WebSocketClientProtocol):
         modules = importPlugins(paths)
         self.triggers = {'commands':{},
                          'changeMedia': {},
-                         'queue': {}}
+                         'queue': {},
+                         'replay': {},
+                         'js': {}}
+
         for module in modules:
             instance = module.setup()
             for method in dir(instance):
@@ -98,6 +97,10 @@ class CyProtocol(WebSocketClientProtocol):
                     self.triggers['changeMedia'][method] = getattr(instance, method)
                 elif method.startswith('_q_'):
                     self.triggers['queue'][method] = getattr(instance, method)
+                elif method.startswith('_re_'):
+                    self.triggers['replay'][method] = getattr(instance, method)
+                elif method.startswith('_js_'):
+                    self.triggers['js'][method] = getattr(instance, method)
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -236,7 +239,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.sendf({'name': 'initUserPLCallbacks', 'args': {}})
         self.sendf({'name': 'listPlaylists', 'args': {}})
                 
-
     def searchYoutube(self, msg):
         m = self.ytUrl.search(msg)
         if m:
@@ -589,7 +591,7 @@ class CyProtocol(WebSocketClientProtocol):
     def doClosePoll(self):
         self.sendf({'name': 'closePoll'})
 
-    def _com_vocadb(self, username, args, source):
+    def b_a_com_vocadbpause(self, username, args, source):
         if not vdb:
             return
         if args is None:
@@ -804,9 +806,13 @@ class CyProtocol(WebSocketClientProtocol):
             ircUserCount = 'yukarIRC=' + str(self.factory.handle.ircUserCount)
         except(NameError):
             ircUserCount = '0'
-        js = '%s;%s;%s;%s;' % (self.currentVocadb, self.currentLikeJs, omit,
-                               ircUserCount)
-        self.doSendJs(js)
+        js = [omit, ircUserCount, self.currentLikeJs]
+        for strjs in self.currentJs.itervalues():
+            js.append(strjs)
+        self.doSendJs((';'.join(js)+';'))
+       # js = '%s;%s;%s;%s;' % (self.currentVocadb, self.currentLikeJs, omit,
+       #                        ircUserCount)
+       # self.doSendJs(js)
 
     def doSendJs(self, js):
         self.sendf({'name': 'setChannelJS', 'args': {'js': js}})
@@ -1391,6 +1397,17 @@ class CyProtocol(WebSocketClientProtocol):
     def dbErr(self, err):
         clog.error('(dbErr): %s' % err.value, syst)
 
+    def emitBulkJs(self, results):
+        js = []
+        for result in results:
+            if result[0]: # True if deferred succeeded
+                resultname = result[1][0]
+                strjs = result[1][1]
+                self.currentJs[resultname] = strjs
+                js.append(strjs)
+        #self.doSendChat((';'.join(js)+';'))
+        self.doSendJs((';'.join(js)+';'))
+
     def _cyCall_changeMedia(self, fdict):
         # set self.nowPlayingMedia
         media = fdict['args'][0]
@@ -1404,6 +1421,13 @@ class CyProtocol(WebSocketClientProtocol):
                           mId.encode('utf-8'))
 
         clog.info('(_cyCall_changeMedia) %s' % s, syst)
+
+        # run changeMedia JS methods
+        l = []
+        for key, method in self.triggers['js'].iteritems():
+            l.append(method(self, mType, mId))
+        jsDeferredList = defer.DeferredList(l)
+        jsDeferredList.addCallback(self.emitBulkJs)
 
         # if there is a replay-poll active, end it
         if self.pollState.get('type', None) == 'replay':
@@ -1443,7 +1467,7 @@ class CyProtocol(WebSocketClientProtocol):
             d.addCallback(self.flagOrDelete, media, mType, mId)
             d.addErrback(self.errcatch)
             d.addCallback(self.loadLikes, mType, mId)
-            d.addCallback(self.loadVocaDb, mType, mId)
+          #  d.addCallback(self.loadVocaDb, mType, mId)
 
     def jumpToMedia(self, uid):
         clog.debug('(jumpToMedia) Playing uid %s' % uid, syst)
