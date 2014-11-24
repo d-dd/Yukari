@@ -60,7 +60,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.currentLikes = []
         self.err = []
         self.currentJs = {}
-        self.currentVocadb = ''
         self.currentLikeJs = ''
         self.currentOmitted = False
         ### Need to imporve this regex, it matches non-videos
@@ -594,41 +593,6 @@ class CyProtocol(WebSocketClientProtocol):
     def doClosePoll(self):
         self.sendf({'name': 'closePoll'})
 
-    def b_a_com_vocadbpause(self, username, args, source):
-        if not vdb:
-            return
-        if args is None:
-            mType = self.nowPlayingMedia['type']
-            mId = self.nowPlayingMedia['id']
-            d = database.getSongId(mType, mId)
-            d.addCallback(self.checkVocadbCommand, mType, mId)
-            return
-        try:
-            songId = int(args)
-        except IndexError:
-            clog.warning('(_com_vocadb) Index Error by %s' % username, syst)
-            return
-        except ValueError:
-            clog.warning('(_com_vocadb) Value Error by %s' % username, syst)
-            return
-        userId = self.userdict[username]['keyId']
-        timeNow = getTime()
-        mType = self.nowPlayingMedia['type']
-        mId = self.nowPlayingMedia['id']
-        d = vdbapi.requestSongById(mType, mId, songId, userId, timeNow, 4)
-        # method 4 = manual set
-        d.addCallback(self.loadVocaDb, mType, mId)
-
-    def checkVocadbCommand(self, res, mType, mId):
-        # no match or connection error
-        #clog.debug('checkVdbCommand: %s' % res[0][0], syst)
-        if res[0][0] < 1:
-            # TODO do a full request 
-            return
-        else:
-            d = vdbapi.requestApiBySongId(None, res[0][0], getTime())
-            d.addCallback(self.loadVocaDb, mType, mId)
-
     def parseTitle(self, command):
         # argparse doesn't support spaces in arguments, so we search
         # and parse the -t/ --title values in msg ourselves
@@ -813,9 +777,6 @@ class CyProtocol(WebSocketClientProtocol):
         for strjs in self.currentJs.itervalues():
             js.append(strjs)
         self.doSendJs((';'.join(js)+';'))
-       # js = '%s;%s;%s;%s;' % (self.currentVocadb, self.currentLikeJs, omit,
-       #                        ircUserCount)
-       # self.doSendJs(js)
 
     def doSendJs(self, js):
         self.sendf({'name': 'setChannelJS', 'args': {'js': js}})
@@ -1470,7 +1431,6 @@ class CyProtocol(WebSocketClientProtocol):
             d.addCallback(self.flagOrDelete, media, mType, mId)
             d.addErrback(self.errcatch)
             d.addCallback(self.loadLikes, mType, mId)
-          #  d.addCallback(self.loadVocaDb, mType, mId)
 
     def jumpToMedia(self, uid):
         clog.debug('(jumpToMedia) Playing uid %s' % uid, syst)
@@ -1503,54 +1463,6 @@ class CyProtocol(WebSocketClientProtocol):
         score = sum(self.currentLikes.itervalues())
         self.currentLikeJs = 'yukariLikeScore = %d' % score
         self.updateJs()
-
-    def loadVocaDb(self, res, mType, mId):
-        d = database.queryVocaDbInfo(mType, mId)
-        d.addCallback(self.processVocadb, mType, mId)
-        #d.addCallback(lambda x: clog.info(x, 'loadvcaodb'))
-
-    def processVocadb(self, res, mType, mId):
-        if not res:
-            clog.info('(processVocadb) Vocadb db query returned []')
-            self.currentVocadb = 'vocapack =' + json.dumps({'res': False})
-        else:
-            setby = res[0][0]
-            mediaId = res[0][1]
-            vocadbId = res[0][2]
-            method = res[0][3]
-            vocadbData = res[0][4]
-            if vocadbId == 0:
-                self.currentVocadb = 'vocapack =' + json.dumps({'res': False})
-            else:
-                vocadbInfo = self.parseVocadb(vocadbData)
-                vocapack = {'setby': setby, 'vocadbId': vocadbId, 'method': method,
-                            'vocadbInfo': vocadbInfo, 'res': True}
-                vocapackjs = json.dumps(vocapack)
-                self.currentVocadb = 'vocapack =' + vocapackjs
-        self.updateJs()
-
-    def parseVocadb(self, vocadbData):
-        artists = []
-        data = json.loads(vocadbData)
-        for artist in data['artists']:
-            artistd = {}
-            artistd['name'] = artist['name']
-            try:
-                artistd['id'] = artist['artist']['id']
-            except(KeyError): # Some Artists do not have entries and thus no id
-                artistd['id'] = None
-            artistd['isSup'] = artist['isSupport']
-            artistd['role'] = artist['effectiveRoles']
-            if artistd['role'] == 'Default':
-                artistd['role'] = artist['categories']
-            artists.append(artistd)
-        titles = []
-        for title in data['names']:
-            if title['language'] in ('Japanese', 'Romaji', 'English'):
-                titles.append(title['value'])
-
-        songType = data['songType']
-        return {'titles': titles, 'artists': artists, 'songType': songType}
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']
