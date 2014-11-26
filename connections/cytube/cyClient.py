@@ -426,7 +426,10 @@ class CyProtocol(WebSocketClientProtocol):
 
             ##messy but oh well, clean up later
         source = 'chat'
-        command = msg.split()[0]
+        try:
+            command = msg.split()[0]
+        except(IndexError):
+            return
         index = msg.find(' ')
         if index != -1:
             commandArgs = msg[index+1:]
