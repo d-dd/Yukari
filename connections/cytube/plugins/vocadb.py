@@ -16,11 +16,11 @@ class VocaDB(object):
     # it will emit the song information on changeMedia
     # _js_ must return a deferred; it will be put in a deferredList with
     # other deferreds. Js will update once by deferredList callback.
-    def _js_loadVocaDb(self, cy, mType, mId):
+    def _cmjs_loadVocaDb(self, cy, mType, mId):
         return self._loadVocaDb(None, mType, mId)
 
     # this is the $vocadb chat command
-    def _com_vocadb(self, cy, username, args):
+    def _com_vocadb(self, cy, username, args, source):
         if not vdb:
             return
         mType = cy.nowPlayingMedia['type']

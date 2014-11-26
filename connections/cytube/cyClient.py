@@ -1,6 +1,7 @@
 # Standard Library
 import json, time, re, argparse, random, os, importlib
 from collections import deque
+from functools import wraps
 # Twisted Libraries
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -31,6 +32,51 @@ def importPlugins(paths):
     clog.warning(str(modules), 'modules')
     return modules
 
+def commandThrottle(cost):
+    """ Throttle commands on user by user basis """
+    # Decorator
+    # Add @commandThrottle(cost) before a command method to enable throttle
+    # cost: how much limit to reduce for the command
+    # Use high cost for expensive to comupte commands such as $greet and
+    #  $points, and API dependent commands such as $anagram
+    # Command methods must follow a strict argument order of:
+    ## [0] self
+    ## [1] cy : CyProtocol instance
+    ## [2] username: username string
+    ## * : any other args
+    #
+    # The limit is shared between all commands that use this decorator,
+    # tallied by user (userdict)
+    # Note that failed commands (such as $who without arguments) will still
+    # cost users to use their limits.
+    def limiter(func):
+        @wraps(func)
+        def throttleWrap(*args):
+            try:
+                cy = args[1]
+                username = args[2]
+                #clog.warning('cy: %s, username: %s' % (cy, username), syst)
+            except(IndexError, NameError):
+                clog.error('Bad args at commandThrottle!', syst)
+                return
+            if cy.userdict.get(username, None):
+                cthrot = cy.userdict[username]['cthrot']
+                # add limit back depending on how long they waited, with cap
+                cthrot['net'] += (time.time() - cthrot['last'])/15
+                cthrot['net'] = min(cthrot['net'], cthrot['max'])
+                cthrot['last'] = time.time()
+                if cthrot['net'] >= cost:
+                    cthrot['net'] -= cost
+                    clog.warning('command ok', syst)
+                    return func(*args)
+                else:
+                    clog.warning('%s is requesting commands too quickly!' 
+                                  % username, syst)
+            else:
+                clog.error('%s is throttled from commands!' % username, syst)
+        return throttleWrap
+    return limiter
+
 def wisp(msg):
     """Decorate msg with system-whisper trigger"""
     return '@3939%s#3939' % msg
@@ -42,6 +88,12 @@ class CyProtocol(WebSocketClientProtocol):
         self.importCyModules()
         self.loops = []
         self.laters = []
+
+        # Wether to run cmJs methods
+        # Set this to True for media that is not going to be played
+        # and there is no need to lookup information on it.
+        # e.g. blacklisted, unplayable, replay, etc.
+        self.cancelChangeMediaJs = False
         self.underSpam = False
         self.underHeavySpam = False
         # how long to wait for heartbeat reply
@@ -57,11 +109,9 @@ class CyProtocol(WebSocketClientProtocol):
         self.burstCounter = 0
         self.lastQueueTime = time.time() - 20 #TODO
         self.nowPlayingMedia = {}
-        self.currentLikes = []
         self.err = []
         self.currentJs = {}
         self.currentLikeJs = ''
-        self.currentOmitted = False
         ### Need to imporve this regex, it matches non-videos
         # ie https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
@@ -76,14 +126,22 @@ class CyProtocol(WebSocketClientProtocol):
         for fn in CyProtocol.start_init:
             fn(self)
 
+
+
+
+
     def importCyModules(self):
         paths = ['connections/cytube/plugins/']
         modules = importPlugins(paths)
-        self.triggers = {'commands':{},
+        self.triggers = {
                          'changeMedia': {},
+                         'cmJs': {},
+                         'commands':{},
+                         'playlist': {},
+                         'ppm': {},
                          'queue': {},
                          'replay': {},
-                         'js': {}}
+                                         }
 
         for module in modules:
             instance = module.setup()
@@ -92,14 +150,17 @@ class CyProtocol(WebSocketClientProtocol):
                 if method.startswith('_com_'):
                     trigger = '$%s' % method[5:]
                     self.triggers['commands'][trigger] = getattr(instance, method)
-                elif method.startswith('_cM_'):
+                elif method.startswith('_cm_'):
                     self.triggers['changeMedia'][method] = getattr(instance, method)
                 elif method.startswith('_q_'):
                     self.triggers['queue'][method] = getattr(instance, method)
                 elif method.startswith('_re_'):
                     self.triggers['replay'][method] = getattr(instance, method)
-                elif method.startswith('_js_'):
-                    self.triggers['js'][method] = getattr(instance, method)
+                elif method.startswith('_cmjs_'):
+                    self.triggers['cmJs'][method] = getattr(instance, method)
+                elif method.startswith('_ppm_'):
+                    trigger = '%%%%%s' % method[5:]
+                    self.triggers['ppm'][trigger] = getattr(instance, method)
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -212,9 +273,10 @@ class CyProtocol(WebSocketClientProtocol):
             self.sendf({'name': 'chatMsg',
                        'args': {'msg': msg, 'meta': {'modflair': modflair}}})
 
-    def sendCyWhisper(self, msg):
+    def sendCyWhisper(self, msg, source='chat', username=None, modflair=False, 
+                      toIrc=False):
         msg = wisp(msg)
-        self.doSendChat(msg, toIrc=False)
+        self.doSendChat(msg, source, username, modflair, toIrc)
 
     def doSendPm(self, msg, username):
         self.sendf({'name': 'pm',
@@ -342,6 +404,8 @@ class CyProtocol(WebSocketClientProtocol):
         # strip HTML tags
         thunk = None
         msg = tools.strip_tag_entity(msg)
+        if not msg:
+            return
         if msg.startswith('$') and not shadow:
             # unescape to show return value properly ([Ask: >v<] Yes.)
             msg = tools.unescapeMsg(msg)
@@ -361,6 +425,7 @@ class CyProtocol(WebSocketClientProtocol):
                 return
 
             ##messy but oh well, clean up later
+        source = 'chat'
         command = msg.split()[0]
         index = msg.find(' ')
         if index != -1:
@@ -372,7 +437,7 @@ class CyProtocol(WebSocketClientProtocol):
             processCommand = False
             clog.info('Command triggered: %s ; %s' % (command, commandArgs),
                     syst)
-            self.triggers['commands'][command](self, username, commandArgs)
+            self.triggers['commands'][command](self, username, commandArgs, source)
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
@@ -408,26 +473,37 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
 
     def processPm(self, username, msg):
+        # hidden PM's
         if msg.startswith('%%'):
-            if msg == '%%subscribeLike':
-                clog.debug('Received subscribeLike from %s' % username, syst)
-                if username in self.userdict:
-                    self.userdict[username]['subscribeLike'] = True
-                    # send value for current media
-                    if username in self.currentLikes:
-                        msg = '%%%%%s' % self.currentLikes[username]
-                        self.doSendPm(msg, username)
-            elif msg == '%%like':
-                self._com_like(username, None, 'ppm')
-            elif msg == '%%unlike':
-                self._com_unlike(username, None, 'ppm')
-            elif msg == '%%dislike':
-                self._com_dislike(username, None, 'ppm')
+            source = 'ppm'
+            command = msg
+            # TODO args
+            commandArgs = None
+            if command in self.triggers['ppm']:
+                self.triggers['ppm'][command](self, username, 
+                                                   commandArgs, source)
+                clog.info('ppm triggered: %s ; %s' % (command, commandArgs),
+                    syst)
+            return
 
-        elif msg.startswith('$') and username != self.name:
+        if msg.startswith('$') and username != self.name:
             thunk, args, source = self.checkCommand(username, msg, 'pm')
             if thunk:
                 thunk(username, args, 'pm')
+                return
+            source = 'pm'
+            command = msg.split()[0]
+            index = msg.find(' ')
+            if index != -1:
+                commandArgs = msg[index+1:]
+            else:
+                commandArgs = ''
+
+            clog.error('command %s' % command, syst)
+            if command in self.triggers['commands']:
+                clog.info('Command triggered: %s ; %s' % (command, commandArgs),
+                        syst)
+                self.triggers['commands'][command](self, username, commandArgs, source)
 
     def _cyCall_newPoll(self, fdict):
         poll = fdict['args'][0]
@@ -669,25 +745,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.getRandMedia(args.sample, args.number, args.user, isRegistered,
                           title, args.temporary, args.next)
 
-    def _com_omit(self, username, args, source):
-        self._omit(username, args, 'flag', source)
-
-    def _com_unomit(self, username, args, source):
-        self._omit(username, args, 'unflag', source)
-
-    def _com_blacklist(self, username, args, source):
-        rank = self._getRank(username)
-        clog.info('(_com_blacklist) %s' % args)
-        if rank < 3:
-            return
-        parsed = self._omit_args(args)
-        if not parsed:
-            self.doSendChat('Invalid parameters.')
-        elif parsed:
-            mType, mId = parsed
-            database.flagMedia(4, mType, mId)
-            self.doDeleteMedia(mType, mId)
-
     def _com_greet(self, username, args, source):
         isReg = self.checkRegistered(username)
         d = database.getUserFlag(username.lower(), isReg)
@@ -725,52 +782,12 @@ class CyProtocol(WebSocketClientProtocol):
         if self.checkRegistered(username):
             d = database.flagUser(4, username.lower(), 1)
 
-    def _com_like(self, username, args, source):
-        if source == 'pm' or source == 'ppm':
-            self._likeMedia(username, args, source, 1)
-
-    def _com_dislike(self, username, args, source):
-        if source == 'pm' or source == 'ppm':
-            self._likeMedia(username, args, source, -1)
-
-    def _com_unlike(self, username, args, source):
-        if source == 'pm' or source == 'ppm':
-            self._likeMedia(username, args, source, 0)
-
-    def _likeMedia(self, username, args, source, value):
-        if not self.nowPlayingMedia:
-            return
-        if args is not None:
-            mType, mId = args.split(', ')
-        else:
-            mType = self.nowPlayingMedia['type']
-            mId = self.nowPlayingMedia['id']
-        clog.info('(_com_like):type:%s, id:%s' % (mType, mId), syst) 
-        uid = self.getUidFromTypeId(mType, mId) 
-        i = self.getIndexFromUid(uid)
-        if i is None:
-            return
-        userId = self.userdict[username]['keyId']
-        qid = self.playlist[i]['qid']
-        d = database.queryMediaId(mType, mId)
-        d.addCallback(self.processResult)
-        d.addCallback(database.insertReplaceLike, qid, userId, 
-                       getTime(), value)
-        d.addCallback(self.updateCurrentLikes, username, value)
-
-    def updateCurrentLikes(self, res, username, value):
-         self.currentLikes[username] = value
-         score = sum(self.currentLikes.itervalues())
-         self.currentLikeJs = 'yukariLikeScore = %d' % score
-         self.updateJs()
-
     def updateJs(self):
-        omit = 'yukariOmit=' + str(self.currentOmitted).lower()
         try:
             ircUserCount = 'yukarIRC=' + str(self.factory.handle.ircUserCount)
         except(NameError):
             ircUserCount = '0'
-        js = [omit, ircUserCount, self.currentLikeJs]
+        js = [ircUserCount]
         for strjs in self.currentJs.itervalues():
             js.append(strjs)
         self.doSendJs((';'.join(js)+';'))
@@ -780,12 +797,6 @@ class CyProtocol(WebSocketClientProtocol):
 
     def processResult(self, res):
         return defer.succeed(res[0][0])
-
-    def _com_who(self, username, args, source):
-        if args is None or source != 'chat':
-            return
-        msg = '[Who: %s] %s' % (args, random.choice(self.userdict.keys()))
-        self.doSendChat(msg, source)
 
     def greet(self, res, username, isReg, source):
         flag = res[0][0]
@@ -856,51 +867,6 @@ class CyProtocol(WebSocketClientProtocol):
                                  dLiked, dDisliked])
         return dl
     
-    def _omit(self, username, args, dir, source):
-        rank = self._getRank(username)
-        clog.info('(_com_omit) %s' % args)
-        if rank < 2 or not self.nowPlayingMedia:
-            return
-        parsed = self._omit_args(args)
-        if not parsed:
-            self.doSendChat('Invalid parameters.')
-        elif parsed:
-            mType, mId = parsed
-            # check existence and retrieve title
-            d = database.getMediaByTypeId(mType, mId)
-            d.addCallback(self.cbOmit, mType, mId, username, dir, source)
-
-    def cbOmit(self, res, mType, mId, username, dir, source):
-        if not res:
-            st = '' if dir == 'flag' else 'un'
-            self.doSendChat('Cannot %somit media not in database'
-                            % st, source, username, toIrc=False)
-
-        elif dir == 'flag' and res[0][6] & 2: # already omitted
-            self.doSendChat('%s is already omitted' % res[0][4], 
-                            source, username, toIrc=False)
-
-        elif dir == 'unflag' and not res[0][6] & 2: # not omitted
-            self.doSendChat('%s is not omitted' % res[0][4], source,
-                            username, toIrc=False)
-        else:
-            np = self.nowPlayingMedia
-            title = res[0][4]
-            if dir == 'flag':
-                database.flagMedia(2, mType, mId)
-                if (mType, mId) == (np['type'], np['id']):
-                    self.currentOmitted = True
-                    self.updateJs()
-                self.doSendChat(wisp('Omitted %s') % title, source, 
-                                username, toIrc=False)
-
-            elif dir == 'unflag':
-                database.unflagMedia(2, mType, mId)
-                if (mType, mId) == (np['type'], np['id']):
-                    self.currentOmitted = False
-                    self.updateJs()
-                self.doSendChat(wisp('Unomitted %s') % title, source,
-                                username, toIrc=False)
 
     def _omit_args(self, args):
         if not args:
@@ -1007,8 +973,13 @@ class CyProtocol(WebSocketClientProtocol):
             self.userJoin(user, timeNow)
 
     def userJoin(self, user, timeNow):
+        clog.info(user, syst)
         user['keyId'] = None
         user['timeJoined'] = timeNow
+        # command throttle
+        user['cthrot'] = {'net': 5, 'max':min(user['rank']*5+5,30), 
+                          'last': time.time()}
+        user['lastCommand'] = time.time()
         self.userdict[user['name']] = user
         self.userdict[user['name']]['subscribeLike'] = False
         reg = self.checkRegistered(user['name'])
@@ -1101,6 +1072,7 @@ class CyProtocol(WebSocketClientProtocol):
         # queue and uses that queueId.
         # We don't add all media to the queue table automatically since it'll
         # end up adding multiple times each join/restart during shuffle.
+        # Cytube also re-sends the playlist when the permission is changed
         self.playlist = []
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
@@ -1203,9 +1175,6 @@ class CyProtocol(WebSocketClientProtocol):
                     return media['uid']
 
     def _cyCall_queue(self, fdict):
-        for key, method in self.triggers['queue'].iteritems():
-            method(self, fdict)
-
         timeNow = getTime()
         item = fdict['args'][0]['item']
         isTemp = item['temp']
@@ -1218,9 +1187,8 @@ class CyProtocol(WebSocketClientProtocol):
         uid = item['uid']
         self.addToPlaylist(item, afterUid)
 
-        # Announce queue
-        #msg = wisp('%s added %s!' % (queueby, title))
-        #self.doSendChat(msg, source='chat', toIrc=False)
+        for key, method in self.triggers['queue'].iteritems():
+            method(self, fdict)
 
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
@@ -1260,6 +1228,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def checkFlag(self, res, mType, mId):
         """ Check flag for omit or blacklist """
+        return self.verifyMedia(mType, mId)
+    ###
         if not res:
             clog.error('(continueBlacklist) Media not found!', syst)
         else:
@@ -1360,6 +1330,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def emitBulkJs(self, results):
         js = []
+        clog.warning(results, 'debug')
         for result in results:
             if result[0]: # True if deferred succeeded
                 resultname = result[1][0]
@@ -1382,13 +1353,31 @@ class CyProtocol(WebSocketClientProtocol):
                           mId.encode('utf-8'))
 
         clog.info('(_cyCall_changeMedia) %s' % s, syst)
+        
+        # Reset cancelChangeMediaJs
+        # Plugins that use cmjs may change it to True
+        self.cancelChangeMediaJs = False
+        # run changeMedia methods
+        l = []
+        for method in self.triggers['changeMedia'].itervalues():
+            l.append(method(self, mType, mId, mTitle))
+        cmDeferredList = defer.DeferredList(l)
+        cmDeferredList.addCallback(self.changeMediaJs, mType, mId)
+
+    def changeMediaJs(self, result, mType, mId):
+        if not result:
+            clog.error('changeMediaJs was cancelled.', syst)
+            return
 
         # run changeMedia JS methods
         l = []
-        for key, method in self.triggers['js'].iteritems():
+        for key, method in self.triggers['cmJs'].iteritems():
             l.append(method(self, mType, mId))
         jsDeferredList = defer.DeferredList(l)
         jsDeferredList.addCallback(self.emitBulkJs)
+
+        return
+    ###
 
         # if there is a replay-poll active, end it
         if self.pollState.get('type', None) == 'replay':
@@ -1427,39 +1416,10 @@ class CyProtocol(WebSocketClientProtocol):
             d.addErrback(self.errcatch)
             d.addCallback(self.flagOrDelete, media, mType, mId)
             d.addErrback(self.errcatch)
-            d.addCallback(self.loadLikes, mType, mId)
 
     def jumpToMedia(self, uid):
         clog.debug('(jumpToMedia) Playing uid %s' % uid, syst)
         self.sendf({'name': 'jumpTo', 'args': [uid]})
-
-    def loadLikes(self, res, mType, mId):
-        if res != 'EmbedOk':
-            return
-        uid = self.getUidFromTypeId(mType, mId)
-        i = self.getIndexFromUid(uid)
-        try:
-            queueId = self.playlist[i]['qid']
-            d = database.getLikes(queueId)
-        except(KeyError):
-            clog.error('(loadLikes) Key is not ready!', syst)
-            d = self.playlist[i]['qDeferred']
-            d.addCallback(database.getLikes)
-        # result  [(userId, 1), (6, 1)]
-        d.addCallback(self.sendLikes)
-
-    def sendLikes(self, res):
-        self.currentLikes, likes = dict(res), dict(res)
-        for username in likes:
-            if username in self.userdict:
-                if self.userdict[username]['subscribeLike']:
-                    if likes[username]: # don't send if 0
-                        msg = '%%%%%s' % likes[username]
-                        self.doSendPm(msg, username)
-
-        score = sum(self.currentLikes.itervalues())
-        self.currentLikeJs = 'yukariLikeScore = %d' % score
-        self.updateJs()
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']

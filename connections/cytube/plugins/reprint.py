@@ -8,7 +8,7 @@ syst = 'REPRINT'
 
 class Reprint(object):
 
-    def _com_reprint(self, cy, username, args):#, source):
+    def _com_reprint(self, cy, username, args, source):
         if not args or len(args) > 11 or not args.startswith('sm'):
             clog.debug('reprint - no args or bad args', syst)
             return

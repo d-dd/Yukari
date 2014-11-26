@@ -5,13 +5,10 @@ class FirstQueued(object):
     def __init__(self):
         self.jsName = 'firstQueued'
 
-    def _js_firstAdded(self, cy, mType, mId):
+    def _cmjs_firstAdded(self, cy, mType, mId):
         d = self._getFirstQueuedByTime(mType, mId)
         d.addCallback(self._cbFirstQueued, cy)
         return d
-
-    def _js_randomJsTest(self, cy, mType, mId):
-        return defer.succeed(('teto', 'teto={"teto":123}'))
 
     def _cbFirstQueued(self, results, cy):
         time = results[0][0]/100
