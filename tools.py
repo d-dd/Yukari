@@ -1,6 +1,6 @@
 import HTMLParser, htmlentitydefs
-import sys, time
-import logging
+import logging, sys, time
+from functools import wraps
 from twisted.words.protocols.irc import attributes as A
 from twisted.python import log
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -154,6 +154,64 @@ def cleanLaters(laterslist):
             laterslist.pop().cancel()
         except(AlreadyCancelled, AlreadyCalled):
             pass
+
+def commandThrottle(cost):
+    """ Decorator to Throttle commands
+    # Decorator
+    # Add @commandThrottle(cost) before a command method to enable throttle
+    # cost: how much limit to reduce for the command
+    # Use high cost for expensive to comupte commands such as $greet and
+    #  $points, and API dependent commands such as $anagram
+    #
+    # The limit is shared between all commands that use this decorator
+    # Note that failed commands (such as $choose without arguments) will still
+    # cost users to use their limits.
+    """
+    syst = 'commandThrottle'
+    def limiter(func):
+        @wraps(func)
+        def throttleWrap(*args, **kwargs):
+            try:
+                prot = kwargs.get('prot', None)
+                username = args[2]
+                origin = args[4]
+                #clog.warning('cy: %s, username: %s' % (cy, username), syst)
+            except(IndexError, NameError):
+                clog.error('commandThrottle: Invalid args!', syst)
+                return
+            if not prot:
+                clog.warning('commandThrottle: Could not find protocol!', syst)
+                return
+
+            # delete the protocol reference / argument; the _com_ methods
+            # do not expect it
+            del kwargs['prot']
+
+            if origin != 'cy':
+                # pass-through
+                # we don't have any throttle for IRC users, because the
+                # network throttles them already
+                return func(*args, **kwargs)
+
+            # Cytube
+            if prot.userdict.get(username, None):
+                cthrot = prot.userdict[username]['cthrot']
+                # add limit back depending on how long they waited, with cap
+                cthrot['net'] += (time.time() - cthrot['last'])/8
+                cthrot['net'] = min(cthrot['net'], cthrot['max'])
+                cthrot['last'] = time.time()
+                if cthrot['net'] >= cost:
+                    cthrot['net'] -= cost
+                    clog.warning('command ok', syst)
+                    return func(*args, **kwargs)
+                else:
+                    clog.warning('%s is requesting commands too quickly!' 
+                                  % username, syst)
+            else:
+                clog.error('(throttleWrap) could not find %s in userdict!'
+                            % username, syst)
+        return throttleWrap
+    return limiter
 
 clog = CustomLog()
 # only debug will show Twisted-produced messages

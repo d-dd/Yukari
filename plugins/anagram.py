@@ -1,11 +1,12 @@
+from tools import commandThrottle
 import re
 from twisted.web.client import Agent, readBody
 
 class Anagram(object):
     """ Anagram solver using anagram api """
     ### Need to move api to here
-
-    def _com_anagram(self, yuka, user, args):
+    @commandThrottle(5)
+    def _com_anagram(self, yuka, user, args, source):
         if not args:
             return
         text = re.sub(r"[^a-zA-Z]", "", args)

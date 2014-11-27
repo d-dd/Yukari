@@ -1,6 +1,6 @@
 import database
 from twisted.internet import defer
-from tools import clog, getTime
+from tools import clog, getTime, commandThrottle
 
 syst = 'Likes'
 class Likes(object):
@@ -13,15 +13,15 @@ class Likes(object):
         d = self.loadLikes(cy, mType, mId)
         return d
 
-    def _com_like(self, cy, username, args, source):
+    def _like(self, cy, username, args, source):
         if source == 'pm' or source == 'ppm':
             self._likeMedia(cy, username, args, source, 1)
 
-    def _com_dislike(self, cy,username, args, source):
+    def _dislike(self, cy,username, args, source):
         if source == 'pm' or source == 'ppm':
             self._likeMedia(cy, username, args, source, -1)
 
-    def _com_unlike(self, cy,username, args, source):
+    def _unlike(self, cy,username, args, source):
         if source == 'pm' or source == 'ppm':
             self._likeMedia(cy, username, args, source, 0)
 
@@ -35,13 +35,13 @@ class Likes(object):
                 cy.doSendPm(msg, username)
 
     def _ppm_like(self, cy, username, args, source):
-        self._com_like(cy, username, None, 'ppm')
+        self._like(cy, username, None, 'ppm')
 
     def _ppm_unlike(self, cy, username, args, source):
-        self._com_unlike(cy, username, None, 'ppm')
+        self._unlike(cy, username, None, 'ppm')
     
     def _ppm_dislike(self, cy, username, args, source):
-        self._com_dislike(cy, username, None, 'ppm')
+        self._dislike(cy, username, None, 'ppm')
 
     def loadLikes(self, cy, mType, mId):
         uid = cy.getUidFromTypeId(mType, mId)

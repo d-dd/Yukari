@@ -1,7 +1,6 @@
 # Standard Library
 import json, time, re, argparse, random, os, importlib
 from collections import deque
-from functools import wraps
 # Twisted Libraries
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
@@ -32,50 +31,6 @@ def importPlugins(paths):
     clog.warning(str(modules), 'modules')
     return modules
 
-def commandThrottle(cost):
-    """ Throttle commands on user by user basis """
-    # Decorator
-    # Add @commandThrottle(cost) before a command method to enable throttle
-    # cost: how much limit to reduce for the command
-    # Use high cost for expensive to comupte commands such as $greet and
-    #  $points, and API dependent commands such as $anagram
-    # Command methods must follow a strict argument order of:
-    ## [0] self
-    ## [1] cy : CyProtocol instance
-    ## [2] username: username string
-    ## * : any other args
-    #
-    # The limit is shared between all commands that use this decorator,
-    # tallied by user (userdict)
-    # Note that failed commands (such as $who without arguments) will still
-    # cost users to use their limits.
-    def limiter(func):
-        @wraps(func)
-        def throttleWrap(*args):
-            try:
-                cy = args[1]
-                username = args[2]
-                #clog.warning('cy: %s, username: %s' % (cy, username), syst)
-            except(IndexError, NameError):
-                clog.error('Bad args at commandThrottle!', syst)
-                return
-            if cy.userdict.get(username, None):
-                cthrot = cy.userdict[username]['cthrot']
-                # add limit back depending on how long they waited, with cap
-                cthrot['net'] += (time.time() - cthrot['last'])/15
-                cthrot['net'] = min(cthrot['net'], cthrot['max'])
-                cthrot['last'] = time.time()
-                if cthrot['net'] >= cost:
-                    cthrot['net'] -= cost
-                    clog.warning('command ok', syst)
-                    return func(*args)
-                else:
-                    clog.warning('%s is requesting commands too quickly!' 
-                                  % username, syst)
-            else:
-                clog.error('%s is throttled from commands!' % username, syst)
-        return throttleWrap
-    return limiter
 
 def wisp(msg):
     """Decorate msg with system-whisper trigger"""
@@ -125,10 +80,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.mediaRemainingTime = 0
         for fn in CyProtocol.start_init:
             fn(self)
-
-
-
-
 
     def importCyModules(self):
         paths = ['connections/cytube/plugins/']
@@ -440,7 +391,8 @@ class CyProtocol(WebSocketClientProtocol):
             processCommand = False
             clog.info('Command triggered: %s ; %s' % (command, commandArgs),
                     syst)
-            self.triggers['commands'][command](self, username, commandArgs, source)
+            self.triggers['commands'][command](self, username, commandArgs,
+                                               source, prot=self)
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
@@ -980,7 +932,7 @@ class CyProtocol(WebSocketClientProtocol):
         user['keyId'] = None
         user['timeJoined'] = timeNow
         # command throttle
-        user['cthrot'] = {'net': 5, 'max':min(user['rank']*5+5,30), 
+        user['cthrot'] = {'net': 9, 'max':min(user['rank']*5+5,30), 
                           'last': time.time()}
         user['lastCommand'] = time.time()
         self.userdict[user['name']] = user

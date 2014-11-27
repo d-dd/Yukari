@@ -1,10 +1,12 @@
 import random
+from tools import commandThrottle
 from twisted.internet import reactor
 
 class BasicPlugin(object):
     """ Basic and generic chat-bot commands """
 
-    def _com_8ball(self, yuka, username, args):
+    @commandThrottle(2)
+    def _com_8ball(self, yuka, username, args, source):
         if not args:
             return
         choices = ('It is certain', 'It is decidedly so', 'Without a doubt',
@@ -18,25 +20,28 @@ class BasicPlugin(object):
         msg = '[8ball: %s] %s' % (args, random.choice(choices))
         yuka.sendChats(msg)
 
-    def _com_ask(self, yuka, username, args):
+    @commandThrottle(2)
+    def _com_ask(self, yuka, username, args, source):
          if not args:
              return
          if len(args) > 227:
              args = args[:224] + '(...)'
          msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
          yuka.sendChats(msg)
-
-    def _com_bye(self, yuka, username, args):
+    
+    @commandThrottle(2)
+    def _com_bye(self, yuka, username, args, source):
          farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
                                   'See you later', 'See you soon', 'Take care'))
          msg = '%s, %s.' % (farewell, username)
          reactor.callLater(0.2, yuka.sendChats, msg)
 
-    def _com_coin(self, yuka, username, args):
-        reactor.callLater(0.2, yuka.sendChats,
-                          '[coin flip]: %s' % random.choice(['Heads', 'Tails']))
+    @commandThrottle(2)
+    def _com_coin(self, yuka, username, args, source):
+        self._coin(yuka, username, args, source)
 
-    def _com_choose(self, yuka, username, args):
+    @commandThrottle(2)
+    def _com_choose(self, yuka, username, args, source):
         if not args:
             return
         choices = self._getChoices(args)
@@ -44,7 +49,54 @@ class BasicPlugin(object):
             msg = '[Choose: %s] %s' % (args, random.choice(choices))
             yuka.sendChats(msg)
 
-    def _com_dice(self, yuka, username, args):
+    @commandThrottle(2)
+    def _com_dice(self, yuka, username, args, source):
+        self._dice(yuka, username, args, source)
+
+    @commandThrottle(2)
+    def _com_flip(self, yuka, username, args, source):
+        """ Alias of coin """
+        self._coin(yuka, username, args, source)
+
+    @commandThrottle(2)
+    def _com_goodnight(self, yuka, username, args, source):
+        reactor.callLater(0.2, yuka.sendChats, 'Goodnight, %s.' % username)
+
+    @commandThrottle(2)
+    def _com_greet(self, yuka, username, args, source):
+        reactor.callLater(0.2, yuka.sendChats, 'Hi, %s.' % username)
+
+    @commandThrottle(2)
+    def _com_permute(self, yuka, username, args, source):
+        if not args:
+            return
+        choices = self._getChoices(args)
+        if choices:
+            random.shuffle(choices)
+            msg = '[Permute: %s] %s' % (args, ', '.join(choices))
+            yuka.sendChats(msg)
+
+    @commandThrottle(10)
+    def _com_poke(self, yuka, username, args, source):
+        yuka.sendChats('Please be nice, %s!' % username)
+
+    @commandThrottle(2)
+    def _com_roll(self, yuka, username, args, source):
+        """ Alias of dice """
+        self._dice(yuka, username, args, source)
+
+    @commandThrottle(7)
+    def _com_wave(self, yuka, username, args, source):
+        waves = u'\uff89\uff7c' * random.randint(1, 5)
+        msg = 'waves at %s! %s' % (username, waves)
+        yuka.sendToCy('/me ' + msg)
+        yuka.actionToIrc(msg.encode('utf8'))
+
+    def _coin(self, yuka, username, args, source):
+        reactor.callLater(0.2, yuka.sendChats,
+                          '[coin flip]: %s' % random.choice(['Heads', 'Tails']))
+        
+    def _dice(self, yuka, username, args, source):
         if not args:
             nums = (1, 6)
         elif ',' in args:
@@ -76,38 +128,6 @@ class BasicPlugin(object):
         msg = ('[Dice roll%s: %dd%d] %s %s' %
                (plural, times, sides, sum(rolls), rollsStr))
         yuka.sendChats(msg)
-
-    def _com_flip(self, yuka, username, args):
-        """ Alias of coin """
-        self._com_coin(yuka, username, args)
-
-    def _com_goodnight(self, yuka, username, args):
-        reactor.callLater(0.2, yuka.sendChats, 'Goodnight, %s.' % username)
-
-    def _com_greet(self, yuka, username, args):
-        reactor.callLater(0.2, yuka.sendChats, 'Hi, %s.' % username)
-
-    def _com_help(self, yuka, username, args):
-        msg =('Commands: https://github.com/d-dd/Yukari/blob/master/commands.md'
-                                        ' Repo: https://github.com/d-dd/Yukari')
-        yuka.sendChats(msg)
-
-    def _com_permute(self, yuka, username, args):
-        if not args:
-            return
-        choices = self._getChoices(args)
-        if choices:
-            random.shuffle(choices)
-            msg = '[Permute: %s] %s' % (args, ', '.join(choices))
-            yuka.sendChats(msg)
-
-    def _com_poke(self, yuka, username, args):
-        return
-        yuka.sendChats('Please be nice, %s!' % username)
-
-    def _com_roll(self, yuka, username, args):
-        """ Alias of dice """
-        self._com_dice(yuka, username, args)
 
     def _getChoices(self, args):
         if len(args) > 230:

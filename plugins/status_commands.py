@@ -2,6 +2,7 @@ from datetime import timedelta
 import random
 import subprocess
 import time
+from tools import commandThrottle
 
 class StatusPlugin(object):
     """ A few extras """
@@ -13,13 +14,14 @@ class StatusPlugin(object):
         except(subprocess.CalledProcessError):
             self.githash = 'Error'
 
-    def _com_help(self, yuka, username, args):
+    @commandThrottle(2)
+    def _com_help(self, yuka, username, args, source):
         msg =('Commands: https://github.com/d-dd/Yukari/blob/master/commands.md'
                 ' Repo: https://github.com/d-dd/Yukari')
         yuka.sendChats(msg)
 
-
-    def _com_uptime(self, yuka, user, args):
+    @commandThrottle(2)
+    def _com_uptime(self, yuka, user, args, source):
         uptime = time.time() - yuka.startTime
         uptime = str(timedelta(seconds=round(uptime)))
         if yuka.cy:
@@ -35,7 +37,8 @@ class StatusPlugin(object):
         yuka.sendChats('[status] UPTIME Yukari: %s, Cytube: %s, IRC: %s' %
                        (uptime, cyUptime, ircUptime))
 
-    def _com_version(self, yuka, username, args):
+    @commandThrottle(2)
+    def _com_version(self, yuka, username, args, source):
         yuka.sendChats('[Version] %s' % self.githash)
 
 def setup():

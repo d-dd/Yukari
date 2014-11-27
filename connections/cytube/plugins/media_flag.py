@@ -1,5 +1,5 @@
 import database
-from tools import clog
+from tools import clog, commandThrottle
 from twisted.internet import defer
 
 syst = 'MediaFlag'
@@ -24,6 +24,7 @@ class MediaFlag(object):
         d.addCallback(self._cbcmBlacklist, cy, mType, mId, mTitle)
         return d
         
+    @commandThrottle(0)
     def _com_blacklist(self, cy, username, args, source):
         rank = cy._getRank(username)
         if rank < 3:
@@ -37,9 +38,11 @@ class MediaFlag(object):
             cy.doDeleteMedia(mType, mId)
             cy.sendCyWhisper('Added to blacklist (%s %s).' % (mType, mId) )
 
+    @commandThrottle(0)
     def _com_omit(self, cy, username, args, source):
         self._omit(cy, username, args, 'flag', source)
 
+    @commandThrottle(0)
     def _com_unomit(self, cy, username, args, source):
         self._omit(cy, username, args, 'unflag', source)
 
