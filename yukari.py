@@ -169,7 +169,10 @@ class Connections:
                 self.wsFactory.prot.relayToCyChat(line)
         # don't process commands from action (/me) messages
         if not modifier:
-            self.processCommand(user, tools.returnUnicode(msg))
+            if self.irc:
+                prot = self.ircFactory.prot
+                self.processCommand(user, tools.returnUnicode(msg), 'irc',
+                                    prot=prot)
 
     def recCyMsg(self, user, msg, needProcessing, action=False):
         if self.inIrcChan and user != 'Yukarin':
@@ -181,7 +184,9 @@ class Connections:
                 cleanMsg = '( * %s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
         if needProcessing:
-            self.processCommand(user, msg)
+            if self.cy:
+                prot = self.wsFactory.prot
+                self.processCommand(user, msg, 'cy', prot=prot)
 
     def recCyChangeMedia(self, media):
         if self.inIrcNp and media:
@@ -194,7 +199,7 @@ class Connections:
             msg = tools.returnStr(msg)
             self.ircFactory.prot.sayNowPlaying(msg)
 
-    def processCommand(self, user, msg):
+    def processCommand(self, user, msg, origin, prot):
         if msg.startswith('$'):
             msg = tools.returnUnicode(msg)
             #msg = msg.encode('utf-8')
@@ -207,7 +212,14 @@ class Connections:
             if command in self.triggers['commands']:
                 clog.info('triggered command: [%s] args: [%s]' %
                            (command, args), sys)
-                self.triggers['commands'][command](self, user, args)
+                self.triggers['commands'][command](self, user, args, origin,
+                                                   prot=prot)
+
+    def actionToIrc(self, action):
+        if self.inIrcChan:
+            # without # prefix, it sends to user
+            channel = '#' + str(config['irc']['channel'])
+            self.ircFactory.prot.describe(channel, action)
 
     def sendToIrc(self, msg):
         if self.inIrcChan:
