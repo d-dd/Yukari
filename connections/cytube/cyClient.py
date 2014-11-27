@@ -64,6 +64,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.burstCounter = 0
         self.lastQueueTime = time.time() - 20 #TODO
         self.nowPlayingMedia = {}
+        self.nowPlayingUid = -1
         self.err = []
         self.currentJs = {}
         self.currentLikeJs = ''
@@ -1294,6 +1295,10 @@ class CyProtocol(WebSocketClientProtocol):
                 js.append(strjs)
         #self.doSendChat((';'.join(js)+';'))
         self.doSendJs((';'.join(js)+';'))
+
+    def _cyCall_setCurrent(self, fdict):
+        clog.warning(fdict)
+        self.nowPlayingUid = fdict['args'][0]
 
     def _cyCall_changeMedia(self, fdict):
         # set self.nowPlayingMedia
