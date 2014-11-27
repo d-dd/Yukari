@@ -65,7 +65,12 @@ class MediaFlag(object):
             return d
 
     def _cbCheckFlag(self, res):
-        return defer.succeed(res[0][0])
+        try:
+            flag = res[0][0]
+        except(IndexError): # Media not in database yet
+            clog.warning('(_cbCheckFlag) New media, no flag returned', syst)
+            flag = 0 # can't have been flagged yet
+        return defer.succeed(flag)
 
     def _gotFlag(self, flag, mType, mId):
         """ Set current, and pass on the flag result """

@@ -9,11 +9,16 @@ class AnnounceQueue(object):
         except(KeyError):
             clog.error('KeyError unpacking frame.', syst)
             return
-        #clog.warning('AfterUID: %s; EndUID: %s' %
-        #             (after, cy.playlist[-2]['uid']), syst)
         # if the 2nd to last (becuase last is the one we just added) media's
         # UID is same as after, then it means it as placed at the end
-        if cy.playlist[-2]['uid'] == after:
+        try:
+            last = cy.playlist[-2]['uid']
+        except(IndexError):
+            # when the playlist is empty (before this queue)
+            cy.sendCyWhisper('%s added %s!!!' % (queueby, title))
+            return
+
+        if last == after:
             next = ''
         else:
             next = 'next'

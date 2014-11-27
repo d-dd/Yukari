@@ -1163,8 +1163,10 @@ class CyProtocol(WebSocketClientProtocol):
         i = self.getIndexFromUid(uid)
         self.playlist[i]['qDeferred'] = dq
 
-        dCheck = self.checkMedia(mType, mId)
-        dCheck.addCallback(self.flagOrDelete, media, mType, mId)
+       # dCheck = self.checkMedia(mType, mId)
+       # dCheck.addCallback(self.flagOrDelete, media, mType, mId)
+        dCheck = defer.succeed(0)
+        self.verifyMedia(mType, mId)
 
         if mType == 'yt' and vdb:
             timeNow = getTime()
@@ -1286,7 +1288,6 @@ class CyProtocol(WebSocketClientProtocol):
 
     def emitBulkJs(self, results):
         js = []
-        clog.warning(results, 'debug')
         for result in results:
             if result[0]: # True if deferred succeeded
                 resultname = result[1][0]
@@ -1317,12 +1318,34 @@ class CyProtocol(WebSocketClientProtocol):
         # Reset cancelChangeMediaJs
         # Plugins that use cmjs may change it to True
         self.cancelChangeMediaJs = False
-        # run changeMedia methods
+
+        # Check self.playlist for the media's qDeferred.
+        # if it shows a value (qId), then we can proceed
+        # If it does not have a value yet, that means the
+        # media and queue db writes are not ready- We must add a callback
+        # for our changeMedia triggers
+        index = self.getIndexFromUid(self.nowPlayingUid)
+        if self.playlist[index]['media']['id'] != mId:
+            clog.error('changeMedia setCurrent mismatch!', syst)
+        qD = self.playlist[index]['qDeferred']
+        try:
+            qId = qD.result
+            clog.error('qDresult: %d' % int(qD.result), syst)
+        except(AttributeError, ValueError):
+            clog.error('qId is not ready yet. Adding as callback', syst)
+            qD.addCallback(self.changeMedia, mType, mId, mTitle)
+           # qD.addCallback(self.returnQid)
+            return
+        self.changeMedia(None, mType, mId, mTitle)
+
+    def changeMedia(self, qid, mType, mId, mTitle):
         l = []
         for method in self.triggers['changeMedia'].itervalues():
             l.append(method(self, mType, mId, mTitle))
         cmDeferredList = defer.DeferredList(l)
         cmDeferredList.addCallback(self.changeMediaJs, mType, mId)
+        if qid: # came as a deferred, give back the qId
+            return qid
 
     def changeMediaJs(self, result, mType, mId):
         if not result:
