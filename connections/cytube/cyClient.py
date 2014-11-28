@@ -76,6 +76,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.ytq = deque()
         self.activePoll = None
         self.pollState = {}
+        self.pollFn = None
         self.usercount = 0
         self.willReplay = False
         self.mediaRemainingTime = 0
@@ -93,6 +94,7 @@ class CyProtocol(WebSocketClientProtocol):
                          'ppm': {},
                          'queue': {},
                          'replay': {},
+                         'vote': {},
                                          }
 
         for module in modules:
@@ -113,6 +115,8 @@ class CyProtocol(WebSocketClientProtocol):
                 elif method.startswith('_ppm_'):
                     trigger = '%%%%%s' % method[5:]
                     self.triggers['ppm'][trigger] = getattr(instance, method)
+                elif method.startswith('_vote_'):
+                    self.triggers['vote'][method] = getattr(instance, method)
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -388,6 +392,15 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             commandArgs = ''
 
+        # special case for $vote
+        if command == '$vote':
+            clog.warning('%s, %s' % (command, commandArgs), syst)
+            processCommand = False
+            mthd = self.triggers['vote'].get('_vote_' + commandArgs, None)
+            if mthd:
+                mthd(self, username, '', source, prot=self)
+                return
+
         if command in self.triggers['commands']:
             processCommand = False
             clog.info('Command triggered: %s ; %s' % (command, commandArgs),
@@ -492,31 +505,13 @@ class CyProtocol(WebSocketClientProtocol):
             except(AlreadyCalled, AlreadyCancelled):
                 clog.info('Poll timer already called/cancelled', syst)
                 # Poll finished cleanly
-                self.actPollResults(pollState)
-
-    def actPollResults(self, pollState):
-        if pollState['type'] == 'replay':
-            order = pollState['order']
-            counts = pollState.get('counts', None)
-            if not counts:
-                return
-            if order == 0:
-                yes = counts[1]
-                no = counts[0]
-            elif order == 1:
-                yes = counts[0]
-                no = counts[1]
-            if not no and not yes:
-                # no votes at all; happens when users rejoin, losing their vote
-                return
-            elif not no and yes:
-                self.setToReplay()
-            else:
-                if yes/no >= 3:
-                    self.setToReplay()
+                # (plugin, fn, opts)
+                fn = self.pollFn[1]
+                fn(self, self.pollFn[2], pollState)
 
     def ignorePollResults(self):
         msg = 'Poll has been interrupted by a user. Disregarding results.'
+        self.pollFn[1](self, self.pollFn[2], False)
         self.doSendChat(wisp(msg), toIrc=False)
 
     def _cyCall_mediaUpdate(self, fdict):
@@ -547,77 +542,32 @@ class CyProtocol(WebSocketClientProtocol):
         return thunk, args, source
             
         
-    def _com_replay(self, username, args, source):
-        if source != 'chat':
-            return
-        rank = self._getRank(username)
-        if rank < 2:
-            return
-        if self.willReplay:
-            self.doSendChat(wisp('Cancelled replay.'), toIrc=False)
-            self.willReplay = False
-            return
 
-        # if there is a replay poll, end it
-        if self.pollState.get('type', None) == 'replay':
-            self.doClosePoll()
-        self.setToReplay()
-
-    def setToReplay(self):
-        title = self.nowPlayingMedia['title']
-        self.willReplay = (self.nowPlayingMedia['type'], 
-                          self.nowPlayingMedia['id'], title)
-        self.doSendChat(wisp('%s has been set to replay once.' % title),
-                                                            toIrc=False)
-
-    def _com_repeat(self, username, args, source):
-        # alias to replay
-        self._com_replay(username, args, source)
-
-    def _com_vote(self, username, args, source):
-        if source != 'chat':
-            return
-        rank = self._getRank(username)
-        if rank < 2:
-            return
-        if not args:
-            return
-        if self.activePoll:
-            self.doSendChat('There is an active poll. Please end it first.',
-                            toIrc=False)
-            return
-        if args == 'replay':
-            if self.willReplay:
-                msg = wisp('This is already set to replay.')
-                self.doSendChat(msg, toIrc=False)
-            elif self.mediaRemainingTime > 30:
-                self.makeReplayPoll()
-            elif self.mediaRemainingTime <= 30:
-               self.doSendChat('There is no time left for a poll.', toIrc=False)
-
-    def makeReplayPoll(self):
-        """ Make a poll asking users if they would like the current video
-        to be replayed """
-        boo = random.randint(0, 1)
-        pollTime = min(int(self.mediaRemainingTime - 12), 100)
-        opts = ('Yes!', 'No!') if boo else ('No!', 'Yes!')
-        target = '3:1' if boo else '1:3'
-        self.doMakePoll('Replay %s? (%s to replay, vote time: %s seconds)' % 
-                        (self.nowPlayingMedia['title'], target, pollTime), 
-                                                    False, False, opts)
-
-        self.pollTimer = reactor.callLater(max(pollTime-5, 0), 
-                                                      self.announceTimer)
+    def doMakePoll(self, plugin, fn, opts, subject, title, choices, dur, 
+                                     obscured=False, timer=False):
+        """
+        Make a poll with
+        plugin: reference of the plugin
+        fn: function to callback when poll is done
+        opts: this will be sent back to fn
+        subject: used for "`subject` is ending soon!" message
+        title: title of the poll
+        choices: tuple of poll choices
+        dur: duration of the poll
+        obscured: Cytube hidden poll results
+        timer: Cytube poll timer
+        """
+        self.sendf({'name': 'newPoll', 'args': {'title': title,
+                    'opts': choices, 'obscured': obscured}})
+        self.pollFn = (plugin, fn, opts)
+        self.pollTimer = reactor.callLater(max(dur-5, 0), 
+                                          self.announceTimer, subject)
         self.laters.append(self.pollTimer)
 
-    def doMakePoll(self, title, obscured, timer, *args):
-        self.sendf({'name': 'newPoll', 'args': {'title': title,
-                    'opts': args[0], 'obscured': obscured}})
-
-    def announceTimer(self):
+    def announceTimer(self, subject):
         self.pollTimer = reactor.callLater(5, self.doClosePoll)
         self.laters.append(self.pollTimer)
-        self.doSendChat('Poll is ending in 5 seconds!', toIrc=False)
+        self.doSendChat('%s is ending in 5 seconds!' % subject, toIrc=False)
 
     def doClosePoll(self):
         self.sendf({'name': 'closePoll'})
@@ -1348,7 +1298,7 @@ class CyProtocol(WebSocketClientProtocol):
             return qid
 
     def changeMediaJs(self, result, mType, mId):
-        if not result:
+        if self.cancelChangeMediaJs:
             clog.error('changeMediaJs was cancelled.', syst)
             return
 
@@ -1402,7 +1352,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def jumpToMedia(self, uid):
         clog.debug('(jumpToMedia) Playing uid %s' % uid, syst)
-        self.sendf({'name': 'jumpTo', 'args': [uid]})
+        self.sendf({'name': 'jumpTo', 'args': uid})
 
     def _cyCall_moveVideo(self, fdict):
         beforeUid = fdict['args'][0]['from']

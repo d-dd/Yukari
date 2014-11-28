@@ -15,13 +15,13 @@ class AnnounceQueue(object):
             last = cy.playlist[-2]['uid']
         except(IndexError):
             # when the playlist is empty (before this queue)
-            cy.sendCyWhisper('%s added %s!!!' % (queueby, title))
+            cy.sendCyWhisper('%s added: %s!!!' % (queueby, title))
             return
 
         if last == after:
-            next = ''
+            next = ':'
         else:
-            next = 'next'
+            next = 'next:'
         cy.sendCyWhisper('%s added %s %s!' % (queueby, next, title))
 
 def setup():
