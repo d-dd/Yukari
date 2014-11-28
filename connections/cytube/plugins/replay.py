@@ -9,8 +9,12 @@ class Replay(object):
         self.replay = -1
         # we skip the cmjs for the new media, and the media being replayed
         self.skipJs = False
+        self.poll = False
 
     def _cm_replay(self, cy, mType, mId, mTitle):
+        if self.poll:
+            cy.doClosePoll()
+
         if self.skipJs:
             cy.cancelChangeMediaJs = True
             self.skipJs = False
@@ -38,12 +42,11 @@ class Replay(object):
 
     @commandThrottle(0)
     def _vote_replay(self, cy, username, args, source):
-        clog.warning('votereplay')
         self.voteReplay(cy, username, args, source)
 
     @commandThrottle(0)
     def _vote_repeat(self, cy, username, args, source):
-        clog.warning('voterepeat')
+        self.voteReplay(cy, username, args, source)
 
     def doReplay(self, cy, username, args, source):
         if source != 'chat':
@@ -81,6 +84,7 @@ class Replay(object):
     def makePoll(self, cy):
         """ Make a poll asking users if they would like the current video
         to be replayed """
+        self.poll = True
         boo = random.randint(0, 1)
         pollTime = min(int(cy.mediaRemainingTime - 12), 100)
         choices = ('Yes!', 'No!') if boo else ('No!', 'Yes!')
@@ -88,7 +92,6 @@ class Replay(object):
         title = ('Replay %s? (%s to replay, vote time: %s seconds)' % 
                  (cy.nowPlayingMedia['title'], target, pollTime))
         opts = {'boo': boo, 'uid': cy.nowPlayingUid}
-        pollTime = 20
         cy.doMakePoll(self, self.gotPollResults, opts, 'Replay poll', title,
                                                      choices, pollTime)
 
@@ -96,6 +99,7 @@ class Replay(object):
     def gotPollResults(self, cy, opts, pollState):
         # cancelled
         if pollState is False: 
+            self.poll = False
             return
         order = opts['boo']
         counts = pollState.get('counts', None)

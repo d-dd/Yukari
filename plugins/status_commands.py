@@ -18,10 +18,10 @@ class StatusPlugin(object):
     def _com_help(self, yuka, username, args, source):
         msg =('Commands: https://github.com/d-dd/Yukari/blob/master/commands.md'
                 ' Repo: https://github.com/d-dd/Yukari')
-        yuka.sendChats(msg)
+        yuka.reply(msg, source, username)
 
     @commandThrottle(2)
-    def _com_uptime(self, yuka, user, args, source):
+    def _com_uptime(self, yuka, username, args, source):
         uptime = time.time() - yuka.startTime
         uptime = str(timedelta(seconds=round(uptime)))
         if yuka.cy:
@@ -34,12 +34,12 @@ class StatusPlugin(object):
             ircUptime = str(timedelta(seconds=round(ircUptime)))
         else:
             ircUptime = 'n/a'
-        yuka.sendChats('[status] UPTIME Yukari: %s, Cytube: %s, IRC: %s' %
-                       (uptime, cyUptime, ircUptime))
+        yuka.reply('[status] UPTIME Yukari: %s, Cytube: %s, IRC: %s' %
+                       (uptime, cyUptime, ircUptime), source, username)
 
     @commandThrottle(2)
     def _com_version(self, yuka, username, args, source):
-        yuka.sendChats('[Version] %s' % self.githash)
+        yuka.reply('[Version] %s' % self.githash, source, username)
 
 def setup():
     return StatusPlugin()

@@ -1,7 +1,8 @@
 import random
-from tools import commandThrottle
+from tools import clog, commandThrottle
 from twisted.internet import reactor
 
+syst = 'BasicPlugin'
 class BasicPlugin(object):
     """ Basic and generic chat-bot commands """
 
@@ -18,23 +19,23 @@ class BasicPlugin(object):
                 'My reply is no', 'My sources say no','Outlook not so good',
                 'Very doubtful')
         msg = '[8ball: %s] %s' % (args, random.choice(choices))
-        yuka.sendChats(msg)
+        yuka.reply(msg, source, username)
 
     @commandThrottle(2)
     def _com_ask(self, yuka, username, args, source):
-         if not args:
-             return
-         if len(args) > 227:
-             args = args[:224] + '(...)'
-         msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
-         yuka.sendChats(msg)
+        if not args:
+            return
+        if len(args) > 227:
+            args = args[:224] + '(...)'
+        msg = '[Ask: %s] %s' % (args, random.choice(('Yes', 'No')))
+        yuka.reply(msg, source, username)
     
     @commandThrottle(2)
     def _com_bye(self, yuka, username, args, source):
-         farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
+        farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
                                   'See you later', 'See you soon', 'Take care'))
-         msg = '%s, %s.' % (farewell, username)
-         reactor.callLater(0.2, yuka.sendChats, msg)
+        msg = '%s, %s.' % (farewell, username)
+        reactor.callLater(0.2, yuka.reply, msg, source, username)
 
     @commandThrottle(2)
     def _com_coin(self, yuka, username, args, source):
@@ -47,7 +48,7 @@ class BasicPlugin(object):
         choices = self._getChoices(args)
         if choices:
             msg = '[Choose: %s] %s' % (args, random.choice(choices))
-            yuka.sendChats(msg)
+            yuka.reply(msg, source, username)
 
     @commandThrottle(2)
     def _com_dice(self, yuka, username, args, source):
@@ -60,11 +61,13 @@ class BasicPlugin(object):
 
     @commandThrottle(2)
     def _com_goodnight(self, yuka, username, args, source):
-        reactor.callLater(0.2, yuka.sendChats, 'Goodnight, %s.' % username)
+        msg = 'Goodnight, %s.' % username
+        reactor.callLater(0.2, yuka.reply, msg, source, username)
 
     @commandThrottle(2)
     def _com_greet(self, yuka, username, args, source):
-        reactor.callLater(0.2, yuka.sendChats, 'Hi, %s.' % username)
+        msg = 'Hi, %s.' % username
+        reactor.callLater(0.2, yuka.reply, msg, source, username)
 
     @commandThrottle(2)
     def _com_permute(self, yuka, username, args, source):
@@ -74,11 +77,12 @@ class BasicPlugin(object):
         if choices:
             random.shuffle(choices)
             msg = '[Permute: %s] %s' % (args, ', '.join(choices))
-            yuka.sendChats(msg)
+            yuka.reply(msg, source, username)
 
     @commandThrottle(10)
     def _com_poke(self, yuka, username, args, source):
-        yuka.sendChats('Please be nice, %s!' % username)
+        msg = 'Please be nice, %s!' % username
+        yuka.reply(msg, source, username)
 
     @commandThrottle(2)
     def _com_roll(self, yuka, username, args, source):
@@ -89,12 +93,13 @@ class BasicPlugin(object):
     def _com_wave(self, yuka, username, args, source):
         waves = u'\uff89\uff7c' * random.randint(1, 5)
         msg = 'waves at %s! %s' % (username, waves)
-        yuka.sendToCy('/me ' + msg)
-        yuka.actionToIrc(msg.encode('utf8'))
+        msg = msg.encode('utf8')
+        yuka.reply(msg, source, username, action=True)
 
     def _coin(self, yuka, username, args, source):
         reactor.callLater(0.2, yuka.sendChats,
                           '[coin flip]: %s' % random.choice(['Heads', 'Tails']))
+        yuka.reply(msg, source, username)
         
     def _dice(self, yuka, username, args, source):
         if not args:

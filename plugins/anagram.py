@@ -11,13 +11,13 @@ class Anagram(object):
             return
         text = re.sub(r"[^a-zA-Z]", "", args)
         if len(text) < 7:
-            yuka.sendChats('Anagram too short.')
+            yuka.reply('Anagram too short.', source, user)
             return
         elif len(text) >= 30:
-            yuka.sendChats('Anagram too long.')
+            yuka.reply('Anagram too long.', source, user)
             return
         d = self.anagram(text)
-        d.addCallback(self.sendAnagram, yuka, args)
+        d.addCallback(self.sendAnagram, yuka, args, source, user)
 
     def anagram(self, text):
         url = 'http://anagramgenius.com/server.php?source_text=%s' % text
@@ -38,9 +38,9 @@ class Anagram(object):
         if m:
             return m.groups()[0]
 
-    def sendAnagram(self, res, yuka, args):
+    def sendAnagram(self, res, yuka, args, source, user):
         if res:
-            yuka.sendChats('[Anagram: %s] %s' % (args, res))
+            yuka.reply('[Anagram: %s] %s' % (args, res), source, user)
 
 def setup():
     return Anagram()

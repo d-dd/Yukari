@@ -60,6 +60,10 @@ class Connections:
         # Users in IRC chat channel
         self.ircUserCount = 0
 
+        self.ircChan = str(config['irc']['channel'])
+        if not self.ircChan.startswith('#'):
+            self.ircChan = '#' + self.ircChan
+
     def _importPlugins(self):
         modules = importPlugins('plugins/')
         self.triggers = {'commands':{}}
@@ -133,8 +137,8 @@ class Connections:
         connectWS(self.wsFactory)
 
     def ircConnect(self):
-        if config['irc']['channel']:
-            self.ircFactory = IrcFactory(config['irc']['channel'])
+        if self.ircChan:
+            self.ircFactory = IrcFactory(self.ircChan)
             self.ircFactory.handle = self
             reactor.connectTCP(config['irc']['url'], int(config['irc']['port']),
                                self.ircFactory)
@@ -144,16 +148,6 @@ class Connections:
         clog.info('(rinstantiate) Starting server for Rin', sys)
         self.rinFactory = LineReceiverFactory()
         reactor.listenTCP(port, self.rinFactory)
-
-    def relayChat(self, username, msg, origin, processCommand=True, opts=None):
-    #scrap this func
-        if otps is None:
-            opts = {}
-        if origin == 'cy':
-            clog.debug(msg, sys)
-            msg = parser.stripTags(msg)
-        if origin != 'cy' and self.cy:
-            relay = '(%s) %s' % (username, msg)
 
     def recIrcMsg(self, user, channel, msg, modifier=None):
         user = user.split('!', 1)[0] # takes out the extra info in the name
@@ -171,11 +165,11 @@ class Connections:
         if not modifier:
             if self.irc:
                 prot = self.ircFactory.prot
-                self.processCommand(user, tools.returnUnicode(msg), 'irc',
+                self.processCommand('irc', user, tools.returnUnicode(msg), 
                                     prot=prot)
 
-    def recCyMsg(self, user, msg, needProcessing, action=False):
-        if self.inIrcChan and user != 'Yukarin':
+    def recCyMsg(self, source, user, msg, needProcessing, action=False):
+        if self.inIrcChan and user != 'Yukarin' and source != 'pm':
             clog.debug('recCyMsg: %s' % msg, sys)
             cleanMsg = msg
             if not action:
@@ -183,10 +177,10 @@ class Connections:
             elif action:
                 cleanMsg = '( * %s) %s' % (user, cleanMsg)
             self.sendToIrc(cleanMsg)
-        if needProcessing:
+        if needProcessing and not action:
             if self.cy:
                 prot = self.wsFactory.prot
-                self.processCommand(user, msg, 'cy', prot=prot)
+                self.processCommand(source, user, msg, prot=prot)
 
     def recCyChangeMedia(self, media):
         if self.inIrcNp and media:
@@ -199,7 +193,7 @@ class Connections:
             msg = tools.returnStr(msg)
             self.ircFactory.prot.sayNowPlaying(msg)
 
-    def processCommand(self, user, msg, origin, prot):
+    def processCommand(self, source, user, msg, prot):
         if msg.startswith('$'):
             msg = tools.returnUnicode(msg)
             #msg = msg.encode('utf-8')
@@ -212,26 +206,37 @@ class Connections:
             if command in self.triggers['commands']:
                 clog.info('triggered command: [%s] args: [%s]' %
                            (command, args), sys)
-                self.triggers['commands'][command](self, user, args, origin,
+                self.triggers['commands'][command](self, user, args, source,
                                                    prot=prot)
 
-    def actionToIrc(self, action):
-        if self.inIrcChan:
-            # without # prefix, it sends to user
-            channel = '#' + str(config['irc']['channel'])
-            self.ircFactory.prot.describe(channel, action)
+    def reply(self, msg, source, username, modflair=False, action=False):
+        # public chat: send to both
+        if source == 'chat' or source == 'irc':
+            self.sendChats(msg, modflair, action)
+        elif source == 'pm' and self.cy:
+            if action:
+                # no /me in Cytube PM
+                msg = '_* %s_' % msg
+            self.wsFactory.prot.doSendPm(msg, username)
 
-    def sendToIrc(self, msg):
-        if self.inIrcChan:
-            self.ircFactory.prot.sendChat(str(config['irc']['channel']), msg)
+    def sendToIrc(self, msg, action=False):
+        if not self.inIrcChan:
+            return
+        if not action:
+            self.ircFactory.prot.sendChat(self.ircChan, msg)
+        elif action:
+            self.ircFactory.prot.describe(self.ircChan, msg)
 
     def sendToCy(self, msg, modflair=False):
         if self.cy:
             self.wsFactory.prot.relayToCyChat(msg, modflair)
 
-    def sendChats(self, msg, modflair=False):
-        self.sendToIrc(msg)
-        self.sendToCy(msg, modflair)
+    def sendChats(self, msg, modflair=False, action=False):
+        self.sendToIrc(msg, action)
+        if action:
+            self.sendToCy('/me %s' % msg, modflair)
+        else:
+            self.sendToCy(msg, modflair)
 
     def cyAnnouceLeftRoom(self):
         msg = ('[status] Left Cytube channel.')

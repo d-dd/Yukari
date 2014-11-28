@@ -187,7 +187,8 @@ def commandThrottle(cost):
             # do not expect it
             del kwargs['prot']
 
-            if origin != 'cy':
+            # for cytube only
+            if origin != 'chat' and origin != 'pm':
                 # pass-through
                 # we don't have any throttle for IRC users, because the
                 # network throttles them already
