@@ -4,6 +4,8 @@ A list of commands can be found at https://github.com/d-dd/Yukari/blob/master/co
 ## About
 Yukari is a CyTube bot written for a Vocaloid channel. Thus some of the features will be unnecessary for most channels.
 For a general purpose bot, consider using NuclearAce's https://github.com/nuclearace/CytubeBot.
+However, you can always delete (or prefix a plugin filename with `_`) a plugin file to prevent Yukari from importing the plugin.
+
 
 ##**Dependencies:**  
 Python 2.x  
@@ -11,8 +13,8 @@ Twisted
 Twisted Autobahn
 
 ##**Requirements:**  
-A CyTube server to connect to 
-An account with admin rank in the channel Yukari will run.
+A CyTube server to connect to   
+An account with admin rank or higher (3+) in the channel Yukari will run.
 
 ##**Installation:**  
 Create the SQLite database:
@@ -46,6 +48,9 @@ IRC account
 
 ###Features
 Yukari is similar to Desuwa's CyNaoko in terms of capabilities, and many of the features are a direct port of CyNaoko.  
+
+- Modular setup  
+Yukari's main connection modules are set up to be mostly interfaces. They contain the most important functionality, such as connect, disconnect, reconnect, database logging, and chat relay. Features such as commands and media checking are done by plugins, which work independent of other plugins, and can be easily added or removed to extend Yukari's capabilities. You can extend your own custom commands and features by adding your own plugin file, and it will be imported at runtime without having to change any of Yukari's code.
 
 - IRC Bridge  
 Relays chat between CyTube and IRC. Depending on the IRC netowrk, chat may be heavily throttled. Changing the bucketSize in the settings.cfg may be required if Yukari stop relaying too often, or ever gets kicked or throttled by the IRC network.
