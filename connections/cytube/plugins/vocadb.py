@@ -2,7 +2,7 @@ from twisted.internet import defer
 import database, vdbapi
 import json
 from conf import config
-from tools import clog, getTime
+from tools import clog, commandThrottle, getTime
 
 vdb = config['UserAgent']['vocadb']
 syst = 'VocaDB'
@@ -20,6 +20,7 @@ class VocaDB(object):
         return self._loadVocaDb(None, mType, mId)
 
     # this is the $vocadb chat command
+    @commandThrottle
     def _com_vocadb(self, cy, username, args, source):
         if not vdb:
             return
