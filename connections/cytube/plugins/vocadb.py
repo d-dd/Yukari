@@ -20,7 +20,7 @@ class VocaDB(object):
         return self._loadVocaDb(None, mType, mId)
 
     # this is the $vocadb chat command
-    @commandThrottle
+    @commandThrottle(0)
     def _com_vocadb(self, cy, username, args, source):
         if not vdb:
             return
