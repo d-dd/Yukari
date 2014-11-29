@@ -32,10 +32,7 @@ class BasicPlugin(object):
     
     @commandThrottle(2)
     def _com_bye(self, yuka, username, args, source):
-        farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
-                                  'See you later', 'See you soon', 'Take care'))
-        msg = '%s, %s.' % (farewell, username)
-        reactor.callLater(0.2, yuka.reply, msg, source, username)
+        self._bye(yuka, username, args, source)
 
     @commandThrottle(2)
     def _com_coin(self, yuka, username, args, source):
@@ -58,6 +55,10 @@ class BasicPlugin(object):
     def _com_flip(self, yuka, username, args, source):
         """ Alias of coin """
         self._coin(yuka, username, args, source)
+
+    @commandThrottle(2)
+    def _com_goodbye(self, yuka, username, args, source):
+        self._bye(yuka, username, args, source)
 
     @commandThrottle(2)
     def _com_goodnight(self, yuka, username, args, source):
@@ -95,6 +96,12 @@ class BasicPlugin(object):
         msg = 'waves at %s! %s' % (username, waves)
         msg = msg.encode('utf8')
         yuka.reply(msg, source, username, action=True)
+
+    def _bye(self, yuka, username, args, source):
+        farewell = random.choice(('Goodbye', 'See you', 'Bye', 'Bye bye',
+                                  'See you later', 'See you soon', 'Take care'))
+        msg = '%s, %s.' % (farewell, username)
+        reactor.callLater(0.2, yuka.reply, msg, source, username)
 
     def _coin(self, yuka, username, args, source):
         reactor.callLater(0.2, yuka.sendChats,

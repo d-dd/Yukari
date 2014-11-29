@@ -11,7 +11,7 @@ class Replay(object):
         self.skipJs = False
         self.poll = False
 
-    def _cm_replay(self, cy, mType, mId, mTitle):
+    def _cm_replay(self, cy, fdict):
         if self.poll:
             cy.doClosePoll()
 

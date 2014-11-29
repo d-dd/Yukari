@@ -5,7 +5,10 @@ class FirstQueued(object):
     def __init__(self):
         self.jsName = 'firstQueued'
 
-    def _cmjs_firstAdded(self, cy, mType, mId):
+    def _cmjs_firstAdded(self, cy, fdict):
+        media = fdict['args'][0]
+        mType = media['type']
+        mId = media['id']
         d = self._getFirstQueuedByTime(mType, mId)
         d.addCallback(self._cbFirstQueued, cy)
         return d

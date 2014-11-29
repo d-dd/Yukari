@@ -717,6 +717,7 @@ class CyProtocol(WebSocketClientProtocol):
         # end up adding multiple times each join/restart during shuffle.
         # Cytube also re-sends the playlist when the permission is changed
         self.playlist = []
+        self.nowPlayingUid = -1
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
         dbpl, qpl = [], []
@@ -812,6 +813,7 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(getIndexFromUid) media UID %s not found' % uid, syst)
 
     def getUidFromTypeId(self, mType, mId):
+        # TODO deal with duplicate media
         for media in self.playlist:
             if media['media']['id'] == mId:
                 if media['media']['type'] == mType:
@@ -936,6 +938,11 @@ class CyProtocol(WebSocketClientProtocol):
 
         # if there is a replay-poll active, and its media gets deleted,
         # it will automatically changeMedia, so we don't need to do anything
+        
+        # edge case of last media being deleted
+        if not self.playlist:
+            self.nowPlayingUid = -1
+            self.nowPlayingMedia = None
 
     def queryOrInsertMedia(self, media, userId):
         d = database.dbQuery(('mediaId',) , 'Media', type=media['type'],
@@ -996,7 +1003,6 @@ class CyProtocol(WebSocketClientProtocol):
         mTitle = media['title']
         self.nowPlayingMedia = fdict['args'][0]
         nps = (mType, mId, mTitle) # these are unicode
-        seconds = media['seconds']
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
@@ -1021,28 +1027,29 @@ class CyProtocol(WebSocketClientProtocol):
            # clog.error('qDresult: %d' % int(qD.result), syst)
         except(AttributeError, ValueError):
             clog.error('qId is not ready yet. Adding as callback', syst)
-            qD.addCallback(self.changeMedia, mType, mId, mTitle, seconds)
+            qD.addCallback(self.changeMedia, fdict) #mType, mId, mTitle, seconds)
             return
-        self.changeMedia(None, mType, mId, mTitle, seconds)
+        self.changeMedia(None, fdict) #mType, mId, mTitle, seconds)
 
-    def changeMedia(self, qid, mType, mId, mTitle, seconds):
-        l = []
+    def changeMedia(self, qid, fdict):#qid, mType, mId, mTitle, seconds):
+        l = list()
         for method in self.triggers['changeMedia'].itervalues():
-            l.append(method(self, mType, mId, mTitle))
+            l.append(method(self, fdict)) # mType, mId, mTitle))
+        clog.error('list is %s' % l, syst)
         cmDeferredList = defer.DeferredList(l)
-        cmDeferredList.addCallback(self.changeMediaJs, mType, mId, mTitle) 
-        cmDeferredList.addCallback(self.resetRemainingTime, seconds)
+        cmDeferredList.addCallback(self.changeMediaJs, fdict)#mType, mId, mTitle) 
+        cmDeferredList.addCallback(self.resetRemainingTime, fdict) #seconds)
         if qid: # came as a deferred, give back the qId
             return qid
 
-    def resetRemainingTime(self, ignored, seconds):
+    def resetRemainingTime(self, ignored, fdict):
         # set remaining time to the duration of the media
         # otherwise this will be outdated until the first mediaUpdate tick
         # do this here instead of changeMedia to give $replay a chance to 
         # check time before the it is reset.
-        self.mediaRemainingTime = seconds
+        self.mediaRemainingTime = fdict['args'][0]['seconds']
 
-    def changeMediaJs(self, ignored, mType, mId, mTitle):
+    def changeMediaJs(self, ignored, fdict):# mType, mId, mTitle):
         if self.cancelChangeMediaJs:
             clog.error('changeMediaJs was cancelled.', syst)
             return
@@ -1050,11 +1057,14 @@ class CyProtocol(WebSocketClientProtocol):
         # run changeMedia JS methods
         l = []
         for key, method in self.triggers['cmJs'].iteritems():
-            l.append(method(self, mType, mId))
+            l.append(method(self, fdict))#mType, mId))
         jsDeferredList = defer.DeferredList(l)
         jsDeferredList.addCallback(self.emitBulkJs)
 
-
+        media = fdict['args'][0]
+        mType = media['type']
+        mId = media['id']
+        mTitle = media['title']
         # send now playing info to seconday IRC channel
         self.factory.handle.recCyChangeMedia((mType, mId, mTitle))
 
@@ -1160,9 +1170,9 @@ class CyProtocol(WebSocketClientProtocol):
             self.loops.append(sustainedLoop)
             sustainedLoop.start(2.05, now=True)
         
-    def doDeleteMedia(self, mType, mId):
+#    def doDeleteMedia(self, mType, mId):
+    def doDeleteMedia(self, uid):
         """ Delete media """
-        uid = self.getUidFromTypeId(mType, mId)
         clog.info('(doDeleteMedia) Deleting media uid %s' % uid)
         self.sendf({'name': 'delete', 'args': uid})
 
