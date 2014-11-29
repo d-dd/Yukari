@@ -1,4 +1,6 @@
+from collections import deque
 from twisted.internet import defer
+from twisted.internet.task import LoopingCall
 import database, vdbapi
 import json
 from conf import config
@@ -11,6 +13,15 @@ class VocaDB(object):
 
     def __init__(self):
         self.jsName = 'vocadb'
+        self.mediaToCheck = deque()
+        self.vocaloop = LoopingCall(self.getVocaInfo)
+
+    def getVocaInfo(self):
+        if not self.mediaToCheck:
+            self.vocaloop.stop()
+        else:
+            (mType, mId) = self.mediaToCheck.popleft()
+            vdbapi.requestSongByPv(None, mType, mId, 1, getTime(), 0)
 
     # this is the changeMedia Js trigger
     # it will emit the song information on changeMedia
@@ -21,6 +32,15 @@ class VocaDB(object):
         mType = media['type']
         mId = media['id']
         return self._loadVocaDb(None, mType, mId)
+
+    def _q_vocadb(self, cy, fdict):
+        uid = fdict['args'][0]['item']['uid']
+        media = fdict['args'][0]['item']['media']
+        mType = media['type']
+        mId = media['id']
+        self.mediaToCheck.append((mType, mId))
+        if not self.vocaloop.running:
+            self.vocaloop.start(1.0)
 
     # this is the $vocadb chat command
     @commandThrottle(0)

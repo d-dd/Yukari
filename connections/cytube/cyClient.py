@@ -845,24 +845,25 @@ class CyProtocol(WebSocketClientProtocol):
             clog.error('(_cyCall_queue) user id not cached.', syst)
             return
         flag = 1 if isTemp else 0
-        dq = defer.Deferred()
-        self.splitResults(d, dq) # fired in parallel when d has result
-        d.addCallback(lambda res: res[0])
-        dq.addCallback(self.writeQueue, userId, timeNow, flag, uid)
+        d.addCallback(self.writeQueue, userId, timeNow, flag, uid)
+       # dq = defer.Deferred()
+       # self.splitResults(d, dq) # fired in parallel when d has result
+       # d.addCallback(lambda res: res[0])
+       # dq.addCallback(self.writeQueue, userId, timeNow, flag, uid)
         i = self.getIndexFromUid(uid)
-        self.playlist[i]['qDeferred'] = dq
+        self.playlist[i]['qDeferred'] = d
 
        # dCheck = self.checkMedia(mType, mId)
        # dCheck.addCallback(self.flagOrDelete, media, mType, mId)
-        dCheck = defer.succeed(0)
-        self.verifyMedia(mType, mId)
+       # dCheck = defer.succeed(0)
+       # self.verifyMedia(mType, mId)
 
-        if mType == 'yt' and vdb:
-            timeNow = getTime()
+       # if mType == 'yt' and vdb:
+       #     timeNow = getTime()
             # since this callback is added after checkMedia which has a delay,
             # this also gets delayed
-            dCheck.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
-            dCheck.addErrback(self.errcatch)
+       #     dCheck.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
+       #     dCheck.addErrback(self.errcatch)
 
     def splitResults(self, defer1, defer2):
         """ Results of defer1 are sent to defer2 """

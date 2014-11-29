@@ -9,7 +9,10 @@ class Likes(object):
         self.jsName = 'likeScore'
         self.currentLikes = {}
 
-    def _cmjs_loadLikes(self, cy, mType, mId):
+    def _cmjs_loadLikes(self, cy, fdict):
+        media = fdict['args'][0]
+        mType = media['type']
+        mId = media['id']
         d = self.loadLikes(cy, mType, mId)
         return d
 
