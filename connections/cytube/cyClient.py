@@ -1021,7 +1021,7 @@ class CyProtocol(WebSocketClientProtocol):
            # clog.error('qDresult: %d' % int(qD.result), syst)
         except(AttributeError, ValueError):
             clog.error('qId is not ready yet. Adding as callback', syst)
-            qD.addCallback(self.changeMedia, mType, mId, mTitle)
+            qD.addCallback(self.changeMedia, mType, mId, mTitle, seconds)
             return
         self.changeMedia(None, mType, mId, mTitle, seconds)
 
