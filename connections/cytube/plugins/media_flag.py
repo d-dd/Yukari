@@ -11,7 +11,7 @@ class MediaFlag(object):
         self.recent = {'type': '', 'id': '', 'flag': 0}
         self.jsName = 'yukariOmit'
 
-    def _cmjs_checkOmit(self, cy, fdict):
+    def _scjs_checkOmit(self, cy, fdict):
         """ Check for omit flag """
         media = fdict['args'][0]
         mType = media['type']
@@ -20,7 +20,7 @@ class MediaFlag(object):
         d.addCallback(self._makeJs)
         return d
    
-    def _cm_checkBlacklist(self, cy, fdict):
+    def _sc_checkBlacklist(self, cy, fdict):
         """ Check for blacklist flag on changeMedia """
         # We use cm here because blacklist media should be removed immediatley.
         media = fdict['args'][0]
@@ -91,7 +91,7 @@ class MediaFlag(object):
     def _cbBlacklist(self, flag, cy, caller, mType, mId, mTitle):
         if flag & 4:
             if caller == 'cm':
-                cy.cancelChangeMediaJs = True
+                cy.cancelSetCurrentJs = True
             # include type/id in message so admin can unblacklist easier
             cy.sendCyWhisper('Removing blacklisted media %s (%s:%s)'
                                       % (mTitle, mType, mId))

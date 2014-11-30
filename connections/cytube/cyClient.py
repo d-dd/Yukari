@@ -44,11 +44,11 @@ class CyProtocol(WebSocketClientProtocol):
         self.loops = []
         self.laters = []
 
-        # Wether to run cmJs methods
+        # Wether to run scJs methods
         # Set this to True for media that is not going to be played
         # and there is no need to lookup information on it.
         # e.g. blacklisted, unplayable, replay, etc.
-        self.cancelChangeMediaJs = False
+        self.cancelSetCurrentJs = False
         self.underSpam = False
         self.underHeavySpam = False
         # how long to wait for heartbeat reply
@@ -87,8 +87,8 @@ class CyProtocol(WebSocketClientProtocol):
         paths = ['connections/cytube/plugins/']
         modules = importPlugins(paths)
         self.triggers = {
-                         'changeMedia': {},
-                         'cmJs': {},
+                         'setCurrent': {},
+                         'scJs': {},
                          'commands':{},
                          'playlist': {},
                          'ppm': {},
@@ -104,14 +104,16 @@ class CyProtocol(WebSocketClientProtocol):
                 if method.startswith('_com_'):
                     trigger = '$%s' % method[5:]
                     self.triggers['commands'][trigger] = getattr(instance, method)
-                elif method.startswith('_cm_'):
-                    self.triggers['changeMedia'][method] = getattr(instance, method)
+                elif method.startswith('_sc_'):
+                    self.triggers['setCurrent'][method] = getattr(instance, method)
                 elif method.startswith('_q_'):
                     self.triggers['queue'][method] = getattr(instance, method)
                 elif method.startswith('_re_'):
                     self.triggers['replay'][method] = getattr(instance, method)
-                elif method.startswith('_cmjs_'):
-                    self.triggers['cmJs'][method] = getattr(instance, method)
+                elif method.startswith('_scjs_'):
+                    self.triggers['scJs'][method] = getattr(instance, method)
+                elif method.startswith('_pl_'):
+                    self.triggers['playlist'][method] = getattr(instance, method)
                 elif method.startswith('_ppm_'):
                     trigger = '%%%%%s' % method[5:]
                     self.triggers['ppm'][trigger] = getattr(instance, method)
@@ -717,7 +719,6 @@ class CyProtocol(WebSocketClientProtocol):
         # end up adding multiple times each join/restart during shuffle.
         # Cytube also re-sends the playlist when the permission is changed
         self.playlist = []
-        self.nowPlayingUid = -1
         pl = fdict['args'][0]
         clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
         dbpl, qpl = [], []
@@ -732,26 +733,11 @@ class CyProtocol(WebSocketClientProtocol):
                 qpl.append((entry['media']['type'], entry['media']['id'], entry['uid']))
         d = database.bulkLogMedia(dbpl)
         self.findQueueId(qpl)
-        self.findSonglessMedia(dbpl)
 
-        # if there is a replay-poll active, end it
-        if self.pollState.get('type', None) == 'replay':
-            self.doClosePoll()
+        # for playlist plugins
+        for key, method in self.triggers['playlist'].iteritems():
+            method(self, pl)
 
-    def findSonglessMedia(self, playlist):
-        if vdb:
-            d = database.bulkQueryMediaSong(None, playlist)
-            d.addCallback(self.requestEmptySongs)
-
-    def requestEmptySongs(self, res):
-        timeNow = getTime()
-        i = 0
-        for media in res:
-            mType, mId = media
-            if mType == 'yt':
-                self.laters.append(reactor.callLater(i, vdbapi.requestSongByPv,
-                                    None ,mType, mId, 1, timeNow, 0))
-                i += 0.5
 
     def findQueueId(self, qpl):
         for mType, mId, uid in qpl:
@@ -993,10 +979,58 @@ class CyProtocol(WebSocketClientProtocol):
         self.doSendJs((';'.join(js)+';'))
 
     def _cyCall_setCurrent(self, fdict):
-        clog.warning(fdict)
+        """ Let's us know which media is being played, by its uid.
+        We use this instead of changeMedia because it is the only way to know
+        which media is playing if there are duplicates. setCurrent is sometimes
+        called when media is not changed, such as when the permission is 
+        updated """
+        uid = fdict['args'][0]
+        self.nowPlayingUid = uid
+        i = self.getIndexFromUid(uid)
+        if i is None:
+            return
+        media = self.playlist[i]['media']
+        mType = media['type']
+        mId = media['id']
+        mTitle = media['title']
+
         self.nowPlayingUid = fdict['args'][0]
+        ## fix later, recreate fdict for now
+        fdict = {'args':[media]}
+
+        # Reset cancelSetCurrentJs
+        # Plugins that use scjs may change it to True
+        self.cancelSetCurrentJs= False
+
+        # Check self.playlist for the media's qDeferred.
+        # if it shows a value (qId), then we can proceed
+        # If it does not have a value yet, that means the
+        # media and queue db writes are not ready- We must add a callback
+        # for our changeMedia triggers
+        qD = self.playlist[i]['qDeferred']
+        try:
+            qId = qD.result
+        except(AttributeError, ValueError):
+            clog.warning('qId is not ready yet. Adding as callback', syst)
+            qD.addCallback(self.cbSetCurrent, fdict) #mType, mId, mTitle, seconds)
+            return
+        self.cbSetCurrent(None, fdict)
+
+    def cbSetCurrent(self, qid, fdict):
+        l = list()
+        for method in self.triggers['setCurrent'].itervalues():
+            l.append(method(self, fdict)) # mType, mId, mTitle))
+       # clog.error('list is %s' % l, syst)
+        scDeferredList = defer.DeferredList(l)
+        scDeferredList.addCallback(self.setCurrentJs, fdict)#mType, mId, mTitle) 
+        if qid: # came as a deferred, give back the qId
+            return qid
 
     def _cyCall_changeMedia(self, fdict):
+        """ Called when the media is changed. This is different from setCurrent
+        in that it only provides the media information (and no uid).
+        Thus, it should only be used for tracking media related changes, such
+        as time left. """
         # set self.nowPlayingMedia
         media = fdict['args'][0]
         mType = media['type']
@@ -1007,57 +1041,19 @@ class CyProtocol(WebSocketClientProtocol):
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
+        clog.debug('(cy_changeMedia): %s' %s, syst)
 
-        clog.info('(_cyCall_changeMedia) %s' % s, syst)
-        
-        # Reset cancelChangeMediaJs
-        # Plugins that use cmjs may change it to True
-        self.cancelChangeMediaJs = False
-
-        # Check self.playlist for the media's qDeferred.
-        # if it shows a value (qId), then we can proceed
-        # If it does not have a value yet, that means the
-        # media and queue db writes are not ready- We must add a callback
-        # for our changeMedia triggers
-        index = self.getIndexFromUid(self.nowPlayingUid)
-        if self.playlist[index]['media']['id'] != mId:
-            clog.error('changeMedia setCurrent mismatch!', syst)
-        qD = self.playlist[index]['qDeferred']
-        try:
-            qId = qD.result
-           # clog.error('qDresult: %d' % int(qD.result), syst)
-        except(AttributeError, ValueError):
-            clog.error('qId is not ready yet. Adding as callback', syst)
-            qD.addCallback(self.changeMedia, fdict) #mType, mId, mTitle, seconds)
-            return
-        self.changeMedia(None, fdict) #mType, mId, mTitle, seconds)
-
-    def changeMedia(self, qid, fdict):#qid, mType, mId, mTitle, seconds):
-        l = list()
-        for method in self.triggers['changeMedia'].itervalues():
-            l.append(method(self, fdict)) # mType, mId, mTitle))
-        clog.error('list is %s' % l, syst)
-        cmDeferredList = defer.DeferredList(l)
-        cmDeferredList.addCallback(self.changeMediaJs, fdict)#mType, mId, mTitle) 
-        cmDeferredList.addCallback(self.resetRemainingTime, fdict) #seconds)
-        if qid: # came as a deferred, give back the qId
-            return qid
-
-    def resetRemainingTime(self, ignored, fdict):
-        # set remaining time to the duration of the media
-        # otherwise this will be outdated until the first mediaUpdate tick
-        # do this here instead of changeMedia to give $replay a chance to 
-        # check time before the it is reset.
+        # reset remaining time
         self.mediaRemainingTime = fdict['args'][0]['seconds']
 
-    def changeMediaJs(self, ignored, fdict):# mType, mId, mTitle):
-        if self.cancelChangeMediaJs:
-            clog.error('changeMediaJs was cancelled.', syst)
+    def setCurrentJs(self, ignored, fdict):# mType, mId, mTitle):
+        if self.cancelSetCurrentJs:
+            clog.error('setCurrentJs was cancelled.', syst)
             return
 
-        # run changeMedia JS methods
+        # run setCurrentJs methods
         l = []
-        for key, method in self.triggers['cmJs'].iteritems():
+        for key, method in self.triggers['scJs'].iteritems():
             l.append(method(self, fdict))#mType, mId))
         jsDeferredList = defer.DeferredList(l)
         jsDeferredList.addCallback(self.emitBulkJs)

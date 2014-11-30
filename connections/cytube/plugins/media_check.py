@@ -1,6 +1,8 @@
+from collections import deque
 import json
 import re
 from twisted.internet import reactor, defer
+from twisted.internet.task import LoopingCall
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 import database
@@ -13,16 +15,44 @@ class MediaCheck(object):
         flagged (Media) and deleted from the Cytube playlist.
         Videos are checked on queue and on changeMedia."""
 
+    def __init__(self):
+        self.mediaToCheck = deque()
+        self.ytLoop = LoopingCall(self.checkYoutube)
+
+    def checkYoutube(self):
+        if not self.mediaToCheck:
+            self.ytLoop.stop()
+        else:
+            (cy, mType, mId, mTitle, uid) = self.mediaToCheck.popleft()
+            d = self.checkVideoStatus(mId)
+            d.addCallback(self.flagOrDelete, cy, mType, mId, mTitle, uid)
+
+    def _pl_checkpl(self, cy, playlist):
+        return
+    # No need to check on playlist. We already check on queue and setCurrent
+        for mediad in playlist:
+            mType = mediad['media']['type']
+            if mType == 'yt':
+                mId = mediad['media']['id']
+                mTitle = mediad['media']['titile']
+                uid = mediad['uid']
+                self.mediaToCheck.append((cy, mType, mId, mTitle, uid))
+            if not self.ytLoop.running:
+                self.ytLoop.start(1.0)
+
     def _q_checkMedia(self, cy, fdict):
         uid = fdict['args'][0]['item']['uid']
         media = fdict['args'][0]['item']['media']
         mType = media['type']
+        if mType != 'yt':
+            return
         mId = media['id']
         mTitle = media['title']
-        d = self.checkVideoStatus(mId)
-        d.addCallback(self.flagOrDelete, cy, mType, mId, mTitle, uid)
+        self.mediaToCheck.append((cy, mType, mId, mTitle, uid))
+        if not self.ytLoop.running:
+            self.ytLoop.start(1.0)
 
-    def _cm_checkMedia(self, cy, fdict):
+    def _sc_checkMedia(self, cy, fdict):
         media = fdict['args'][0]
         uid = cy.nowPlayingUid
         title = media['title']

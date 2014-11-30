@@ -5,7 +5,7 @@ class FirstQueued(object):
     def __init__(self):
         self.jsName = 'firstQueued'
 
-    def _cmjs_firstAdded(self, cy, fdict):
+    def _scjs_firstAdded(self, cy, fdict):
         media = fdict['args'][0]
         mType = media['type']
         mId = media['id']

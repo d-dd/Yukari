@@ -52,8 +52,11 @@ class Points(object):
             reply = 'Hi %s!' % username
         elif points < 10000:
             reply = 'Hi %s! <3' % username
+        elif points < 50000:
+            reply = 'Hi %s!! <3' % username
+            modflair = 3
         else:
-            reply = 'Hi %s! <3' % username
+            reply = '>v< Hi %s!! <3' % username
             modflair = 3
         cy.doSendChat(reply, source, username, modflair)
 

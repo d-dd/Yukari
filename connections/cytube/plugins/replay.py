@@ -16,14 +16,14 @@ class Replay(object):
             cy.doClosePoll()
 
         if self.skipJs:
-            cy.cancelChangeMediaJs = True
+            cy.cancelSetCurrentJs = True
             self.skipJs = False
             return defer.succeed(0)
         if self.replay != -1:
             if cy.mediaRemainingTime > 6.0:
                 cy.sendCyWhisper('Cancelling replay - user activity detected.')
             else:
-                cy.cancelChangeMediaJs = True 
+                cy.cancelSetCurrentJs = True 
                 index = cy.getIndexFromUid(self.replay)
                 replayTitle = cy.playlist[index]['media']['title']
                 cy.sendCyWhisper('Replaying %s!' % replayTitle)

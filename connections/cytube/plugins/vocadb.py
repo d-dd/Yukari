@@ -20,14 +20,46 @@ class VocaDB(object):
         if not self.mediaToCheck:
             self.vocaloop.stop()
         else:
-            (mType, mId) = self.mediaToCheck.popleft()
-            vdbapi.requestSongByPv(None, mType, mId, 1, getTime(), 0)
+            (cy, mType, mId) = self.mediaToCheck.popleft()
+            d = vdbapi.requestSongByPv(None, mType, mId, 1, getTime(), 0)
+            d.addCallback(self.gotVocaInfo, cy, mType, mId)
+
+    def gotVocaInfo(self, result, cy, mType, mId):
+        """ Called when requestSongByPv returns
+        This is in case a setCurrent has already happened, while
+        a song data is being requested. This resends the js with
+        vocadb added """
+        i = cy.getIndexFromUid(cy.nowPlayingUid)
+        cType = cy.playlist[i]['media']['type']
+        cId = cy.playlist[i]['media']['id']
+        clog.warning('gotVocaInfo: c:%s, %s m:%s,%s' % (cType, cId, mType, mId), syst)
+        if (cType, cId) == (mType, mId):
+            d = self._loadVocaDb(None, mType, mId)
+            d.addCallback(self.emitJs, cy)
+
+
+    def _pl_checkSong(self, cy, playlist):
+        l = []
+        for mediad in playlist:
+            mType = mediad['media']['type']
+            mId = mediad['media']['id']
+            l.append((None, mType, mId))
+        d = database.bulkQueryMediaSong(None, l)
+        d.addCallback(self.requestEmptySongs, cy)
+
+    def requestEmptySongs(self, results, cy):
+        for media in results:
+            mType, mId = media
+            if mType == 'yt':
+                self.mediaToCheck.append((cy, mType, mId))
+                if not self.vocaloop.running:
+                    self.vocaloop.start(1.0)
 
     # this is the changeMedia Js trigger
     # it will emit the song information on changeMedia
     # _js_ must return a deferred; it will be put in a deferredList with
     # other deferreds. Js will update once by deferredList callback.
-    def _cmjs_loadVocaDb(self, cy, fdict):#mType, mId):
+    def _scjs_loadVocaDb(self, cy, fdict):#mType, mId):
         media = fdict['args'][0]
         mType = media['type']
         mId = media['id']
@@ -38,7 +70,7 @@ class VocaDB(object):
         media = fdict['args'][0]['item']['media']
         mType = media['type']
         mId = media['id']
-        self.mediaToCheck.append((mType, mId))
+        self.mediaToCheck.append((cy, mType, mId))
         if not self.vocaloop.running:
             self.vocaloop.start(1.0)
 
