@@ -93,7 +93,7 @@ class BasicPlugin(object):
 
     @commandThrottle(7)
     def _com_wave(self, yuka, username, args, source):
-        n = min(math.log(0.85)/math.log(random.random()), 50)
+        n = int(min(math.log(0.85)/math.log(random.random()), 50))
         waves = u'\uff89\uff7c' * n
         msg = 'waves at %s! %s' % (username, waves)
         msg = msg.encode('utf8')
