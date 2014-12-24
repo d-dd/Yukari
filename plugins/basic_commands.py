@@ -1,3 +1,4 @@
+import math
 import random
 from tools import clog, commandThrottle
 from twisted.internet import reactor
@@ -92,7 +93,8 @@ class BasicPlugin(object):
 
     @commandThrottle(7)
     def _com_wave(self, yuka, username, args, source):
-        waves = u'\uff89\uff7c' * random.randint(1, 5)
+        n = min(math.log(0.85)/math.log(random.random()), 50)
+        waves = u'\uff89\uff7c' * n
         msg = 'waves at %s! %s' % (username, waves)
         msg = msg.encode('utf8')
         yuka.reply(msg, source, username, action=True)
