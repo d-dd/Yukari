@@ -141,9 +141,9 @@ class CyProtocol(WebSocketClientProtocol):
         self.factory.handle.cy = True
         self.heartbeat = task.LoopingCall(self.sendHeartbeat)
         self.loops.append(self.heartbeat)
-        self.lifeline = reactor.callLater(self.hearttime, self.abandon)
-        self.laters.append(self.lifeline)
-        self.heartbeat.start(20.0)
+        self.lifeline = None
+        self.heartbeat.start(20.0, now=True)
+        self.finalHeartbeat = None
         self.initialize()
 
     def abandon(self):
@@ -151,27 +151,55 @@ class CyProtocol(WebSocketClientProtocol):
         Leave the Cytube server because we did not receive a heartbeat reponse
         in time.
         """
-        # If we're under spam, it's most likley that spam is builing up a long
-        # queue and the heartbeat has yet to be processed
-        if self.underSpam or self.underHeavySpam:
-            self.lifeline = reactor.callLater(self.hearttime, self.abandon)
-            self.laters.append(self.lifeline)
-            return
-        clog.error('No heartbeat response... Closing Cytube connection.', syst)
+        clog.error('No heartbeat response... Sending last heartbeat.', syst) 
+        self.sendMessage('2')
+        self.finalHeartbeat = reactor.callLater(5, self.doSendClose)
+
+    def doSendClose(self):
+        clog.error('No final heartbeat response. Disconnecting.', syst)
         self.sendClose()
 
     def sendHeartbeat(self):
         self.sendMessage('2')
-        # Wait for server's heartbeat response after sendHeartbeat
-        # Put the amount of time Yukari should wait for the response
+        #clog.debug('Sent Heartbeat!', syst)
         # Remember that heavy load on the machine often causes
         # schedules to fall behind greatly
-        try:
-            self.lifeline.reset(self.hearttime - 10)
-        # this catches the leftover heartbeat from a disconnected instance
-        # (when Yukari reconnects)
-        except(AlreadyCalled, AlreadyCancelled):
-            pass
+
+        #first heartbeat
+        if self.lifeline is None:
+            self.lifeline = reactor.callLater(self.hearttime, self.abandon)
+            return
+
+        # was not cancelled (did not receive prior heartbeat response)
+        if self.lifeline.active():
+            self.lifeline.cancel()
+            self.lifeline = None
+        # If we're under spam, it's most likley that spam is builing up a long
+        # queue and the heartbeat has yet to be processed
+            if self.underSpam or self.underHeavySpam:
+                clog.warning('(sendHeartbeat) Under spam - skipping abandon',
+                                                                        syst)
+                return
+            self.abandon()
+
+        else:
+            self.lifeline = None
+            self.lifeline = reactor.callLater(self.hearttime, self.abandon)
+
+    def receiveHeartbeat(self):
+        #clog.debug('Received Heartbeat!', syst)
+        if self.lifeline:
+            try:
+                self.lifeline.cancel()
+                #self.laters.remove(self.lifeline)
+            except(AlreadyCalled, AlreadyCancelled):
+                clog.warning('(lifeline reset) alreadycalled/cancelled', syst)
+        if self.finalHeartbeat:
+            finalHeartbeat, self.finalHeartbeat = self.finalHeartbeat, None
+            try:
+                finalHeartbeat.cancel()
+            except(AlreadyCalled, AlreadyCanelled):
+                clog.warning('Could not cancel finalHeartbeat.', syst)
 
     def onMessage(self, msg, binary):
         msg = msg.decode('utf8')
@@ -179,11 +207,9 @@ class CyProtocol(WebSocketClientProtocol):
             clog.warning('Binary received: {0} bytes'.format(len(msg)))
             return
         if msg == '3':
-            try:
-                self.lifeline.reset(self.hearttime + 10)
-            except(AlreadyCalled, AlreadyCancelled):
-                pass
-        if msg.startswith('42'):
+            self.receiveHeartbeat()
+            return
+        elif msg.startswith('42'):
             try:
                 msg = json.loads(msg[2:])
             except(ValueError):

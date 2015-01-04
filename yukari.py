@@ -78,7 +78,7 @@ class Connections:
                     clog.info('Imported %s!' % trigger, sys)
 
     def restartConnection(self):
-        clog.error('restarting connection in %s' % self.cyRetryWait)
+        clog.error('restarting connection in %s' % self.cyRetryWait, sys)
         msg = ('[status] Could not connect to server. Attempting to reconnect '
               'in %d seconds.' % self.cyRetryWait)
         #self.sendToIrc(msg)
