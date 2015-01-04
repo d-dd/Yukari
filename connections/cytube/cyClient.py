@@ -74,9 +74,12 @@ class CyProtocol(WebSocketClientProtocol):
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
         self.ytq = deque()
+
+        # Polls
+        self.myPollState = None
         self.activePoll = None
-        self.pollState = {}
         self.pollFn = None
+
         self.usercount = 0
         self.willReplay = False
         self.mediaRemainingTime = 0
@@ -445,24 +448,22 @@ class CyProtocol(WebSocketClientProtocol):
     def _cyCall_newPoll(self, fdict):
         poll = fdict['args'][0]
         self.activePoll = poll
-        # initialize self.pollState if it's Yukari's poll
+        # initialize self.myPollState if it's Yukari's poll with non-empty dict
         if poll['initiator']  == self.name:
-            if poll['title'].startswith('Replay'):
-                self.pollState = {'type':'replay'}
-                if poll['options'] == ['No!', 'Yes!']:
-                    self.pollState['order'] = 0
-                elif poll['options'] == ['Yes!', 'No!']:
-                    self.pollState['order'] = 1
+            self.myPollState = {'myPoll': True}
 
     def _cyCall_updatePoll(self, fdict):
-        pollType = self.pollState.get('type', None)
-        if pollType == 'replay':
-            self.pollState['counts'] = fdict['args'][0]['counts']
+        self.myPollState['counts'] = fdict['args'][0]['counts']
 
     def _cyCall_closePoll(self, fdict):
         self.activePoll = None
-        if self.pollState:
-            pollState, self.pollState = self.pollState, {}
+        clog.info('Poll was closed.', syst)
+        if self.myPollState:
+            myPollState, self.myPollState = self.myPollState, {}
+            # the timer is active but poll ended
+            # must have been user intervention
+            if self.pollTimer.active():
+                clog.warning('Poll ended by user.', syst)
             try:
                 self.pollTimer.cancel()
                 self.pollTimer = None
@@ -471,11 +472,12 @@ class CyProtocol(WebSocketClientProtocol):
                 clog.warning('No polltimer found', syst)
                 self.ignorePollResults()
             except(AlreadyCalled, AlreadyCancelled):
-                clog.info('Poll timer already called/cancelled', syst)
+                clog.warning('Poll timer already called/cancelled', syst)
                 # Poll finished cleanly
                 # (plugin, fn, opts)
-                fn = self.pollFn[1]
-                fn(self, self.pollFn[2], pollState)
+                if self.pollFn:
+                    fn = self.pollFn[1]
+                    fn(self, self.pollFn[2], myPollState)
 
     def ignorePollResults(self):
         msg = 'Poll has been interrupted by a user. Disregarding results.'
