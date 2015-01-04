@@ -65,16 +65,16 @@ class IrcProtocol(irc.IRCClient):
         """
         clog.info('PONG %s: %s secs' % (user, secs), sys)
 
-    def addQueue(self, msg):
+    def _addQueue(self, msg, action):
         if not self.underSpam and self.bucketToken != 0:
-            self.chatQueue.append(msg)
+            self.chatQueue.append((msg, action))
             self.popQueue()
         elif self.underSpam:
-            clog.info('(addQueue) chat is throttled', sys)
+            clog.info('(_addQueue) chat is throttled', sys)
             return
 
         elif self.bucketToken == 0:
-            clog.warning('(addQueue) blocking messages from CyTube', sys)
+            clog.warning('(_addQueue) blocking messages from CyTube', sys)
             msg = '[Hit throttle: Dropping messages %s.]'
             self.say(self.channelName, msg % 'from Cytube')
             self.factory.handle.sendToCy(msg % 'to IRC', modflair=True)
@@ -96,17 +96,24 @@ class IrcProtocol(irc.IRCClient):
     def popQueue(self):
         clog.debug('(popQueue) sending chat from IRC chat queue', sys)
         self.bucketToken -= 1
-        self.logSay(self.channelName, self.chatQueue.popleft())
+        msg, action = self.chatQueue.popleft()
+        self.logSay(self.channelName, msg, action)
         if not self.throttleLoop.running:
             self.throttleLoop.start(2, now=False)
 
-    def logSay(self, channel, msg):
+    def logSay(self, channel, msg, action):
         """ Log and send out message """
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
         msgd = msg.decode('utf-8')
-        binds = (None, 1, 3, getTime(), msgd, 1)
+        # flag 1 = Yukari sent (0 for receive)
+        # flag 3 = Yukari sent + action (2 for action)
+        flag = 1 if not action else 3
+        binds = (None, 1, 3, getTime(), msgd, flag)
         d = database.operate(sql, binds) # must be in unicode
-        self.say(channel, msg) # must not be in unicode
+        if not action:
+            self.say(channel, msg) # must not be in unicode
+        else:
+            self.describe(channel, msg)
         
     def sayNowPlaying(self, msg):
         if self.channelNp:
@@ -266,10 +273,10 @@ class IrcProtocol(irc.IRCClient):
         flag = 2 #action
         self.logProcess(user, data, flag)
 
-    def sendChat(self, channel, msg):
+    def sendChat(self, msg, action=False):
         if isinstance(msg, unicode):
             msg = msg.encode('utf-8')
-        self.addQueue(msg)
+        self._addQueue(msg, action)
 
     def partLeave(self, reason='Goodbye!'):
         self.leave(self.channelName, reason)

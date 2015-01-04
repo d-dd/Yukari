@@ -63,6 +63,7 @@ class Connections:
         self.ircChan = str(config['irc']['channel'])
         if not self.ircChan.startswith('#'):
             self.ircChan = '#' + self.ircChan
+        self.cyName = str(config['Cytube']['username'])
 
     def _importPlugins(self):
         modules = importPlugins('plugins/')
@@ -169,18 +170,15 @@ class Connections:
                                     prot=prot)
 
     def recCyMsg(self, source, user, msg, needProcessing, action=False):
-        if self.inIrcChan and user != 'Yukarin' and source != 'pm':
+        if self.inIrcChan and user != self.cyName and source != 'pm':
             clog.debug('recCyMsg: %s' % msg, sys)
-            cleanMsg = msg
             if not action:
-                cleanMsg = '(%s) %s' % (user, cleanMsg)
-            elif action:
-                cleanMsg = '( * %s) %s' % (user, cleanMsg)
+                cleanMsg = '(%s) %s' % (user, msg)
+            else:
+                cleanMsg = '( * %s) %s' % (user, msg)
             self.sendToIrc(cleanMsg)
-        if needProcessing and not action:
-            if self.cy:
-                prot = self.wsFactory.prot
-                self.processCommand(source, user, msg, prot=prot)
+        if needProcessing and not action and self.cy:
+            self.processCommand(source, user, msg, prot=self.wsFactory.prot)
 
     def recCyChangeMedia(self, media):
         if self.inIrcNp and media:
@@ -222,10 +220,7 @@ class Connections:
     def sendToIrc(self, msg, action=False):
         if not self.inIrcChan:
             return
-        if not action:
-            self.ircFactory.prot.sendChat(self.ircChan, msg)
-        elif action:
-            self.ircFactory.prot.describe(self.ircChan, msg)
+        self.ircFactory.prot.sendChat(msg, action)
 
     def sendToCy(self, msg, modflair=False):
         if self.cy:

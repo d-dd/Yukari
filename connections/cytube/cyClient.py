@@ -357,7 +357,8 @@ class CyProtocol(WebSocketClientProtocol):
     def checkCommands(self, username, msg, action, shadow, source):
         if username == self.name or username == '[server]':
             return
-        needProcessing = False if action else True
+       # needProcessing = False if action else True
+        method = None
         # check for commands
         # strip HTML tags
         msg = tools.strip_tag_entity(msg)
@@ -381,20 +382,20 @@ class CyProtocol(WebSocketClientProtocol):
             # special case for $vote
             if command == '$vote':
                 clog.warning('%s, %s' % (command, commandArgs), syst)
-                needProcessing = False
-                mthd = self.triggers['vote'].get('_vote_' + commandArgs, None)
-                if mthd:
-                    mthd(self, username, '', source, prot=self)
+                method = self.triggers['vote'].get('_vote_' + commandArgs, None)
+            
+            else:
+                method = self.triggers['commands'].get(command, None)
 
-            elif command in self.triggers['commands']:
-                needProcessing = False
-                clog.info('Command triggered: %s ; %s' % (command, commandArgs),
-                        syst)
-                self.triggers['commands'][command](self, username, commandArgs,
-                                                   source, prot=self)
-
+        needProcessing = False if method or action else True
+        # send chat first
         self.factory.handle.recCyMsg(source, username, msg, needProcessing,
-                                                                        action) 
+                                                                    action) 
+        # run command
+        if method:
+            clog.info('Command triggered: %s;%s' % (command, commandArgs), syst)
+            method(self, username, commandArgs, source, prot=self)
+
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
