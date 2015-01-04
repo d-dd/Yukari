@@ -14,7 +14,6 @@ class Replay(object):
     def _sc_replay(self, cy, fdict):
         if self.poll:
             cy.doClosePoll()
-
         if self.skipJs:
             cy.cancelSetCurrentJs = True
             self.skipJs = False
@@ -49,6 +48,11 @@ class Replay(object):
         self.voteReplay(cy, username, args, source)
 
     def doReplay(self, cy, username, args, source):
+        """
+        Cancel replay if it is already set to replay;
+        Set replay if it is not set to replay, and
+        cancel replay poll if there is one active.
+        """
         if source != 'chat':
             return
         rank = cy._getRank(username)
@@ -62,6 +66,8 @@ class Replay(object):
             mTitle = cy.playlist[index]['media']['title']
             self.replay = cy.nowPlayingUid
             cy.sendCyWhisper('%s has been set to replay once.' % mTitle)
+            if self.poll:
+                cy.doClosePoll()
 
     def voteReplay(self, cy, username, args, source):
         if source != 'chat':
@@ -74,12 +80,13 @@ class Replay(object):
                             toIrc=False)
             return
         if self.replay != -1:
-            cy.doSendChat('This is already set to replay.', toIrc=False)
+            cy.doSendChat('This media is already set to replay.', toIrc=False)
             return
         elif cy.mediaRemainingTime > 30:
             self.makePoll(cy)
         elif cy.mediaRemainingTime <= 30:
-            cy.doSendChat('There is no time left for a poll.', toIrc=False)
+            cy.doSendChat('There is not enough time left for a poll.',
+                                                          toIrc=False)
 
     def makePoll(self, cy):
         """ Make a poll asking users if they would like the current video
@@ -97,9 +104,9 @@ class Replay(object):
 
     # called by cy
     def gotPollResults(self, cy, opts, pollState):
+        self.poll = False
         # cancelled
         if pollState is False: 
-            self.poll = False
             return
         order = opts['boo']
         counts = pollState.get('counts', None)

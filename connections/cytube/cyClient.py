@@ -463,7 +463,7 @@ class CyProtocol(WebSocketClientProtocol):
             # the timer is active but poll ended
             # must have been user intervention
             if self.pollTimer.active():
-                clog.warning('Poll ended by user.', syst)
+                clog.warning('Poll ended by early.', syst)
             try:
                 self.pollTimer.cancel()
                 self.pollTimer = None
