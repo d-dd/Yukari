@@ -362,7 +362,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.checkCommands(username, msg, action, shadow, 'chat')
         else:
             # don't process at yukari either, when under spam
-            self.factory.handle.recCyMsg(username, msg, False, action)
+            self.factory.handle.recCyMsg('chat', username, msg, False, action)
 
     def logChatMsg(self, username, chatCyTime, msg, modflair, flag, timeNow):
         # logging chat to database
