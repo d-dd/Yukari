@@ -479,7 +479,10 @@ class CyProtocol(WebSocketClientProtocol):
             self.myPollState = {'myPoll': True}
 
     def _cyCall_updatePoll(self, fdict):
-        self.myPollState['counts'] = fdict['args'][0]['counts']
+        try:
+            self.myPollState['counts'] = fdict['args'][0]['counts']
+        except(TypeError):
+            pass
 
     def _cyCall_closePoll(self, fdict):
         self.activePoll = None
