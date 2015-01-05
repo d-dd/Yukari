@@ -1,5 +1,13 @@
+
 # Standard Library
-import random, re, time, subprocess, os, importlib
+from collections import deque
+import importlib
+import os
+import random
+import re
+import subprocess
+import textwrap
+import time
 # Twisted Library
 from twisted.internet import reactor, defer
 from twisted.internet.defer import Deferred
@@ -152,16 +160,17 @@ class Connections:
 
     def recIrcMsg(self, user, channel, msg, modifier=None):
         user = user.split('!', 1)[0] # takes out the extra info in the name
+        # cytube char limit per line is 244
+        pre = ''
         if self.cy:
-            msgl = list(msg)
-            # cytube char limit per line is 244, so break up into multiple lines
-            while msgl:
+            max_width = 244 - (len(user) + len('[..]')*2 + 10)
+            msgd = deque(textwrap.wrap(msg, max_width))
+            while msgd:
                 name = '( _%s_)' % user if modifier else '(%s)' % user
-                cont = '[..]' if len(name) + len(msgl) > 235 else ''
-                idx = 235 -len(name) - len(cont)
-                line = '%s %s %s' % (name, ''.join(msgl[:idx]), cont)
-                msgl = msgl[idx:]
+                cont = '[..]' if len(msgd) > 1 else ''
+                line = '%s %s %s %s' % (name, pre, msgd.popleft(), cont)
                 self.wsFactory.prot.relayToCyChat(line)
+                pre = '[..]'
         # don't process commands from action (/me) messages
         if not modifier:
             if self.irc:
@@ -283,13 +292,17 @@ def createShellServer(obj):
     factory.password = config['telnet']['password']
     return port
 
-clog.error('test custom log', 'cLog tester')
-clog.warning('test custom log', 'cLog tester')
+def main():
+    clog.error('test custom log', 'cLog tester')
+    clog.warning('test custom log', 'cLog tester')
 
-yukari = Connections()
-yukari.cyChangeProfile()
-yukari.ircConnect()
-#yukari.rinstantiate(int(config['rinserver']['port']))
-reactor.callWhenRunning(createShellServer, yukari)
-reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
-reactor.run()
+    yukari = Connections()
+    yukari.cyChangeProfile()
+    yukari.ircConnect()
+    #yukari.rinstantiate(int(config['rinserver']['port']))
+    reactor.callWhenRunning(createShellServer, yukari)
+    reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
+    reactor.run()
+
+if __name__ == '__main__':
+    main()
