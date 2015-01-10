@@ -53,7 +53,7 @@ class Replay(object):
         Set replay if it is not set to replay, and
         cancel replay poll if there is one active.
         """
-        if source != 'chat':
+        if source != 'chat' or not cy.nowPlayingMedia:
             return
         rank = cy._getRank(username)
         if rank < 2:
@@ -70,7 +70,7 @@ class Replay(object):
                 cy.doClosePoll()
 
     def voteReplay(self, cy, username, args, source):
-        if source != 'chat':
+        if source != 'chat' or not cy.nowPlayingMedia:
             return
         rank = cy._getRank(username)
         if rank < 2:

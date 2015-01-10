@@ -477,6 +477,8 @@ class CyProtocol(WebSocketClientProtocol):
         # initialize self.myPollState if it's Yukari's poll with non-empty dict
         if poll['initiator']  == self.name:
             self.myPollState = {'myPoll': True}
+        else:
+            self.myPollState = {'myPoll': False}
 
     def _cyCall_updatePoll(self, fdict):
         try:
@@ -485,14 +487,25 @@ class CyProtocol(WebSocketClientProtocol):
             pass
 
     def _cyCall_closePoll(self, fdict):
+        # on join, Cytube first sends a closePoll followed by a newPoll
+        # if there is an active poll
+        if self.activePoll is None:
+            return
         self.activePoll = None
         clog.info('Poll was closed.', syst)
-        if self.myPollState:
+        if self.myPollState['myPoll']:
             myPollState, self.myPollState = self.myPollState, {}
             # the timer is active but poll ended
             # must have been user intervention
+            try:
+                self.pollTimer.active()
+            # Yukari made poll but disconnected so there is no
+            # pollstate
+            except(AttributeError):
+                clog.warning('Abandoned poll.', syst)
+                return
             if self.pollTimer.active():
-                clog.warning('Poll ended by early.', syst)
+                clog.warning('Poll was ended  early.', syst)
             try:
                 self.pollTimer.cancel()
                 self.pollTimer = None
