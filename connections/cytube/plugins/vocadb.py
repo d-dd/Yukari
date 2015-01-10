@@ -77,7 +77,8 @@ class VocaDB(object):
     # this is the $vocadb chat command
     @commandThrottle(0)
     def _com_vocadb(self, cy, username, args, source):
-        if not vdb:
+        if not vdb or not cy.nowPlayingMedia:
+            clog.warning('no nowPlayingMedia', syst)
             return
         mType = cy.nowPlayingMedia['type']
         mId = cy.nowPlayingMedia['id']

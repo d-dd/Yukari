@@ -752,6 +752,11 @@ class CyProtocol(WebSocketClientProtocol):
         # Cytube also re-sends the playlist when the permission is changed
         self.playlist = []
         pl = fdict['args'][0]
+        if not pl:
+            clog.warning('(_cyCall_playlist) The playlist was cleared!', syst)
+            self.nowPlayingUid = -1
+            self.nowPlayingMedia = {}
+            return
         clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
         dbpl, qpl = [], []
         for entry in pl:
