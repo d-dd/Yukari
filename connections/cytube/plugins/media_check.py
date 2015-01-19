@@ -30,15 +30,6 @@ class MediaCheck(object):
     def _pl_checkpl(self, cy, playlist):
         return
     # No need to check on playlist. We already check on queue and setCurrent
-        for mediad in playlist:
-            mType = mediad['media']['type']
-            if mType == 'yt':
-                mId = mediad['media']['id']
-                mTitle = mediad['media']['titile']
-                uid = mediad['uid']
-                self.mediaToCheck.append((cy, mType, mId, mTitle, uid))
-            if not self.ytLoop.running:
-                self.ytLoop.start(1.0)
 
     def _q_checkMedia(self, cy, fdict):
         uid = fdict['args'][0]['item']['uid']
@@ -58,6 +49,8 @@ class MediaCheck(object):
         title = media['title']
         mType = media['type']
         mId = media['id']
+        if mType != 'yt':
+            return
         d = self.checkVideoStatus(mId)
         d.addCallback(self.flagOrDelete, cy, mType, mId, title, uid)
         return d
@@ -110,6 +103,7 @@ class MediaCheck(object):
         elif res in ('Status503', 'Status403', 'Status404', 'NoEmbed'):
             clog.warning('%s: %s' % (title, res), syst)
             cy.doDeleteMedia(uid)
+            cy.uncache(mId)
             msg = 'Removing non-playable media %s' % title
             database.flagMedia(0b1, mType, mId)
             cy.sendCyWhisper(msg)

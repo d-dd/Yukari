@@ -168,5 +168,6 @@ class MediaFlag(object):
             except(IndexError):
                 return False
         return mType, mId
+
 def setup():
     return MediaFlag()

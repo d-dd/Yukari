@@ -573,6 +573,15 @@ class CyProtocol(WebSocketClientProtocol):
     def doSendJs(self, js):
         self.sendf({'name': 'setChannelJS', 'args': {'js': js}})
 
+    def uncache(self, mId):
+        """ Sends uncache frame to Cytube, which removes the media from the
+        library. Cytube library only uses id (and not type). A second video
+        with the same id (and different type) can never be added to the
+        library. Trying to uncache nonexistent video 2 will inadvertently 
+        uncache video 1. Chance of this happening is close to 0."""
+        self.sendf({'name': 'uncache', 'args': {'id': mId}})
+        clog.info('(uncache) uncached %s' % mId, syst)
+
     def processResult(self, res):
         return defer.succeed(res[0][0])
 
@@ -1069,8 +1078,10 @@ class CyProtocol(WebSocketClientProtocol):
     def cbSetCurrent(self, qid, fdict):
         l = list()
         for method in self.triggers['setCurrent'].itervalues():
-            l.append(method(self, fdict)) # mType, mId, mTitle))
-       # clog.error('list is %s' % l, syst)
+            d = method(self, fdict)
+            if d:
+                l.append(d)
+        #clog.error('list is %s' % l, syst)
         scDeferredList = defer.DeferredList(l)
         scDeferredList.addCallback(self.setCurrentJs, fdict)#mType, mId, mTitle) 
         if qid: # came as a deferred, give back the qId
