@@ -243,6 +243,8 @@ class CyProtocol(WebSocketClientProtocol):
                    toIrc=True):
         clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, 
                    source, username), syst)
+        if not toIrc:
+            msg = '^' + msg
         if source == 'chat':
             if modflair:
                 modflair = 3 ### TODO remove hardcode rank
