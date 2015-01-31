@@ -47,9 +47,11 @@ class Connections:
         self.irc = False
         self.cy = False
 
+        self.cyUserdict = {}
         #
         self.inIrcChan = False
         self.inIrcNp = False
+        self.inIrcStatus = False
 
         # Wether to restart when disconnected
         self.ircRestart = True
@@ -199,6 +201,20 @@ class Connections:
                 msg = '[Now Playing]: %s (%s, %s)' % (title, mType, mId)
             msg = tools.returnStr(msg)
             self.ircFactory.prot.sayNowPlaying(msg)
+
+    def recCyUserlist(self, userdict):
+        # called from cyClient, when cyCall userlist
+        self.cyUserdict = userdict
+        if self.inIrcStatus:
+            self.ircFactory.prot.sendCyNames()
+
+    def recCyUserJoin(self, user, rank):
+        if self.inIrcStatus:
+            self.ircFactory.prot.sendCyUserJoin(user, rank)
+
+    def recCyUserLeave(self, user):
+        if self.inIrcStatus:
+            self.ircFactory.prot.sendCyUserLeave(user)
 
     def processCommand(self, source, user, msg, prot):
         if msg.startswith('$'):

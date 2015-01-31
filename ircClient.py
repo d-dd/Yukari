@@ -27,10 +27,13 @@ class IrcProtocol(irc.IRCClient):
         self.offlineNick = str(config['irc']['offlinenick'])
         self.channelName = str(config['irc']['channel'])
         self.channelNp = str(config['irc']['np'])
+        self.channelStatus = str(config['irc']['status'])
         if not self.channelName.startswith('#'):
             self.channelName = '#' + self.channelName
         if not self.channelNp.startswith('#'):
             self.channelNp = '#' + self.channelNp
+        if not self.channelStatus.startswith('#'):
+            self.channelStatus = '#' + self.channelStatus
         self.chatQueue = deque()
         self.bucketToken = int(config['irc']['bucket'])
         self.bucketTokenMax = int(config['irc']['bucket'])
@@ -192,6 +195,9 @@ class IrcProtocol(irc.IRCClient):
         self.laters.append(reactor.callLater(1, self.join, self.channelName))
         if self.channelNp:
             self.laters.append(reactor.callLater(1, self.join, self.channelNp))
+        if self.channelStatus:
+            self.laters.append(reactor.callLater(1, self.join, 
+                                                 self.channelStatus))
         self.factory.prot = self
         # send an initial ping
         self.sendLine('PING 0')
@@ -246,6 +252,9 @@ class IrcProtocol(irc.IRCClient):
             self.factory.handle.inIrcChan = True
         elif channel == self.channelNp:
             self.factory.handle.inIrcNp = True
+        elif channel == self.channelStatus:
+            self.factory.handle.inIrcStatus = True
+            self.sendCyNames()
         self.getNicks(channel).addCallback(self.updateNicks, channel)
 
     def left(self, channel):
@@ -254,6 +263,8 @@ class IrcProtocol(irc.IRCClient):
             self.factory.handle.inIrcChan = False
         elif channel == config['irc']['np']:
             self.factory.handle.inIrcNp = False
+        elif channel == config['irc']['status']:
+            self.factory.handle.inIrcStatus = False
 
     def kickedFrom(self, channel, kicker, message):
         clog.info('kickedFrom %s by %s: %s' % (channel, kicker, message), sys)
@@ -282,6 +293,20 @@ class IrcProtocol(irc.IRCClient):
         self.leave(self.channelName, reason)
         self.quit(message='Shutting down...!')
         self.factory.handle.ircRestart = False
+
+    def sendCyNames(self):
+        """ Send userlist to everyone """
+        userdict = self.factory.handle.cyUserdict
+        userlist = []
+        for name, user in userdict.iteritems():
+            userlist.append(' '.join((name, str(user['rank']))))
+        self.say(self.channelStatus, str('~ ' + ', '.join(userlist)))
+
+    def sendCyUserJoin(self, user, rank):
+        self.say(self.channelStatus, str('+ %s %s' % (user, rank)))
+
+    def sendCyUserLeave(self, user):
+        self.say(self.channelStatus, str('- %s' % (user)))
 
     def logProcess(self, user, msg, flag):
         timeNow = getTime()

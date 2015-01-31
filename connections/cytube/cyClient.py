@@ -672,6 +672,7 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = getTime()
         if user['name'] not in self.userdict:
             self.userJoin(user, timeNow)
+        self.factory.handle.recCyUserJoin(user['name'], user['rank'])
 
     def userJoin(self, user, timeNow):
         clog.info(user, syst)
@@ -741,6 +742,7 @@ class CyProtocol(WebSocketClientProtocol):
         d.addCallback(self.userLeave, leftUser, timeNow)
         d.addErrback(self.errcatch)
         self.removeUser(None, username) # remove user immediatley
+        self.factory.handle.recCyUserLeave(username)
 
     def removeUser(self, res, username):
         clog.debug('(removeUser) Removing user', syst)
@@ -765,6 +767,9 @@ class CyProtocol(WebSocketClientProtocol):
             user['timeJoined'] = timeNow
             self.userdict[user['name']] = user
             self.userJoin(user, timeNow)
+
+        # send userlist info to status IRC channel
+        self.factory.handle.recCyUserlist(self.userdict)
 
     def _cyCall_playlist(self, fdict):
         """ Cache the playlist in memory, and write them to the media table """
