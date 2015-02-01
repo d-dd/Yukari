@@ -212,6 +212,8 @@ class IrcProtocol(irc.IRCClient):
         if channel == self.channelName:
             self.factory.handle.ircUserCount += 1
             self.nicklist.append(user)
+        elif channel == self.channelStatus:
+            self.sendCyNames()
 
     def userLeft(self, user, channel):
         clog.info('%s has left %s' % (user, channel), sys)

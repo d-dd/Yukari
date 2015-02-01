@@ -97,6 +97,8 @@ class CyProtocol(WebSocketClientProtocol):
                          'ppm': {},
                          'queue': {},
                          'replay': {},
+                         'userjoin': {},
+                         'userleave': {},
                          'vote': {},
                                          }
 
@@ -120,6 +122,10 @@ class CyProtocol(WebSocketClientProtocol):
                 elif method.startswith('_ppm_'):
                     trigger = '%%%%%s' % method[5:]
                     self.triggers['ppm'][trigger] = getattr(instance, method)
+                elif method.startswith('_uj_'):
+                    self.triggers['userjoin'][method] = getattr(instance, method)
+                elif method.startswith('_ul_'):
+                    self.triggers['userleave'][method] = getattr(instance, method)
                 elif method.startswith('_vote_'):
                     self.triggers['vote'][method] = getattr(instance, method)
 
@@ -672,6 +678,8 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = getTime()
         if user['name'] not in self.userdict:
             self.userJoin(user, timeNow)
+        for key, method in self.triggers['userjoin'].iteritems():
+            method(self, fdict)
         self.factory.handle.recCyUserJoin(user['name'], user['rank'])
 
     def userJoin(self, user, timeNow):
@@ -743,6 +751,9 @@ class CyProtocol(WebSocketClientProtocol):
         d.addErrback(self.errcatch)
         self.removeUser(None, username) # remove user immediatley
         self.factory.handle.recCyUserLeave(username)
+
+        for key, method in self.triggers['userleave'].iteritems():
+            method(self, fdict)
 
     def removeUser(self, res, username):
         clog.debug('(removeUser) Removing user', syst)

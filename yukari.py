@@ -74,6 +74,7 @@ class Connections:
         if not self.ircChan.startswith('#'):
             self.ircChan = '#' + self.ircChan
         self.cyName = str(config['Cytube']['username'])
+        self.lastIrcChat = 0
 
     def _importPlugins(self):
         modules = importPlugins('plugins/')
@@ -161,6 +162,7 @@ class Connections:
         reactor.listenTCP(port, self.rinFactory)
 
     def recIrcMsg(self, user, channel, msg, modifier=None):
+        self.lastIrcChat = time.time()
         user = user.split('!', 1)[0] # takes out the extra info in the name
         # cytube char limit per line is 244
         pre = ''
