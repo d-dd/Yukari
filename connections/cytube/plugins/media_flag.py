@@ -58,7 +58,6 @@ class MediaFlag(object):
         mTitle = fdict['args'][0]['item']['media']['title']
         d = self._checkFlag(mType, mId)
         d.addCallback(self._cbBlacklist, cy,'queue', mType, mId, mTitle)
-        return d
 
     def _checkFlag(self, mType, mId):
         d = database.getMediaFlag(mType, mId)

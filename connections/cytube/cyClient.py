@@ -93,10 +93,13 @@ class CyProtocol(WebSocketClientProtocol):
                          'setCurrent': {},
                          'scJs': {},
                          'commands':{},
+                         'delete': {},
                          'playlist': {},
                          'ppm': {},
                          'queue': {},
+                         'qfail': {},
                          'replay': {},
+                         'temp': {},
                          'userjoin': {},
                          'userleave': {},
                          'vote': {},
@@ -109,14 +112,21 @@ class CyProtocol(WebSocketClientProtocol):
                 if method.startswith('_com_'):
                     trigger = '$%s' % method[5:]
                     self.triggers['commands'][trigger] = getattr(instance, method)
+                elif method.startswith('_del_'):
+                    self.triggers['delete'][method] = getattr(instance, method)
+
                 elif method.startswith('_sc_'):
                     self.triggers['setCurrent'][method] = getattr(instance, method)
                 elif method.startswith('_q_'):
                     self.triggers['queue'][method] = getattr(instance, method)
+                elif method.startswith('_qfail_'):
+                    self.triggers['qfail'][method] = getattr(instance, method)
                 elif method.startswith('_re_'):
                     self.triggers['replay'][method] = getattr(instance, method)
                 elif method.startswith('_scjs_'):
                     self.triggers['scJs'][method] = getattr(instance, method)
+                elif method.startswith('_temp_'):
+                    self.triggers['temp'][method] = getattr(instance, method)
                 elif method.startswith('_pl_'):
                     self.triggers['playlist'][method] = getattr(instance, method)
                 elif method.startswith('_ppm_'):
@@ -796,20 +806,21 @@ class CyProtocol(WebSocketClientProtocol):
             clog.warning('(_cyCall_playlist) The playlist was cleared!', syst)
             self.nowPlayingUid = -1
             self.nowPlayingMedia = {}
-            return
-        clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
-        dbpl, qpl = [], []
-        for entry in pl:
-            entry['qDeferred'] = defer.Deferred()
-            self.playlist.append(entry)
-            if entry['media']['type'] != 'cu': # custom embed
-                dbpl.append((None, entry['media']['type'], entry['media']['id'],
-                            entry['media']['seconds'], entry['media']['title'],
-                            1, 0))
-                            #'introduced by' Yukari
-                qpl.append((entry['media']['type'], entry['media']['id'], entry['uid']))
-        d = database.bulkLogMedia(dbpl)
-        self.findQueueId(qpl)
+        else:
+            clog.debug('(_cyCall_playlist) received playlist from Cytube', syst)
+            dbpl, qpl = [], []
+            for entry in pl:
+                entry['qDeferred'] = defer.Deferred()
+                self.playlist.append(entry)
+                if entry['media']['type'] != 'cu': # custom embed
+                    dbpl.append((None, entry['media']['type'],
+                                 entry['media']['id'],entry['media']['seconds'],
+                                 entry['media']['title'], 1, 0))
+                                #'introduced by' Yukari
+                    qpl.append((entry['media']['type'], entry['media']['id'],
+                                entry['uid']))
+            d = database.bulkLogMedia(dbpl)
+            self.findQueueId(qpl)
 
         # for playlist plugins
         for key, method in self.triggers['playlist'].iteritems():
@@ -895,8 +906,12 @@ class CyProtocol(WebSocketClientProtocol):
         uid = item['uid']
         self.addToPlaylist(item, afterUid)
 
+        flag = 0
+        # Optional: return flag value
         for key, method in self.triggers['queue'].iteritems():
-            method(self, fdict)
+            bit = method(self, fdict)
+            if bit:
+                flag += bit
 
         if queueby: # anonymous add is an empty string
             userId = self.userdict[queueby]['keyId']
@@ -907,26 +922,11 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             clog.error('(_cyCall_queue) user id not cached.', syst)
             return
-        flag = 1 if isTemp else 0
+        if isTemp:
+            flag += 1
         d.addCallback(self.writeQueue, userId, timeNow, flag, uid)
-       # dq = defer.Deferred()
-       # self.splitResults(d, dq) # fired in parallel when d has result
-       # d.addCallback(lambda res: res[0])
-       # dq.addCallback(self.writeQueue, userId, timeNow, flag, uid)
         i = self.getIndexFromUid(uid)
         self.playlist[i]['qDeferred'] = d
-
-       # dCheck = self.checkMedia(mType, mId)
-       # dCheck.addCallback(self.flagOrDelete, media, mType, mId)
-       # dCheck = defer.succeed(0)
-       # self.verifyMedia(mType, mId)
-
-       # if mType == 'yt' and vdb:
-       #     timeNow = getTime()
-            # since this callback is added after checkMedia which has a delay,
-            # this also gets delayed
-       #     dCheck.addCallback(vdbapi.requestSongByPv ,mType, mId, 1, timeNow, 0)
-       #     dCheck.addErrback(self.errcatch)
 
     def splitResults(self, defer1, defer2):
         """ Results of defer1 are sent to defer2 """
@@ -937,62 +937,9 @@ class CyProtocol(WebSocketClientProtocol):
             return val
         defer1.addCallback(split)
 
-    def checkFlag(self, res, mType, mId):
-        """ Check flag for omit or blacklist """
-        return self.verifyMedia(mType, mId)
-    ###
-        if not res:
-            clog.error('(continueBlacklist) Media not found!', syst)
-        else:
-            if res[0][0] & 4: # blacklisted
-                self.doDeleteMedia(mType, mId)
-                return
-            elif res[0][0] & 2: # omitted
-                self.currentOmitted = True
-            else:
-                self.currentOmitted = False
-            return self.verifyMedia(mType, mId)
-
-    def checkMedia(self, mType, mId):
-        d = database.getMediaFlag(mType, mId)
-        d.addCallback(self.checkFlag, mType, mId)
-        return d
-
-    def verifyMedia(self, mType, mId):
-        if mType == 'yt':
-            self.ytq.append(mId)
-            d = task.deferLater(reactor, 1 * (len(self.ytq)-1), 
-                                self.collectYtQueue, mId)
-            clog.debug('(checkMedia) Length of ytq %s' % len(self.ytq), syst)
-            return d
-        else:
-            return defer.succeed('EmbedOk') # TODO
-
-    def flagOrDelete(self, res, media, mType, mId):
-        if res == 'EmbedOk':
-            database.unflagMedia(0b1, mType, mId)
-
-        elif res == 'Status503':
-            clog.error('(flagOrDelete) Youtube service unavailable.', syst)
-
-        elif res == 'NetworkError':
-            clog.error('(flagOrDelete) There was a network error.', syst)
-
-        elif res in ('NoEmbed', 'Status403', 'Status404'):
-            self.doDeleteMedia(media['type'], media['id'])
-            mediaTitle = media['title'].encode('utf-8')
-            msg = wisp('Removing non-playable media %s' % mediaTitle)
-            database.flagMedia(0b1, mType, mId)
-            self.doSendChat(msg, toIrc=False)
-            clog.info(msg)
-
-        return res
-
-    def collectYtQueue(self, mId):
-        # need another function because popleft() evaluates immediatly
-        return apiClient.requestYtApi(self.ytq.popleft(), 'check')
-
     def _cyCall_delete(self, fdict):
+        for key, method in self.triggers['delete'].iteritems():
+            method(self, fdict)
         uid = fdict['args'][0]['uid']
         index = self.getIndexFromUid(uid)
         deletedMedia = self.playlist.pop(index)
@@ -1154,6 +1101,8 @@ class CyProtocol(WebSocketClientProtocol):
         self.movePlaylistItems(beforeUid, afterUid)
 
     def _cyCall_queueFail(self, fdict):
+        for key, method in self.triggers['qfail'].iteritems():
+            method(self, fdict)
         args = fdict['args'][0]
         msg = args.get('msg', '')
         link = args.get('link', '')
@@ -1171,6 +1120,9 @@ class CyProtocol(WebSocketClientProtocol):
                 d = database.flagMedia(1, mType, ytId)
                 d.addCallback(lambda ignored:
                     clog.warning('Flagged invalid media %s %s' % (mType, ytId)))
+    def _cyCall_setTemp(self, fdict):
+        for key, method in self.triggers['temp'].iteritems():
+            method(self, fdict)
 
     def cleanUp(self):
         # set restart to False

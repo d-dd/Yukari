@@ -49,6 +49,8 @@ class Likes(object):
     def loadLikes(self, cy, mType, mId):
         uid = cy.getUidFromTypeId(mType, mId)
         i = cy.getIndexFromUid(uid)
+        if i is None:
+            clog.error('Got None for index getIndexFromUid', syst)
         try:
             queueId = cy.playlist[i]['qid']
             d = database.getLikes(queueId)
@@ -82,9 +84,9 @@ class Likes(object):
             mId = cy.nowPlayingMedia['id']
         clog.info('(_com_like):type:%s, id:%s' % (mType, mId), syst) 
         uid = cy.getUidFromTypeId(mType, mId) 
+        if uid is None:
+            clog.error('Got None for UID _likeMedia', syst)
         i = cy.getIndexFromUid(uid)
-        if i is None:
-            return
         userId = cy.userdict[username]['keyId']
         qid = cy.playlist[i]['qid']
         d = database.queryMediaId(mType, mId)

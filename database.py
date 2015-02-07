@@ -269,12 +269,18 @@ def calcAccessTime(res, nameLower, isRegistered):
     binds = (nameLower, isRegistered) * 2
     return query(sql, binds)
 
-def addByUserQueue(nameLower, registered, words, limit):
+#def addByUserQueue(sample, nameLower, registered, words, limit, isRecent):
+def addMedia(sample, nameLower, registered, words, limit, isRecent):
     """selects up to n (limit) random non-flagged media that was ever
        queued by registered user (nameLower)"""
     binds, sql = [], []
-    if nameLower:
+    # only Youtube
+    providers = '("yt")'
+    if nameLower and sample == 'q':
         name = ('AND Queue.userId = %s' % _USERIDSQL)
+        binds.extend((nameLower, int(registered)))
+    elif nameLower and sample == 'a':
+        name = ('AND by = %s' % _USERIDSQL)
         binds.extend((nameLower, int(registered)))
     else:
         name = ''
@@ -283,45 +289,29 @@ def addByUserQueue(nameLower, registered, words, limit):
         binds.append('%%%s%%' % words) # %% is escaped %
     else:
         title = ''
-    sql = ('SELECT type, id FROM Media WHERE mediaId IN '
-           '(SELECT DISTINCT Media.mediaId FROM Media, Queue WHERE '
-           'Media.mediaId = Queue.mediaId AND Media.flag=0 %s %s'
-           'ORDER BY RANDOM() LIMIT ?)') % (name, title)
+    if not isRecent: # by default exclude last 200 queued media from pool
+        recent = ('AND Media.mediaId NOT IN (SELECT mediaId FROM Queue '
+                'ORDER BY queueId DESC LIMIT 200)')
+    else:
+        recent = ''
+    if sample == 'q':
+        sql = ('SELECT type, id FROM Media WHERE type IN %s AND mediaId IN '
+               '(SELECT DISTINCT Media.mediaId FROM Media, Queue WHERE '
+               'Media.mediaId = Queue.mediaId AND Media.flag=0 %s %s %s '
+               'ORDER BY RANDOM() LIMIT ?)' % (providers, name, title, recent))
+    elif sample == 'a':
+        sql = ('SELECT type, id FROM Media WHERE type IN %s AND flag=0 %s %s %s'
+              'ORDER BY RANDOM() LIMIT ?' % (providers, name, title, recent))
+    elif sample == 'l':
+        sql = ('SELECT type, id FROM Media CROSS JOIN Like ON Media.mediaId '
+               '=Like.mediaId GROUP BY Media.mediaId HAVING type IN %s AND '
+               'value=1 %s %s %s ORDER BY RANDOM() LIMIT ?' %
+               (providers, name, title, recent))
+
     binds.append(limit)
     binds = tuple(binds)
     #clog.info(sql, 'sql')
     #clog.info(binds, 'sql')
-    return query(sql, binds)
-
-def addByUserAdd(nameLower, registered, words, limit):
-    """selects up to n (limit) random non-flagged media that was 
-       added first (introduced) by registered user (nameLower)"""
-    binds = []
-    if nameLower:
-        name = ('AND by = %s' % _USERIDSQL)
-        binds.extend((nameLower, registered))
-    else:
-        name = ''
-    if words:
-        title = 'AND title LIKE ?'
-        binds.append('%%%s%%' % words)
-    else:
-         title = ''
-    sql = ('SELECT type, id FROM Media WHERE flag=0 %s %s'
-          'ORDER BY RANDOM() LIMIT ?') % (name, title)
-    binds.append(limit)
-    binds = tuple(binds)
-    #clog.info(sql, 'sql')
-    #clog.info(binds, 'sql')
-    return query(sql, binds)
-
-def addByUserLike(nameLower, registered, limit):
-    """selects up to n (limit) random non-flagged media that is
-    liked by user"""
-    sql = ('SELECT Media.type, Media.id FROM Media CROSS JOIN LIKE '
-           'ON Media.mediaId = Like.mediaId AND Like.userId=%s AND '
-           'Like.value=1 ORDER BY RANDOM() LIMIT ?' % _USERIDSQL)
-    binds = (nameLower, registered, limit)
     return query(sql, binds)
 
 def getMediaById(mediaId):
