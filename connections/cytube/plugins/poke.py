@@ -56,8 +56,9 @@ class Poke(object):
                     syst)
             return
         from twisted.internet import reactor
-        self.pokeTimer = cy.laters.append(reactor.callLater(self.pokeTime,
-            self.yukariPoke, cy, username))
+        self.pokeTimer = reactor.callLater(self.pokeTime,
+            self.yukariPoke, cy, username)
+        cy.laters.append(self.pokeTimer)
         clog.warning('Started poke timer for %s!' % username, syst)
         self.lastChatAtTimer = cy.factory.handle.lastIrcChat
 

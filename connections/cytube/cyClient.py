@@ -826,7 +826,6 @@ class CyProtocol(WebSocketClientProtocol):
         for key, method in self.triggers['playlist'].iteritems():
             method(self, pl)
 
-
     def findQueueId(self, qpl):
         for mType, mId, uid in qpl:
             d = database.queryLastQueue(mType, mId)

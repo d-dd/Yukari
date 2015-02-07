@@ -195,21 +195,6 @@ class Add(object):
         """ Queues up to quantity number of media to the playlist """
         return database.addMedia(sample, username, isRegistered, title,
                                  quantity, includeRecent)
-        return
-    ###
-
-        if sample == 'queue' or sample == 'q':
-            d = database.addByUserQueue(username, isRegistered, title,
-                                        quantity, includeRecent)
-        elif sample == 'add' or sample == 'a':
-            d = database.addByUserAdd(username, isRegistered, title,
-                                        quantity, includeRecent)
-        
-        elif sample == 'like' or sample == 'l':
-            d = database.addByUserLike(username, isRegistered, quantity)
-        else:
-            return
-        return d
 
 def setup():
     return Add()
