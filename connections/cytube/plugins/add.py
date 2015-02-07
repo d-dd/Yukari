@@ -143,7 +143,7 @@ class Add(object):
                     self._checkSupply(cy)
 
     def _ul_checkcount(self, cy, fdict):
-        if len(cy.userdict) < 2:
+        if len(cy.userdict) < 2 and self.managing:
             self.managementOff(cy, 'No named users.')
 
     def managementOn(self, cy, msg=''):
