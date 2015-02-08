@@ -170,9 +170,8 @@ class Connections:
             max_width = 244 - (len(user) + len('[..]')*2 + 10)
             msgd = deque(textwrap.wrap(msg, max_width))
             while msgd:
-                name = '(%s)' % user
                 cont = '[..]' if len(msgd) > 1 else ''
-                line = ('(%s) %s %s %s' % (user, pre, msgd.popleft(), cont)).replace("_","__")
+                line = '(%s) %s %s %s' % (user, pre, msgd.popleft(), cont)
                 if modifier:
                     line = '_%s _' % line
                 self.wsFactory.prot.relayToCyChat(line)
