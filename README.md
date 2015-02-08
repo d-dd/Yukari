@@ -27,11 +27,10 @@ Yukari needs to have admin rank or higher (3+) because she modifies the channel 
 Set a filter: <pre>@3939([^`]+)#3939, g, <span class="server-whisper">$1</span></pre>  
 
 This is for the gray server-like messages when users queue media to the playlist, and when Yukari removes something from the playlist.  
-Put the url of external.js into the external JS box.
+Edit italics filter: <pre>(^| )\_([^\_].+?[^\_])\_($| ), g, \\1\<em\>\\2\</em\>\\3</pre>
+Set a filter: <pre>__, g, _</pre>
 
-In the MOTD, set an anchor like the following:
-<pre><code>&lt;a id="threadref" href="http://google.com/" target="_blank">Click me!&lt;/a></code></pre>
-Now, you can type `$thread` to get the current href (url), or type `$thread url` to set a new url.
+Put the url of external.js into the external JS box.
 
 ##**Usage:**
 Run with <pre>python yukari.py</pre>
