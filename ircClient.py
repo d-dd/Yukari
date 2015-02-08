@@ -274,6 +274,11 @@ class IrcProtocol(irc.IRCClient):
 
     def privmsg(self, user, channel, msg):
         clog.warning('(privmsg) message from %s in %s' % (user, channel), sys)
+        if channel == self.channelStatus:
+            nick = user[:user.find('!')]
+            self.sendLine('mode %s +b %s' % (channel, user))
+            self.sendLine('KICK %s %s READ-ONLY!' % (channel, nick))
+            return
         if channel != self.channelName:
             return
         self.factory.handle.recIrcMsg(user, channel, msg)
