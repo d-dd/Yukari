@@ -8,12 +8,21 @@ syst = 'Plugin-Add'
 QFLAG = 0b1000 # 8
 
 class Add(object):
+    """A plugin object.
+    Handles $add and $manage. These commands queue media searched
+    from the database file to Cytube."""
+
     def __init__(self):
         self.managing = False
         self.automedia = {}
 
     @commandThrottle(3)
     def _com_add(self, cy, username, args, source):
+        """Parse $add command arguments and pass to callback.
+        Called by $add. Requirements:
+            Source: Cytube chat
+            Rank: non-guest
+        """
         if source != 'chat':
             return
         rank = cy._getRank(username)
@@ -84,6 +93,11 @@ class Add(object):
 
     @commandThrottle(0)
     def _com_manage(self, cy, username, args, source):
+        """Toggle management mode.
+        Called by $manage. Requirements:
+            Source: Cytube chat
+            Rank: 2 or higher
+        """
         if source != 'chat':
             return
         if cy._getRank(username) < 2:
@@ -94,6 +108,8 @@ class Add(object):
             self.managementOff(cy)
 
     def _del_updateAutomedia(self, cy, fdict):
+        """Remove deleted media from self.automedia. Called by CyCall
+        delete."""
         if self.automedia:
             uid = fdict['args'][0]['uid']
             i = cy.getIndexFromUid(uid)
@@ -104,12 +120,16 @@ class Add(object):
                 self._checkSupply(cy)
 
     def _pl_autoadd(self, cy, pl):
+        """Empty self.automedia if playlist has been cleared. Called by
+        CyCall playlist."""
         if self.automedia:
             if not pl: # playlist was cleared (and not merely re-sent by server)
                 self.managementOff(cy, 'Playlist cleared.')
                 self.automedia = {}
 
     def _temp_updateAutomedia(self, cy, fdict):
+        """Delete temp-ed media from self.automedia. Called by 
+        CyCall temporary."""
         if self.automedia:
             uid = fdict['args'][0]['uid']
             # temp = True means media was made temporary
@@ -123,6 +143,10 @@ class Add(object):
                 self._checkSupply(cy)
 
     def _q_updateAutomedia(self, cy, fdict):
+        """Update self.automedia if Cytube callback `queue` is auto
+        media that Yukari has queued. Return QFLAG, which is
+        the bit flag value for auto-media queue to be written to the
+        Queue table."""
         if self.automedia:
             media = fdict['args'][0]['item']['media']
             mType = media['type']
@@ -132,6 +156,8 @@ class Add(object):
                 return QFLAG
 
     def _qfail_updateAutomedia(self, cy, fdict):
+        """Update self.automedia if Cytube callback `queueFail` is auto
+        media that Yukari has queued."""
         if self.automedia:
             args = fdict['args'][0]
             badlink = args.get('link', '')
@@ -143,37 +169,45 @@ class Add(object):
                     self._checkSupply(cy)
 
     def _ul_checkcount(self, cy, fdict):
+        """Turn manage off if Cytube named usercount falls below 2."""
         if len(cy.userdict) < 2 and self.managing:
             self.managementOff(cy, 'No named users.')
 
     def managementOn(self, cy, msg=''):
+        """Turn manage on with msg."""
         self.managing = True
         cy.doSendChat('%s Playlist management enabled.' % msg, toIrc=False)
         self._queueMore(cy, 6 - len(self.automedia))
 
     def managementOff(self, cy, msg=''):
+        """Turn manage off with msg."""
         self.managing = False
         cy.doSendChat('%s Playlist management has been disabled.' % msg,
                        toIrc=False)
         
     def _queueMore(self, cy, count):
+        """Create a database deferred that queries random media."""
         if not self.managing:
             return
         d = self.getRandMedia('q', count, None, None, None, None)
         d.addCallback(self._manageQueue, cy)
 
     def _checkSupply(self, cy):
+        """Check automedia length and add more media if running low."""
         remaining = len(self.automedia)
         clog.warning(str(self.automedia), syst)
         if remaining < 4:
             self._queueMore(cy, 6 - remaining)
 
     def _manageQueue(self, results, cy):
+        """Queue media to Cytube playlist. Called by deferred from
+        _queueMore."""
         for mType, mId in results:
             self.automedia[(mType, mId)] = False
         cy.doAddMedia(results, temp=True, pos='end')
 
     def parseTitle(self, command):
+        """Return parsed title and the rest of the arguments from $add."""
         # argparse doesn't support spaces in arguments, so we search
         # and parse the -t/ --title values in msg ourselves
         tBeg = command.find('-t ')
@@ -189,10 +223,11 @@ class Add(object):
 
     def getRandMedia(self, sample, quantity, username, isRegistered, title,
                      includeRecent):
+        """Return a database deferred. Searches quantity number of media
+        constrained by other arguments."""
         samples = {'queue': 'q', 'q': 'q', 'add': 'a', 'a': 'a', 'like': 'l',
                    'l': 'l'}
         sample = samples[sample]
-        """ Queues up to quantity number of media to the playlist """
         return database.addMedia(sample, username, isRegistered, title,
                                  quantity, includeRecent)
 
