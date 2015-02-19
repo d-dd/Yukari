@@ -18,6 +18,8 @@ class Poke(object):
 
     @commandThrottle(10)
     def _com_poke(self, cy, username, args, source):
+        if source != 'chat':
+            return
         if username == self.waitingPokeUser:
             self.waitingPokeUser = ''
             # User must $poke within 90 seconds
