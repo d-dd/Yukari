@@ -1,4 +1,7 @@
-import json, sys
+import json
+import os
+import sys
+
 from twisted.internet import protocol, reactor
 
 from conf import config
@@ -48,7 +51,7 @@ class Reprint(object):
         subprocess = reactor.spawnProcess(p, sys.executable,
             ['python', 'reprinter.py', '--smid', args, '--user', 
                 config['reprinter']['nicoid'], '--pass',
-                config['reprinter']['nicopass']], {}, path)
+                config['reprinter']['nicopass']], os.environ, path)
 
     def _add_done_video(self, cy, ytid):
         #send a message saying it's done
