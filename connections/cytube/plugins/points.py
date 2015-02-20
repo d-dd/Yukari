@@ -9,6 +9,12 @@ class Points(object):
 
     @commandThrottle(4)
     def _com_greet(self, cy, username, args, source):
+
+        # $greet ings, Yukari.
+        if args.startswith('ings '):
+            reply = 'Greetings, %s!' % username
+            cy.doSendChat(reply, source, username)
+            return
         isReg = cy.checkRegistered(username)
         d = database.getUserFlag(username.lower(), isReg)
         d.addCallback(self.greet, cy, username, isReg, source)
@@ -75,6 +81,7 @@ class Points(object):
         cy.doSendChat('[%s] points:%d (a%d / q%d / l%d / d%d / L%d / D%d)' %
            (username, points, adds, queues, likes, dislikes, liked, disliked),
             source=source, username=querier)
+
     def calculatePoints(self, username, isRegistered):
         d1 = database.calcUserPoints(None, username.lower(), isRegistered)
         d2 = database.calcAccessTime(None, username.lower(), isRegistered)
