@@ -3,8 +3,6 @@ Dependencies:
  httplib2  
  requests  
  
- If you're using a virtual environment, the subprocess may have difficulties locating the module/packages. A workaround is to install the above dependencies outside the virtual env, and use virtualenvwrapper's toggleglobalsitepackages command.  
- 
 Requirements:  
 NND account  
  (There is a way download videos without an account but I haven't explored that yet.)  
