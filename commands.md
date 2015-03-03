@@ -25,7 +25,12 @@
  - `-t` search by title
  - `-T, --temporary` add as temporary
  - `-N, --next` add as next
- - `-r, --recent` Includes the most recent queue in the search pool. By deafult this is set to false, meaning Yukari will exclude 200 of the most recently queued media.
+ - `-r, --recent` Includes the most recent queue in the search pool. By deafult this is set to false, meaning Yukari will exclude 200 of the most recently queued media.  
+
+  Examples:  
+    `$add -u sweetonuts -n 3 -N true -s l`  
+    `$add --temporary true --next true --number 2`  
+
 
 
 
