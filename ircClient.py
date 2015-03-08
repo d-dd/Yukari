@@ -281,6 +281,14 @@ class IrcProtocol(irc.IRCClient):
             return
         if channel != self.channelName:
             return
+        # msg comes as str bytes
+        try:
+            msg = msg.decode('utf-8')
+        except(UnicodeDecodeError):
+            clog.warning('Message not in utf8. Decoding using ISO-8859-1', sys)
+            msg = msg.decode('iso-8859-1')
+        clog.error('isUnicode: %s' % isinstance(msg, unicode), sys)
+        
         self.factory.handle.recIrcMsg(user, channel, msg)
         flag = 0
         self.logProcess(user, msg, flag)
@@ -387,7 +395,7 @@ class IrcProtocol(irc.IRCClient):
         
     def logChat(self, result, status, timeNow, msg, flag):
         status = 0 # we don't really need this
-        msg = msg.decode('utf-8')
+        #msg = msg.decode('utf-8')
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
         binds = (None, result, status, timeNow, msg, flag)
         return database.operate(sql, binds)
