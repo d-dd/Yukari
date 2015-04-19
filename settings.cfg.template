@@ -1,37 +1,44 @@
 [Cytube]
-domain = 
-port = 
-channel = 
-channelpass = #TODO
+domain = sea.cytu.be
+port = 8880 
+channel = teto
+channelpass = #TODO#no need if rank is 2 or above
 username = 
 password = 
-loginurl = 
+loginurl = https://ssl.cytu.be:8443
 
 [irc]
-url = 
-bucket = 16
+url = irc.rizon.net
+bucket = 15
 ssl = False #TODO
 port = 6667
 channel = 
 nick = 
 offlinenick = 
-pass =
+pass = 
 np = 
+status = 
 
 [UserAgent]
 vocadb = 
 
 [api]
-youtube = 
+youtubev3 = 
 
 [telnet]
-port = 9998
+port = 9999
 username =
 password =
 
 [rinserver]
-port = 18019
+port = 18914
 
 [reprinter]
 nicoid = 
-nicopass =
+nicopass = 
+
+[poke]
+pokereply = 
+poketime = 3600
+pokeinterval = 86400
+pokerespondby = 90

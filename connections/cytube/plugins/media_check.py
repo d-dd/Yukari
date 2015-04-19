@@ -1,19 +1,28 @@
-from collections import deque
 import json
-import re
+from collections import deque
+
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
+from twisted.internet.ssl import ClientContextFactory
+
 import database
 from tools import clog
+from conf import config
+
+KEY = config['api']['youtubev3'].encode('utf8')
 
 syst = 'MediaCheck(P)'
 class MediaCheck(object):
     """ Checks Youtube videos to make sure they can be played back in a browser.
         Non-playable media (embedding disabled, private, deleted, etc) will be
         flagged (Media) and deleted from the Cytube playlist.
-        Videos are checked on queue and on changeMedia."""
+        Videos are checked on queue and on changeMedia.
+        
+        As of Youtube APIv3 we can't differentiate the reason why a video is
+        unavailable.
+        """
 
     def __init__(self):
         self.mediaToCheck = deque()
@@ -57,9 +66,12 @@ class MediaCheck(object):
 
     def checkVideoStatus(self, ytId):
         ytId = str(ytId)
-        agent = Agent(reactor)
-        url = ('http://gdata.youtube.com/feeds/api/videos/%s?v=2&alt=json'
-               '&fields=yt:accessControl' % ytId)
+        # Youtube API v3
+        contextFactory = WebClientContextFactory()
+        agent = Agent(reactor, contextFactory)
+        url = ('https://www.googleapis.com/youtube/v3/videos?'
+               'part=status&id=%s&key=%s'% (ytId, KEY))
+               
         d = agent.request('GET', url, 
                           Headers({'Content-type':['application/json']}))
         d.addCallbacks(self.checkStatus, self.networkError, (ytId,))
@@ -84,13 +96,18 @@ class MediaCheck(object):
             clog.error('(processYtCheck) Error decoding JSON: %s' % body, syst)
             return 'BadResponse'
 
-        actions = res['entry']['yt$accessControl']
-        for action in actions:
-            if action['action'] == 'embed':
-                if action['permission'] == 'allowed':
-                    clog.info('(processYtCheck) embed allowed for %s' % ytId)
-                    return defer.succeed('EmbedOk')
-        return defer.succeed('NoEmbed')
+        items = res['items']
+        # if the video is unavailable (private, deleted, etc), Youtube
+        # returns an empty list.
+        if not items:
+            return defer.succeed('NoVid')
+        status = items[0].get('status')
+        if not status:
+            return defer.succeed('UnexpectedJson')
+        if status.get('embeddable'):
+            return defer.succeed('EmbedOk')
+        else:
+            return defer.succeed('NoEmbed')
 
     def networkError(self, err):
         clog.error('Network Error: %s' % err.value, syst)
@@ -100,13 +117,17 @@ class MediaCheck(object):
         if res == 'EmbedOk':
             clog.info('%s EmbedOk' % title, syst)
             database.unflagMedia(0b1, mType, mId)
-        elif res in ('Status503', 'Status403', 'Status404', 'NoEmbed'):
+        elif res in ('Status503', 'Status403', 'Status404', 'NoEmbed','NoVid'):
             clog.warning('%s: %s' % (title, res), syst)
             cy.doDeleteMedia(uid)
             cy.uncache(mId)
             msg = 'Removing non-playable media %s' % title
             database.flagMedia(0b1, mType, mId)
             cy.sendCyWhisper(msg)
+
+class WebClientContextFactory(ClientContextFactory):
+    def getContext(self, hostname, port):
+        return ClientContextFactory.getContext(self)
 
 def setup():
     return MediaCheck()
