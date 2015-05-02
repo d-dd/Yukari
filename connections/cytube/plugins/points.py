@@ -37,6 +37,12 @@ class Points(object):
         dl = defer.DeferredList([d1, d2])
         dl.addCallback(self.returnPoints, cy, querier, username, source)
 
+    def get_part_of_day(self, user_tz_offset, test_time):
+        pass
+
+    def choose_greeting(self, username, points, part_of_day):
+        pass
+
     def greet(self, res, cy, username, isReg, source):
         flag = res[0][0]
         if flag & 1: # user has greeted us before
