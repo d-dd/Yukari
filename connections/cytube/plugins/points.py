@@ -3,6 +3,8 @@ from twisted.internet import defer
 import tools
 from tools import clog, commandThrottle
 
+import time
+
 syst = 'Points'
 
 class Points(object):
@@ -37,11 +39,75 @@ class Points(object):
         dl = defer.DeferredList([d1, d2])
         dl.addCallback(self.returnPoints, cy, querier, username, source)
 
-    def get_part_of_day(self, user_tz_offset, test_time):
-        pass
+    def get_part_of_day(self, user_tz_offset, time_now):
+        """Return part of day depending on time_now and the user's 
+        timzone offset value.
 
-    def choose_greeting(self, username, points, part_of_day):
-        pass
+        user_tz_offset - integer of user's time zone offset in hours
+        time_now - UTC time in seconds
+
+        From  -  To  => part of day
+        ---------------------------
+        00:00 - 04:59 => midnight
+        05:00 - 06:59 => dawn
+        07:00 - 10:59 => morning
+        11:00 - 12:59 => noon
+        13:00 - 16:59 => afternoon
+        17:00 - 18:59 => dusk
+        19:00 - 20:59 => evening
+        21:00 - 23:59 => night
+        """
+        user_time = time_now + (user_tz_offset*60*60)
+        # gmtime[3] is tm_hour
+        user_hour = time.gmtime(user_time)[3]
+
+        if user_hour < 5:
+            return 'midnight'
+        elif user_hour < 7:
+            return 'dawn'
+        elif user_hour < 11:
+            return 'morning'
+        elif user_hour < 13:
+            return 'noon'
+        elif user_hour < 17:
+            return 'afternoon'
+        elif user_hour < 19:
+            return 'dusk'
+        elif user_hour < 21:
+            return 'evening'
+        else:
+            return 'night'
+
+    def choose_greeting(self, username, level, part_of_day):
+        """Return greeting string based on user's level and part of day.
+
+        username - username string
+        level - integer of user's level
+        part_of_day - string from function `get_part_of_day`
+        """
+
+        greetings = {
+                'dawn': 'Good early morning',
+                'morning': 'Good morning',
+                'afternoon': 'Good afternoon',
+                'dusk': 'Good afternoon',
+                'evening': 'Good evening',
+                }
+
+        # Use generic 'Hi' when specific greeting is not implemented
+        greeting = greetings.get(part_of_day, 'Hi')
+
+        if level == 0:
+            comma = ','
+            full_stop = '.'
+        elif level == 1:
+            comma = ','
+            full_stop = '!'
+        else:
+            comma = ''
+            full_stop = '!!'
+
+        return '%s%s %s%s' % (greeting, comma, username, full_stop)
 
     def greet(self, res, cy, username, isReg, source):
         flag = res[0][0]
