@@ -18,13 +18,13 @@ class Reprint(object):
             return
         # user must be rank at least rank 3 AND be on the allowed.txt list
         rank = cy._getRank(username)
-        if rank < 3:
-            clog.debug('no rank', syst)
+        if rank < 2:
+            clog.debug('not enough rank for $reprint', syst)
             return
         with open('connections/cytube/plugins/loaders/allowed.cfg') as f:
             allowed = f.read().lower().split()
             if username.lower() not in allowed:
-                clog.debug('not in allowed.txt', syst)
+                clog.debug('not in allowed.txt for $reprint', syst)
                 return
         try:
             if cy.reprint is False:
