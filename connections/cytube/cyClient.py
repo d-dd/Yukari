@@ -106,7 +106,11 @@ class CyProtocol(WebSocketClientProtocol):
                                          }
 
         for module in modules:
-            instance = module.setup()
+            try:
+                instance = module.setup()
+            except(AttributeError):
+                clog.error('Error importing %s!' % module.__name__, syst)
+                instance = None
             for method in dir(instance):
                 # commands in cytube chat
                 if method.startswith('_com_'):
