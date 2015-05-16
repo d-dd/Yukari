@@ -3,15 +3,10 @@ from collections import deque
 
 from twisted.internet import reactor, defer
 from twisted.internet.task import LoopingCall
-from twisted.web.client import Agent, readBody
-from twisted.web.http_headers import Headers
-from twisted.internet.ssl import ClientContextFactory
 
 import database
 from tools import clog
-from conf import config
-
-KEY = config['api']['youtubev3'].encode('utf8')
+import apiClient
 
 syst = 'MediaCheck(P)'
 class MediaCheck(object):
@@ -65,38 +60,11 @@ class MediaCheck(object):
         return d
 
     def checkVideoStatus(self, ytId):
-        ytId = str(ytId)
-        # Youtube API v3
-        contextFactory = WebClientContextFactory()
-        agent = Agent(reactor, contextFactory)
-        url = ('https://www.googleapis.com/youtube/v3/videos?'
-               'part=status&id=%s&key=%s'% (ytId, KEY))
-               
-        d = agent.request('GET', url, 
-                          Headers({'Content-type':['application/json']}))
-        d.addCallbacks(self.checkStatus, self.networkError, (ytId,))
-        return d
+        d = apiClient.requestYtApi(ytId, 'check')
+        return d.addCallback(self.processYtCheck, ytId)
 
-    def checkStatus(self, response, ytId):
-        d = readBody(response)
-        if response.code == 403:
-            return defer.succeed('Status403')
-        elif response.code == 404:
-            return defer.succeed('Status404')
-        elif response.code == 503:
-            return defer.succeed('Status503')
-        else:
-            d.addCallback(self.processYtCheck, ytId)
-            return d
-
-    def processYtCheck(self, body, ytId):
-        try:
-            res = json.loads(body)
-        except(ValueError):
-            clog.error('(processYtCheck) Error decoding JSON: %s' % body, syst)
-            return 'BadResponse'
-
-        items = res['items']
+    def processYtCheck(self, jsonResponse, ytId):
+        items = jsonResponse['items']
         # if the video is unavailable (private, deleted, etc), Youtube
         # returns an empty list.
         if not items:
@@ -109,10 +77,6 @@ class MediaCheck(object):
         else:
             return defer.succeed('NoEmbed')
 
-    def networkError(self, err):
-        clog.error('Network Error: %s' % err.value, syst)
-        return 'NetworkError'
-
     def flagOrDelete(self, res, cy, mType, mId, title, uid):
         if res == 'EmbedOk':
             clog.info('%s EmbedOk' % title, syst)
@@ -124,10 +88,6 @@ class MediaCheck(object):
             msg = 'Removing non-playable media %s' % title
             database.flagMedia(0b1, mType, mId)
             cy.sendCyWhisper(msg)
-
-class WebClientContextFactory(ClientContextFactory):
-    def getContext(self, hostname, port):
-        return ClientContextFactory.getContext(self)
 
 def setup():
     return MediaCheck()

@@ -95,6 +95,7 @@ def requestApiByPv(mType, mId, timeNow):
     return dd
 
 def youtubeDesc(res, mType, mId, timeNow):
+    """Return a deferred of a Youtube API query"""
     if res[0] == 0: # no match
         clog.debug(('(youtubeDesc) No Youtube id match. Will attemp to retrieve'
                    'and parse description %s') % res, syst)
@@ -116,8 +117,13 @@ def nicoAcquire(res):
         clog.debug('(youtubeDesc) No Nico id match.', syst)
     return defer.succeed((1, res[0]))
 
-def searchYtDesc(res, mType, mId, timeNow):
-    m = nicoMatch.search(res)
+def searchYtDesc(jsonResponse, mType, mId, timeNow):
+    items = jsonResponse['items']
+    if not items:
+        clog.error('searchYtDesc: no video found', syst)
+        return defer.fail(Exception('No video found'))
+    desc = items[0]['snippet']['description']
+    m = nicoMatch.search(desc)
     if m:
         nicoId = m.group(0)
         clog.debug(nicoId, 'searchYtDesc')
