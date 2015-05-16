@@ -4,7 +4,8 @@ from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from conf import config
 from tools import clog
-import database, apiClient
+import database
+import connections.apiClient as apiClient
 
 
 syst = 'vdbapi'

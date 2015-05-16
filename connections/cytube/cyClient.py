@@ -1,13 +1,19 @@
 # Standard Library
-import json, time, re, random, os, importlib
+import importlib
+import json
+import os
+import random
+import re
+import time
 from collections import deque
+
 # Twisted Libraries
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 # Yukari
-import database, apiClient, tools, vdbapi
+import database, tools
 from tools import clog, getTime
 from conf import config
 
@@ -308,15 +314,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.sendf({'name': 'initUserPLCallbacks', 'args': {}})
         self.sendf({'name': 'listPlaylists', 'args': {}})
                 
-    def searchYoutube(self, msg):
-        m = self.ytUrl.search(msg)
-        if m:
-            ytId = m.group(6)
-            clog.debug('(searchYoutube) matched: %s' % ytId, syst)
-            d = apiClient.requestYtApi(ytId)
-            d.addCallbacks(self.doSendChat, self.errYtInfo)
-            d.addErrback(self.errcatch)
-
     def _cyCall_login(self, fdict):
         if fdict['args'][0]['success']:
             self.joinRoom()

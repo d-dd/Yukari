@@ -6,7 +6,7 @@ from twisted.internet.task import LoopingCall
 
 import database
 from tools import clog
-import apiClient
+import connections.apiClient as apiClient
 
 syst = 'MediaCheck(P)'
 class MediaCheck(object):

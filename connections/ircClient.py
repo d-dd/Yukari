@@ -287,7 +287,7 @@ class IrcProtocol(irc.IRCClient):
         except(UnicodeDecodeError):
             clog.warning('Message not in utf8. Decoding using ISO-8859-1', sys)
             msg = msg.decode('iso-8859-1')
-        clog.error('isUnicode: %s' % isinstance(msg, unicode), sys)
+        #clog.error('isUnicode: %s' % isinstance(msg, unicode), sys)
         
         self.factory.handle.recIrcMsg(user, channel, msg)
         flag = 0
@@ -369,7 +369,7 @@ class IrcProtocol(irc.IRCClient):
         return defer.succeed(key)
 
     def cacheKey(self, res, nickname):
-        clog.error('the key is %s:' % res[0], sys)
+        #clog.error('the key is %s:' % res[0], sys)
         assert res, 'no res at cacheKey'
         if res:
             clog.info("(cacheKey) cached %s's key %s" % (nickname, res[0]))

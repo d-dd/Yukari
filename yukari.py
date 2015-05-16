@@ -12,13 +12,14 @@ import time
 from twisted.internet import reactor, defer
 from twisted.internet.defer import Deferred
 from twisted.manhole import telnet
-from ircClient import IrcFactory
 from autobahn.twisted.websocket import connectWS
 # Yukari
 from ext.rinception import LineReceiver, LineReceiverFactory
 from connections.cytube.cyClient import CyProtocol, WsFactory
+import connections.cytube.cyProfileChange as cyProfileChange
+from connections.ircClient import IrcFactory
 from conf import config
-import database, tools, apiClient, cyProfileChange
+import database, tools
 from tools import clog
 
 sys = 'Yukari'
