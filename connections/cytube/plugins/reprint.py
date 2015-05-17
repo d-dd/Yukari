@@ -62,7 +62,7 @@ class Reprint(object):
         # think it's a livestream and will never queue to the next video.
         # Perhaps Yukari can call the YT API herself and only add if it returns
         # a valid duration #TODO
-        reactor.callLater(300, cy.sendf, {'name': 'queue', 'args': {'type': 'yt', 
+        reactor.callLater(600, cy.sendf, {'name': 'queue', 'args': {'type': 'yt', 
                             'id': ytid, 'pos': 'end', 'temp': False}})
 
 class ReprintProtocol(protocol.ProcessProtocol):
