@@ -1,6 +1,7 @@
-from twisted.internet import defer
+from twisted.internet import defer, reactor, task
 from twisted.enterprise import adbapi
 from tools import clog
+from sqlite3 import OperationalError
 sys = 'database'
 _USERIDSQL = '(SELECT userId FROM CyUser WHERE nameLower=? AND registered=?)'
 
@@ -10,11 +11,33 @@ def turnOnFK(txn):
 class NoRowException(Exception):
     pass
 
-def operate(sql, binds):
-    return dbpool.runOperation(sql, binds)
+def operate(sql, binds, attempt=0):
+    d = task.deferLater(reactor, attempt * 1, dbpool.runOperation,  sql, binds)
+    #d = task.deferLater(reactor, attempt * 1, raise_error, sql, binds)
+    attempt += 1
+    d.addErrback(retryDatabase, 'operate', sql, binds, attempt)
+    return d
 
-def query(sql, binds):
-    return dbpool.runQuery(sql, binds)
+def query(sql, binds, attempt=0):
+    d = task.deferLater(reactor, attempt * 1, dbpool.runQuery,  sql, binds)
+    attempt += 1
+    d.addErrback(retryDatabase, 'query', sql, binds, attempt)
+    return d
+
+def raise_error(*args, **kwargs):
+    raise OperationalError('teto')
+
+def retryDatabase(error, operation, sql, binds, attempt):
+    if attempt >= 5:
+        clog.error(error.getBriefTraceback(), 
+                'Reached max attempts: %s' % attempt)
+        return
+    clog.warning(error.getBriefTraceback(), 'retrying attempt: %s' % attempt)
+    if operation == 'operate':
+        return operate(sql, binds, attempt)
+    elif operation == 'query':
+        return query(sql, binds, attempt)
+
 
 def dbQuery(columns, table, **kwargs):
     """
@@ -87,7 +110,8 @@ def _bulkLogChat(txn, table, chatList):
 
 def insertChat(*args):
     sql = 'INSERT INTO CyChat VALUES(?, ?, ?, ?, ?, ?, ?)'
-    return dbpool.runOperation(sql, args)
+    #return dbpool.runOperation(sql, args)
+    return operate(sql, args)
 
 def bulkLogMedia(playlist):
     return dbpool.runInteraction(_bulkLogMedia, playlist)
