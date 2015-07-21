@@ -72,7 +72,7 @@ class MediaCheck(object):
         status = items[0].get('status')
         if not status:
             return defer.succeed('UnexpectedJson')
-        if status.get('embeddable'):
+        if status.get('embeddable') and status.get('uploadStatus') !='rejected':
             return defer.succeed('EmbedOk')
         else:
             return defer.succeed('NoEmbed')
