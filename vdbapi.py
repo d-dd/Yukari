@@ -1,16 +1,41 @@
-import json, re, time
+import json, re, time, random
 from twisted.internet import reactor, defer
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
 from conf import config
-from tools import clog
+from tools import clog, getTime
 import database
 import connections.apiClient as apiClient
-
+from functools import partial
 
 syst = 'vdbapi'
 UserAgentVdb = config['UserAgent']['vocadb'].encode('UTF-8')
 nicoMatch = re.compile(r'sm[0-9]{6,9}|nm[0-9]{6,9}')
+
+def processVdbJsonForSongId(body):
+    clog.info('(processVdbJsonForSongId) Received reply from VocaDB', syst)
+   # clog.debug('(processVdbJsonForSongId) %s' % body, syst)
+    body = body.decode('UTF-8')
+    try:
+        pbody = json.loads(body)
+    except(ValueError):
+        return defer.fail(None)
+    try:
+        if 'message' in pbody:
+            clog.error(pbody['message'], syst)
+    except(TypeError): # body is null (pbody is None)
+        clog.warning('(processVdbJsonForSongId) null from Vocadb', syst)
+        return defer.succeed(0)
+    
+    songId = pbody.get('id')
+    
+    # Couldn't find songId, this might be a list of songs...so pick the first ;)
+    if not songId:
+        items = pbody.get('items')
+        if items and items[0]:
+            songId = items[0]['id']
+
+    return defer.succeed((body, songId))
 
 def processVdbJson(body):
     clog.info('(processVdbJson) Received reply from VocaDB', syst)
@@ -27,8 +52,7 @@ def processVdbJson(body):
         clog.warning('(processVdbJson) null from Vocadb', syst)
         return defer.succeed(0)
 
-    songId = pbody['id']
-    return defer.succeed((body, songId))
+    return defer.succeed((pbody))
 
 def requestSongById(mType, mId, songId, userId, timeNow, method):
     """ Returns a deferred of Vocadb data of Song songId"""
@@ -53,8 +77,56 @@ def requestApiBySongId(res, songId, timeNow):
     clog.warning('(requestApiBySongId) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
     d.addCallback(readBody)
-    d.addCallbacks(processVdbJson, apiError)
+    d.addCallbacks(processVdbJsonForSongId, apiError)
     d.addCallback(database.insertSong, timeNow)
+    return d
+
+def requestPVByTagOffset(cbInfo, tag, offset):
+    def localCb(res):
+        try:
+            pbody = json.loads(res[0])
+        except(ValueError):
+            return defer.fail(Exception('No video found'))
+        
+        if pbody.get('items') and pbody['items'][0]:
+            for pv in pbody['items'][0]['pVs']:
+                # TODO: soundcloud, too
+                if pv[u'service'] == "Youtube":
+                    return [['yt', pv['pvId']]]
+
+    agent = Agent(reactor)
+    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&preferAccurateMatches=false&nameMatchMode=Partial&tag=%s&getTotalCount=false&start=%i&fields=PVs&maxResults=1' % (tag, offset)
+    url = url.encode('utf8')
+    clog.warning('(requestSongByTagOffset) %s' % url, syst)
+    d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
+    d.addCallback(readBody)
+    d.addCallbacks(processVdbJsonForSongId, apiError)
+    d.addCallback(localCb)
+    return d
+
+def requestSongByTagCountCallback(cbInfo, quantity, tag, body):
+    print(body)
+    total = body.get('totalCount')
+
+    if total:
+        quantity = min(total, quantity)
+        indexes = random.sample(xrange(total), quantity)
+        for i in indexes:
+            d = requestPVByTagOffset(cbInfo, tag, i)
+            d.addCallback(cbInfo[0], cbInfo[1], cbInfo[2])
+    else:
+        #uh, error.
+        return defer.fail(Exception('Bad response'))
+
+def requestSongsByTag(cbInfo, quantity, tag):
+    agent = Agent(reactor)
+    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&preferAccurateMatches=false&nameMatchMode=Partial&tag=%s&getTotalCount=true&maxResults=0' % tag
+    url = url.encode('utf8')
+    clog.warning('(requestSongsByTag) %s' % url, syst)
+    d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
+    d.addCallback(readBody)
+    d.addCallbacks(processVdbJson, apiError)
+    d.addCallbacks(partial(requestSongByTagCountCallback, cbInfo, quantity, tag))
     return d
 
 def requestSongByPv(res, mType, mId, userId, timeNow, method):
@@ -91,7 +163,7 @@ def requestApiByPv(mType, mId, timeNow):
     clog.warning('(requestApiByPv) %s' % url, syst)
     dd = agent.request('GET', str(url), Headers({'User-Agent':[UserAgentVdb]}))
     dd.addCallback(readBody)
-    dd.addCallbacks(processVdbJson, apiError)
+    dd.addCallbacks(processVdbJsonForSongId, apiError)
     dd.addCallback(database.insertSong, timeNow)
     return dd
 
