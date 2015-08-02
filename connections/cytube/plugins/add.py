@@ -2,6 +2,7 @@ import argparse
 import re
 import database
 import tools
+import vdbapi
 from tools import clog, commandThrottle
 
 syst = 'Plugin-Add'
@@ -60,6 +61,7 @@ class Add(object):
         # Yukari removes last 100 rows of queue from the media sample
         # set recent to True to disable this behavior
         parser.add_argument('-r', '--recent', default=False, type=bool)
+        parser.add_argument('-z', '--tag', default='')
 
         try:
             args = parser.parse_args(args)
@@ -72,9 +74,9 @@ class Add(object):
             args.omit = False
 
         info = ('Quantity:%s, sample:%s, user:%s, guest:%s, temp:%s, '
-                'pos:%s, title:%s, include ommited:%s, recent:%s'
+                'pos:%s, title:%s, include ommited:%s, recent:%s, tag:%s'
                 % (args.number, args.sample, args.user, args.guest,
-                   args.temporary, args.next, title, args.omit, args.recent))
+                   args.temporary, args.next, title, args.omit, args.recent, args.tag))
         #self.doSendChat(reply)
         clog.debug('(_com_add) %s' % info, syst)
         isRegistered = not args.guest
@@ -87,9 +89,14 @@ class Add(object):
         if args.user == 'anyone':
             args.user = None
         
-        d = self.getRandMedia(args.sample, args.number, args.user, isRegistered,
+        if args.tag:
+            #cap at 10 songs...getting songs by tag is expensive and slow!
+            args.number = min(args.number, 10)
+            d = self.getVocadbMedia((cy.doAddMedia, args.temporary, args.next), args.number, args.tag)
+        else:
+            d = self.getRandMedia(args.sample, args.number, args.user, isRegistered,
                                       title, args.recent)
-        d.addCallback(cy.doAddMedia, args.temporary, args.next)
+            d.addCallback(cy.doAddMedia, args.temporary, args.next)
 
     @commandThrottle(0)
     def _com_manage(self, cy, username, args, source):
@@ -230,6 +237,9 @@ class Add(object):
         sample = samples[sample]
         return database.addMedia(sample, username, isRegistered, title,
                                  quantity, includeRecent)
+
+    def getVocadbMedia(self, cbInfo, quantity, tag):
+        return vdbapi.requestSongsByTag(cbInfo, quantity, tag)
 
 def setup():
     return Add()
