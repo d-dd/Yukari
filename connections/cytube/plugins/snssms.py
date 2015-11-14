@@ -36,8 +36,6 @@ class SnsReminder(object):
             num = num[1:]
         number = '1-{0}-{1}-{2}'.format(num[0:3], num[3:6], num[6:10])
         self.dbQuerySubAttempt(cy, username, rank, number)
-  #      return
-  #      self.subscribeSms(None, cy, username, number)
     
     def subscribeSms(self, result, cy, username, rank, number):
         path = 'connections/cytube/plugins'
