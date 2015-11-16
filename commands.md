@@ -39,6 +39,7 @@
 - `$points`  Show points and basic user statistics. Adding and queuing media will generate more points. Staying in the channel will yield a small amount of points.  
 - The stats are <b>a</b>dds, <b>q</b>ueues, <b>l</b>ikes (received), <b>d</b>islikes (received), <b>L</b>iked, <b>D</b>isliked
 - `$read` Tell Yukari that I have read this.
+- `$sms number` Subscribe to Mikumonday reminder via SMS. `number` is a valid U.S. phone number that supports text messages from short codes. Message and data rates may apply. A reminder will be published each week, approximatley 4 hours before Mikumonday begins, and also on special occasions and annoucements (not to exceed 3 times a year).
 
 ##**CyTube Moderator commands:**
 - `$manage` Set Yukari to manage the playlist. Yukari will continually queue videos (as temporary, at end) until the room is unoccupied by named users, the playlist is cleared, or manually cancelled (with `$manage`). 
