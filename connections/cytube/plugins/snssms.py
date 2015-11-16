@@ -56,7 +56,7 @@ class SnsReminder(object):
     def dbQuerySubAttemptRes(self, result, cy, username, rank, number):
         if not result: #user not in table yet
             d = self.dbWriteSubAttempt(cy, username, rank)
-            d.addCallback(subscribeSms, cy, username, rank, number)
+            d.addCallback(self.subscribeSms, cy, username, rank, number)
             return d
         else:
             if result[0][0] > 3:
