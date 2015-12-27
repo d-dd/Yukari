@@ -80,6 +80,32 @@ def parseAnagramBody(body):
     if m:
         return m.groups()[0]
 
+def getCySioClientConfig():
+    """GET Socket.IO client configuration for the server we are trying
+    to connect to.
+    Make a GET request to /socketconfig/<channelname>.json
+
+    https://github.com/calzoneman/sync/blob/3.0/docs/socketconfig.md
+    """
+    t = (config['Cytube']['domain'], config['Cytube']['channel'])
+    url = 'http://{0}/socketconfig/{1}.json'.format(*t)
+    url = url.encode('utf-8')
+    agent = Agent(reactor)
+    clog.warning(url, '~~~')
+    d = agent.request('GET', url)
+    d.addCallback(cbGetCySioClientConfig)
+    return d
+
+def cbGetCySioClientConfig(response):
+    d = readBody(response)
+    return d
+  #  return readBody(response)
+  #  clog.warning(response, '@@@')
+  #  clientConfig = json.loads(readBody(response))
+  #  clog.warning(clientConfig, '###')
+  #  return clientConfig
+    
+
 #d = requestYtApi('Dxt3OonUmFY', 'check')
 #d = requestYtApi('kMhBHBYHqus', 'check')
 #d.addCallback(printres)

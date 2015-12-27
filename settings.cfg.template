@@ -1,6 +1,5 @@
 [Cytube]
-domain = sea.cytu.be
-port = 8880 
+domain = cytu.be
 channel = teto
 channelpass = #TODO#no need if rank is 2 or above
 username = 

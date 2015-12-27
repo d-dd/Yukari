@@ -2,6 +2,7 @@
 # Standard Library
 from collections import deque
 import importlib
+import json
 import os
 import random
 import re
@@ -15,6 +16,7 @@ from twisted.manhole import telnet
 from autobahn.twisted.websocket import connectWS
 # Yukari
 from ext.rinception import LineReceiver, LineReceiverFactory
+from connections import apiClient
 from connections.cytube.cyClient import CyProtocol, WsFactory
 import connections.cytube.cyProfileChange as cyProfileChange
 from connections.ircClient import IrcFactory
@@ -104,7 +106,7 @@ class Connections:
         d = database.getCurrentAndMaxProfileId()
         d.addCallback(self.cbChangeProfile)
         if not self.cy:
-            d.addBoth(self.connectCy)
+            d.addBoth(self.getPort)
 
     def cbChangeProfile(self, res):
         #clog.debug('(cbChangeProfile) %s' % res, sys)
@@ -140,10 +142,18 @@ class Connections:
         clog.error(err, sys)
         return err
 
-    def connectCy(self, ignored):
+    def getPort(self, ignored):
+        d = apiClient.getCySioClientConfig()
+        d.addCallback(self.connectCy)
+
+    def connectCy(self, sioClientConfig):
+        sioClientConfig = json.loads(sioClientConfig)
+        clog.error(sioClientConfig, '!!!')
         host = config['Cytube']['domain']
-        port = config['Cytube']['port']
-        ws = 'ws://%s:%s/socket.io/?transport=websocket' % (host, port)
+        s = sioClientConfig['servers'][1]['url']
+        #port = config['Cytube']['port']
+        #ws = 'ws://%s:%s/socket.io/?transport=websocket' % (host, port)
+        ws = 'ws://{0}/socket.io/?transport=websocket'.format(s[s.find('//')+2:])
         clog.debug('(cySocketIo) Cytube ws uri: %s' % ws, sys)
         self.wsFactory = WsFactory(ws)
         self.wsFactory.handle = self
