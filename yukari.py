@@ -74,7 +74,7 @@ class Connections:
         self.ircUserCount = 0
 
         self.ircChan = str(config['irc']['channel'])
-        if not self.ircChan.startswith('#'):
+        if self.ircChan and not self.ircChan.startswith('#'):
             self.ircChan = '#' + self.ircChan
         self.cyName = str(config['Cytube']['username'])
         self.lastIrcChat = 0
@@ -96,17 +96,22 @@ class Connections:
         msg = ('[status] Could not connect to server. Attempting to reconnect '
               'in %d seconds.' % self.cyRetryWait)
         #self.sendToIrc(msg)
-        reactor.callLater(self.cyRetryWait, self.cyChangeProfile)
+        reactor.callLater(self.cyRetryWait, self.startCytubeClient)
         self.cyRetryWait = (self.cyRetryWait+1)**(1+random.random())
         # return between 2 and 300
         return min(max(2, self.cyRetryWait), 300)
+
+    def startCytubeClient(self):
+        """Change the profile and GET the socket io address"""
+        dl = defer.DeferredList([apiClient.getCySioClientConfig(),
+                                 self.cyChangeProfile()])
+        dl.addCallback(self.connectCy)
 
     def cyChangeProfile(self):
         """ Change Yukari's profile picture and text on CyTube """
         d = database.getCurrentAndMaxProfileId()
         d.addCallback(self.cbChangeProfile)
-        if not self.cy:
-            d.addBoth(self.getPort)
+        return d
 
     def cbChangeProfile(self, res):
         #clog.debug('(cbChangeProfile) %s' % res, sys)
@@ -142,22 +147,19 @@ class Connections:
         clog.error(err, sys)
         return err
 
-    def getPort(self, ignored):
-        d = apiClient.getCySioClientConfig()
-        d.addCallback(self.connectCy)
-
-    def connectCy(self, sioClientConfig):
-        sioClientConfig = json.loads(sioClientConfig)
-        clog.error(sioClientConfig, '!!!')
-        host = config['Cytube']['domain']
-        s = sioClientConfig['servers'][1]['url']
-        #port = config['Cytube']['port']
-        #ws = 'ws://%s:%s/socket.io/?transport=websocket' % (host, port)
-        ws = 'ws://{0}/socket.io/?transport=websocket'.format(s[s.find('//')+2:])
-        clog.debug('(cySocketIo) Cytube ws uri: %s' % ws, sys)
-        self.wsFactory = WsFactory(ws)
-        self.wsFactory.handle = self
-        connectWS(self.wsFactory)
+    def connectCy(self, startresults):
+        if not startresults[0][0]:
+            clog.error('Failed to retrieve server socket.io configuration')
+        else:
+            sioClientConfig = json.loads(startresults[0][1])
+            clog.error(sioClientConfig, '!!!')
+            host = config['Cytube']['domain']
+            s = sioClientConfig['servers'][1]['url']
+            ws = 'ws://{0}/socket.io/?transport=websocket'.format(s[s.find('//')+2:])
+            clog.debug('(cySocketIo) Cytube ws uri: %s' % ws, sys)
+            self.wsFactory = WsFactory(ws)
+            self.wsFactory.handle = self
+            connectWS(self.wsFactory)
 
     def ircConnect(self):
         if self.ircChan:
@@ -289,6 +291,10 @@ class Connections:
         # Starts pre-shutdown cleanup
         clog.info('(cleanup) Cleaning up for shutdown!', sys)
         self.done = Deferred()
+        # if nothing has started, shutdown immediately.
+        if not self.irc and not self.cy:
+            clog.info('(cleanup) Nothing to clean!', sys)
+            self.done.callback(None)
         if self.irc:
             self.ircFactory.prot.partLeave('Shutting down.')
         if self.cy:
@@ -327,7 +333,7 @@ def main():
     clog.warning('test custom log', 'cLog tester')
 
     yukari = Connections()
-    yukari.cyChangeProfile()
+    yukari.startCytubeClient()
     yukari.ircConnect()
     #yukari.rinstantiate(int(config['rinserver']['port']))
     reactor.callWhenRunning(createShellServer, yukari)

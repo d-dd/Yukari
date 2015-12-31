@@ -99,11 +99,6 @@ def getCySioClientConfig():
 def cbGetCySioClientConfig(response):
     d = readBody(response)
     return d
-  #  return readBody(response)
-  #  clog.warning(response, '@@@')
-  #  clientConfig = json.loads(readBody(response))
-  #  clog.warning(clientConfig, '###')
-  #  return clientConfig
     
 
 #d = requestYtApi('Dxt3OonUmFY', 'check')
