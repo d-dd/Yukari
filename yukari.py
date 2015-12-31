@@ -129,7 +129,7 @@ class Connections:
         password = config['Cytube']['password']
         text = res[0][1]
         imgurl = res[0][2]
-        d = cyProfileChange.changeProfile(name, password, text, imgurl)
+        d = cyProfileChange.changeProfileInfo(text, imgurl)
         d.addCallback(self.setProfileFlags, currentRow, nextRow)
         return d
     

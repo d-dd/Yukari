@@ -4,7 +4,6 @@ channel = teto
 channelpass = #TODO#no need if rank is 2 or above
 username = 
 password = 
-loginurl = https://ssl.cytu.be:8443
 
 [irc]
 url = irc.rizon.net
