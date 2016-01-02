@@ -97,8 +97,11 @@ def getCySioClientConfig():
     return d
 
 def cbGetCySioClientConfig(response):
-    d = readBody(response)
-    return d
+    if response.code == 200:
+        return readBody(response)
+    else:
+        return defer.fail(response)
+
     
 
 #d = requestYtApi('Dxt3OonUmFY', 'check')

@@ -150,9 +150,9 @@ class Connections:
     def connectCy(self, startresults):
         if not startresults[0][0]:
             clog.error('Failed to retrieve server socket.io configuration')
+            self.restartConnection()
         else:
             sioClientConfig = json.loads(startresults[0][1])
-            clog.error(sioClientConfig, '!!!')
             host = config['Cytube']['domain']
             s = sioClientConfig['servers'][1]['url']
             ws = 'ws://{0}/socket.io/?transport=websocket'.format(s[s.find('//')+2:])
