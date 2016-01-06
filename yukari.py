@@ -104,8 +104,13 @@ class Connections:
     def startCytubeClient(self):
         """Change the profile and GET the socket io address"""
         dl = defer.DeferredList([apiClient.getCySioClientConfig(),
-                                 self.cyChangeProfile()])
-        dl.addCallback(self.connectCy)
+                                 self.cyChangeProfile()],
+                                 consumeErrors=True)
+        dl.addCallbacks(self.connectCy, self.failedStartCytube)
+
+    def failedStartCytube(self, result):
+        clog.error(result)
+        self.restartConnection()
 
     def cyChangeProfile(self):
         """ Change Yukari's profile picture and text on CyTube """

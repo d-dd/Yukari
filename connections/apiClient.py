@@ -80,6 +80,11 @@ def parseAnagramBody(body):
     if m:
         return m.groups()[0]
 
+
+def printError(err):
+    clog.error('Error %s' % err)
+    return err
+
 def getCySioClientConfig():
     """GET Socket.IO client configuration for the server we are trying
     to connect to.
@@ -91,9 +96,8 @@ def getCySioClientConfig():
     url = 'http://{0}/socketconfig/{1}.json'.format(*t)
     url = url.encode('utf-8')
     agent = Agent(reactor)
-    clog.warning(url, '~~~')
     d = agent.request('GET', url)
-    d.addCallback(cbGetCySioClientConfig)
+    d.addCallbacks(cbGetCySioClientConfig, printError)
     return d
 
 def cbGetCySioClientConfig(response):
