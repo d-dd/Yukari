@@ -91,7 +91,7 @@ class Connections:
                     self.triggers['commands'][trigger] = getattr(instance, method)
                     clog.info('Imported %s!' % trigger, sys)
 
-    def restartConnection(self):
+    def restartConnection(self, *args):
         clog.error('restarting connection in %s' % self.cyRetryWait, sys)
         msg = ('[status] Could not connect to server. Attempting to reconnect '
               'in %d seconds.' % self.cyRetryWait)
@@ -303,7 +303,8 @@ class Connections:
         if self.irc:
             self.ircFactory.prot.partLeave('Shutting down.')
         if self.cy:
-            self.wsFactory.prot.cleanUp()
+            self.cyRestart = False
+            self.wsFactory.prot.sendClose()
         return self.done
 
     def doneCleanup(self, protocol):
