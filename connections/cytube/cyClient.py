@@ -660,7 +660,9 @@ class CyProtocol(WebSocketClientProtocol):
         self.unloggedChat = []
         # don't return a deferred here! bad things will happen
         if chatlist:
-            database.bulkLogChat('CyChat', chatlist)
+            return database.bulkLogChat('CyChat', chatlist)
+        else:
+            return defer.succeed(None)
 
     def deferredChat(self, res, chatArgs):
         """ Logs chat to database. Since this will be added to the userAdd
@@ -742,6 +744,7 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.insertUserInOut(keyId, timeJoined, timeNow)
         d.addCallback(lambda __: defer.succeed(keyId))
         d.addErrback(self.errcatch)
+        return d
 
     def _cyCall_userLeave(self, fdict):
         timeNow = getTime()
@@ -1003,7 +1006,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.doSendJs((';'.join(js)+';'))
 
     def _cyCall_setCurrent(self, fdict):
-        """ Let's us know which media is being played, by its uid.
+        """ Lets us know which media is being played, by its uid.
         We use this instead of changeMedia because it is the only way to know
         which media is playing if there are duplicates. setCurrent is sometimes
         called when media is not changed, such as when the permission is 
@@ -1035,7 +1038,8 @@ class CyProtocol(WebSocketClientProtocol):
         try:
             qId = qD.result
         except(AttributeError, ValueError):
-            clog.warning('qId is not ready yet. Adding as callback', syst)
+            clog.warning('qId for %s, %s is not ready yet. '
+                    'Adding as callback' % (mType, mId), syst)
             qD.addCallback(self.cbSetCurrent, fdict) #mType, mId, mTitle, seconds)
             return
         self.cbSetCurrent(None, fdict)
@@ -1125,25 +1129,22 @@ class CyProtocol(WebSocketClientProtocol):
             method(self, fdict)
 
     def cleanUp(self):
-        # set restart to False
-        self.factory.handle.cyRestart = False
-        # disconnect first so we don't get any more join/leaves
-        self.sendClose()
+        tools.cleanLoops(self.loops)
+        tools.cleanLaters(self.laters)
+        cleanDeferredList = []
         # log unlogged chat
-        self.bulkLogChat()
+        cleanDeferredList.append(self.bulkLogChat())
         # log everyone's access time before shutting down
-        dl = self.logUserInOut()
-        dl.addCallback(self.doneClean)
+        self.logUserInOut(cleanDeferredList)
+        return defer.DeferredList(cleanDeferredList)
 
-    def doneClean(self, res):
-        self.factory.handle.doneCleanup('cy')
-
-    def logUserInOut(self):
+    def logUserInOut(self, l):
+        """Add user login logout database writes deferreds to 
+        cleanDeferredList"""
         timeNow = getTime() 
-        l = []
         for name, user in self.userdict.iteritems():
             l.append(user['deferred'].addCallback(self.userLeave, user, timeNow))
-        return defer.DeferredList(l)
+        # no need to return anything since it is manipulating a list
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given
@@ -1209,36 +1210,37 @@ class WsFactory(WebSocketClientFactory):
 
     def __init__(self, arg):
         WebSocketClientFactory.__init__(self, arg)
+        self.prot = None
 
     def startedConnecting(self, connector):
         clog.debug('WsFactory started connecting to Cytube..', syst)
 
     def clientConnectionLost(self, connector, reason):
         clog.warning('(clientConnectionLost) Connection lost. %s' % reason, syst)
+        self.handle.cy = False
         self.reconnect(connector, reason)
         self.handle.cyAnnouceLeftRoom()
 
 
     def clientConnectionFailed(self, connector, reason):
+        self.handle.cy = False
         self.reconnect(connector, reason)
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
                     % reason, syst)
 
+    def doneClean(self, res):
+        if self.handle.cyRestart:
+        # service interruption - reconnect
+            self.handle.restartConnection()
+        else:
+        # when we are shutting down
+            self.handle.doneCleanup('cy')
+
     def reconnect(self, connector, reason):
-        self.handle.cy = False
         if time.time() - self.handle.cyLastDisconnect > 60:
             self.handle.cyRetryWait = 0
         self.handle.cyLastDisconnect = time.time()
-        try:
-            self.prot.logUserInOut()
-            tools.cleanLoops(self.prot.loops)
-            tools.cleanLaters(self.prot.laters)
-        except(AttributeError):
-            clog.warning(('clientConnectionLost: cannot logUserInOut().'
-                         ' "prot" does not exist.', syst))
-            # prot doesn't exist yet
-        if self.handle.cyRestart:
-            clog.error('clientConnectionLost! Reconnecting in %d seconds'
-                       % self.handle.cyRetryWait, syst)
-            # reconnect
-            self.handle.restartConnection()
+        if not self.prot:
+            return
+        d = self.prot.cleanUp()
+        d.addCallback(self.doneClean)
