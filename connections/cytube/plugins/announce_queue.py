@@ -1,7 +1,28 @@
-from tools import clog
+from tools import clog, commandThrottle
 syst = 'AnnounceQueue'
 class AnnounceQueue(object):
+    """Plugin object.
+    Announces in Cytube chat when a user queues media to the
+    playlist. Toggle with $announcequeue.
+    """
+
+    def __init__(self):
+        self.announce = True
+        
+    @commandThrottle(0)
+    def _com_announcequeue(self, cy, username, args, source):
+        """Toggle queue annoucement
+        Source: Cytube chat or Cytube PM
+        Rank: Moderator"""
+        rank = cy._getRank(username)
+        if rank < 2:
+            return
+        self.announce = not self.announce
+        cy.doSendChat('Announce queue: %s' % self.announce, toIrc=False)
+
     def _q_announceQueue(self, cy, fdict):
+        if not self.announce:
+            return
         try:
             title = fdict['args'][0]['item']['media']['title']
             queueby = fdict['args'][0]['item']['queueby']
