@@ -15,7 +15,7 @@ class BasicCommands(object):
         if source != 'pm':
             return
         # people who read the readme/this
-        if self.checkRegistered(username):
+        if cy.checkRegistered(username):
             database.flagUser(2, username.lower(), 1)
 
     @commandThrottle(1)
@@ -23,7 +23,7 @@ class BasicCommands(object):
         if source != 'pm':
             return
             # people who have read this
-        if self.checkRegistered(username):
+        if cy.checkRegistered(username):
             database.flagUser(4, username.lower(), 1)
 
 
