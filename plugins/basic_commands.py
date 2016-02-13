@@ -107,7 +107,8 @@ class BasicPlugin(object):
 
     def _coin(self, yuka, username, args, source):
         reactor.callLater(0.2, yuka.reply,
-                          '[coin flip]: %s' % random.choice(['Heads', 'Tails']))
+                          '[coin flip]: %s' % random.choice(['Heads', 'Tails']),
+                          source, username)
         
     def _dice(self, yuka, username, args, source):
         if not args:
