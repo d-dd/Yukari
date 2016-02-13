@@ -106,7 +106,7 @@ class BasicPlugin(object):
         reactor.callLater(0.2, yuka.reply, msg, source, username)
 
     def _coin(self, yuka, username, args, source):
-        reactor.callLater(0.2, yuka.sendChats,
+        reactor.callLater(0.2, yuka.reply,
                           '[coin flip]: %s' % random.choice(['Heads', 'Tails']))
         yuka.reply(msg, source, username)
         
@@ -141,7 +141,7 @@ class BasicPlugin(object):
             plural = 's'
         msg = ('[Dice roll%s: %dd%d] %s %s' %
                (plural, times, sides, sum(rolls), rollsStr))
-        yuka.sendChats(msg)
+        yuka.reply(msg, source, username)
 
     def _getChoices(self, args):
         if len(args) > 230:
