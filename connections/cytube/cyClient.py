@@ -31,7 +31,7 @@ def importPlugins(paths):
     moduleNames = []
     for path in paths:
         moduleNames.extend([path + i[:-3] for i in os.listdir(path)
-                        if not i.startswith('_') and i.endswith('.py')])
+                        if not i.startswith('_') and not i.startswith('test') and i.endswith('.py')])
     moduleNames = [p.replace('/', '.') for p in moduleNames]
     modules = map(importlib.import_module, moduleNames)
     clog.warning(str(modules), 'modules')
