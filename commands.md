@@ -5,6 +5,7 @@
 ##**General Commands:**
 - `$greet` Greets the user. This is very important!
 - `$bye` Says goodbye to the user.
+- `$np [x]` Displays the currently playing media. Optional integer argument `x` to offset (previous or upcoming media).
 - `$ask question` Answers Yes or No randomly to question.
 - `$choose choices` Selects one choice from `choices`. `choices` may be separated by whitespace or commas.
 - `$permute choices` Permutes `choices`. `choices` may be separated by whitespace or commas.
