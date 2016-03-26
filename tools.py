@@ -171,11 +171,11 @@ def commandThrottle(cost):
     def limiter(func):
         @wraps(func)
         def throttleWrap(*args, **kwargs):
+            #clog.warning("Wrapping things %s, %s" % (args, kwargs), syst)
             try:
                 prot = kwargs.get('prot', None)
                 username = args[2]
                 origin = args[4]
-                #clog.warning('cy: %s, username: %s' % (cy, username), syst)
             except(IndexError, NameError):
                 clog.error('commandThrottle: Invalid args!', syst)
                 return
