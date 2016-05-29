@@ -1,20 +1,27 @@
-import database
+import json
+import random
 from twisted.internet import defer
+import database
 import tools
 from tools import clog, commandThrottle
 
 import time
+from operator import mul
 
 syst = 'Hug'
 
-
 class Hug(object):
+    def __init__(self, huglinks):
+        self.hostpath = huglinks['hostpath']
+        self.hugimglinks = huglinks['hugimgs']
+        self.maxlevel = max([int(i) for i in self.hugimglinks])
 
     @commandThrottle(0)
     def _com_hug(self, cy, username, args, source):
         # yukari will not hug guests or IRC
-        # no args allowed
-        if args or source == 'irc' or not cy.checkRegistered(username):
+        # no args are allowed
+        if (args or source == 'irc' 
+                 or not cy.checkRegistered(username)):
             self._sendhug(cy, username)
             return
         
@@ -40,7 +47,12 @@ class Hug(object):
         """ Send the hug message back to chat """
         source = 'chat'
         if not reply:
-            reply = '{}...'.format(username)
+            reply = '...'
+        if reply == 'hug!':
+            reply = (u'/me hugs {}. '
+                    u'\uff77\uff9e\uff6d\uff73\uff70!').format(username)
+        else:
+            reply = '{}: {}'.format(username, reply)
         cy.doSendChat(reply, source)
 
     def calculateTiers(self, username, isReg=True):
@@ -52,15 +64,39 @@ class Hug(object):
 
     def getHugPicture(self, res):
         clog.debug('(getHugPicture) %s' % res, syst)
-        addTier = int(min(res[0][1][0][0]/5000, 5))
+        # get add and time tiers, 0-2 (3 tiers)
+        addTier = int(max(min(res[0][1][0][0]/25, 3), 1))
         try:
-            timeTier = int(min(res[1][1][0][0]/5000, 5))
+            timeTier = int(max(min(res[1][1][0][0]/25, 3),1))
         except(TypeError):
             timeTier = 0
-        hugimg = '0{}-0{}-'
-        random.randint(1, addTier)
-        return addTier, timeTier
-
+        multiplier = [addTier, timeTier]
+        clog.debug('addTier, timerTier: %s' % str(multiplier), syst)
+        randomTier = max(int(random.gauss(0.4, 1.7)), 0)
+        clog.debug('randomTier roll: %s' % randomTier, syst)
+        if randomTier >= 4:
+            return 'hug!'
+        elif randomTier == 0:
+            return
+        multiplier[random.randint(0,1)] = min(randomTier, 3)
+        # product of the list
+        hugTier = reduce(mul, multiplier, 1)
+        hugTier = min(hugTier, self.maxlevel)
+        clog.debug('hugteir: %s' % hugTier, syst)
+        hugTier = str(hugTier).zfill(3)
+        picture = random.choice(self.hugimglinks[hugTier])
+        return '%s-%s' % (hugTier, picture)
 
 def setup():
-    return Hug()
+    try:
+        with open('connections/cytube/plugins/_huglinks.json') as huglink_file:
+            huglinks = json.load(huglink_file)
+    except(IOError):
+        clog.error('_huglinks.json file not found! This module '
+                   'will not be loaded.', syst)
+        return
+    except(ValueError):
+        clog.error('_huglinks.json is invalid! This module '
+                   'will not be loaded.', syst)
+        return
+    return Hug(huglinks)
