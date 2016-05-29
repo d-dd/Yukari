@@ -64,26 +64,26 @@ class Hug(object):
 
     def getHugPicture(self, res):
         clog.debug('(getHugPicture) %s' % res, syst)
-        # get add and time tiers, 0-2 (3 tiers)
-        addTier = int(max(min(res[0][1][0][0]/25, 3), 1))
+        # get add and time tiers
+        addTier = max(min(res[0][1][0][0]/25.0, 3.0), 1.0)
         try:
-            timeTier = int(max(min(res[1][1][0][0]/25, 3),1))
+            timeTier = max(min(res[1][1][0][0]/25.0, 3.0),1.0)
         except(TypeError):
-            timeTier = 0
+            timeTier = 0.0
         multiplier = [addTier, timeTier]
         clog.debug('addTier, timerTier: %s' % str(multiplier), syst)
-        randomTier = max(int(random.gauss(0.4, 1.7)), 0)
+        randomTier = max(random.gauss(0.4, 1.7), 0.0)
         clog.debug('randomTier roll: %s' % randomTier, syst)
         if randomTier >= 4:
             return 'hug!'
         elif randomTier == 0:
             return
-        multiplier[random.randint(0,1)] = min(randomTier, 3)
+        multiplier[random.randint(0,1)] = min(randomTier, 3.0)
         # product of the list
-        hugTier = reduce(mul, multiplier, 1)
+        hugTier = reduce(mul, multiplier, 1.0)
         hugTier = min(hugTier, self.maxlevel)
-        clog.debug('hugteir: %s' % hugTier, syst)
-        hugTier = str(hugTier).zfill(3)
+        clog.debug('hugtier: %s' % hugTier, syst)
+        hugTier = str(int(hugTier)).zfill(3)
         picture = random.choice(self.hugimglinks[hugTier])
         return '%s-%s' % (hugTier, picture)
 
