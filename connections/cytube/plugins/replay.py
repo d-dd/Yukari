@@ -24,10 +24,14 @@ class Replay(object):
             else:
                 cy.cancelSetCurrentJs = True 
                 index = cy.getIndexFromUid(self.replay)
-                replayTitle = cy.playlist[index]['media']['title']
-                cy.sendCyWhisper('Replaying %s!' % replayTitle)
-                cy.jumpToMedia(self.replay)
-                self.skipJs = True # we don't need to update because replay
+                if not index:
+                    cy.sendCyWhisper('Cancelling replay - replay media gone.')
+                    cy.cancelSetCurrentJs = False
+                else:
+                    replayTitle = cy.playlist[index]['media']['title']
+                    cy.sendCyWhisper('Replaying %s!' % replayTitle)
+                    cy.jumpToMedia(self.replay)
+                    self.skipJs = True # we don't need to update because replay
             self.replay = -1
         return defer.succeed(0)
 
