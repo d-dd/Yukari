@@ -306,6 +306,9 @@ def addMedia(sample, nameLower, registered, words, limit, isRecent):
     elif nameLower and sample == 'a':
         name = ('AND by = %s' % _USERIDSQL)
         binds.extend((nameLower, int(registered)))
+    elif nameLower and sample == 'l':
+        name = ('AND Like.userId = %s' % _USERIDSQL)
+        binds.extend((nameLower, int(registered)))
     else:
         name = ''
     if words:
@@ -334,8 +337,8 @@ def addMedia(sample, nameLower, registered, words, limit, isRecent):
 
     binds.append(limit)
     binds = tuple(binds)
-    #clog.info(sql, 'sql')
-    #clog.info(binds, 'sql')
+    clog.info(sql, 'sql')
+    clog.info(binds, 'sql')
     return query(sql, binds)
 
 def getMediaById(mediaId):
