@@ -92,11 +92,18 @@ class Add(object):
         if args.tag:
             #cap at 10 songs...getting songs by tag is expensive and slow!
             args.number = min(args.number, 10)
-            d = self.getVocadbMedia((cy.doAddMedia, args.temporary, args.next), args.number, args.tag)
+            d = self.getVocadbMedia((cy.doAddMedia, args.temporary, args.next), 
+                    args.number, args.tag)
         else:
-            d = self.getRandMedia(args.sample, args.number, args.user, isRegistered,
-                                      title, args.recent)
-            d.addCallback(cy.doAddMedia, args.temporary, args.next)
+            d = self.getRandMedia(args.sample, args.number, args.user, 
+                    isRegistered, title, args.recent)
+            d.addCallback(self.addSearchResults, cy, args.temporary, args.next)
+
+    def addSearchResults(self, res, cy, temp, next):
+        if not res:
+            cy.doSendChat('[$add] No results.', toIrc=False)
+        else:
+            cy.doAddMedia(res, temp, next)
 
     @commandThrottle(0)
     def _com_manage(self, cy, username, args, source):
