@@ -61,7 +61,7 @@ class Add(object):
         # Yukari removes last 100 rows of queue from the media sample
         # set recent to True to disable this behavior
         parser.add_argument('-r', '--recent', default=False, type=bool)
-       ###### parser.add_argument('-z', '--tag', default='')
+        parser.add_argument('-z', '--tag', default='')
 
         try:
             args = parser.parse_args(args)
