@@ -314,6 +314,11 @@ class CyProtocol(WebSocketClientProtocol):
         self.sendf({'name': 'initUserPLCallbacks', 'args': {}})
         self.sendf({'name': 'listPlaylists', 'args': {}})
                 
+    def _cyCall_kick(self, fdict):
+        reason = fdict['args'][0]['reason']
+        clog.error('Kicked from channel! Reason: %s' % reason, syst)
+        self.sendClose()
+
     def _cyCall_login(self, fdict):
         if fdict['args'][0]['success']:
             self.joinRoom()
