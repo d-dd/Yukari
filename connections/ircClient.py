@@ -283,7 +283,7 @@ class IrcProtocol(irc.IRCClient):
             return
         # msg comes as str bytes
         try:
-            msg = msg.decode('utf-8')
+            msg = msg.decode('utf-8', 'replace')
         except(UnicodeDecodeError):
             clog.warning('Message not in utf8. Decoding using ISO-8859-1', sys)
             msg = msg.decode('iso-8859-1')

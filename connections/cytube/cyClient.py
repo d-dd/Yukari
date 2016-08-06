@@ -228,6 +228,7 @@ class CyProtocol(WebSocketClientProtocol):
                 clog.warning('Could not cancel finalHeartbeat.', syst)
 
     def onMessage(self, msg, binary):
+        clog.debug(msg, '** ')
         msg = msg.decode('utf8')
         if binary:
             clog.warning('Binary received: {0} bytes'.format(len(msg)))
@@ -315,7 +316,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.sendf({'name': 'listPlaylists', 'args': {}})
                 
     def _cyCall_kick(self, fdict):
-        reason = fdict['args'][0]['reason']
+        reason = fdict['args'][0].get('reason')
         clog.error('Kicked from channel! Reason: %s' % reason, syst)
         self.sendClose()
 
