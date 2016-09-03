@@ -224,7 +224,7 @@ class CyProtocol(WebSocketClientProtocol):
             finalHeartbeat, self.finalHeartbeat = self.finalHeartbeat, None
             try:
                 finalHeartbeat.cancel()
-            except(AlreadyCalled, AlreadyCanelled):
+            except(AlreadyCalled, AlreadyCancelled):
                 clog.warning('Could not cancel finalHeartbeat.', syst)
 
     def onMessage(self, msg, binary):
