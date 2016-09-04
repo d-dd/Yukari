@@ -44,15 +44,13 @@ class Poke(object):
         -user leave
         """
         self.stopTimer(cy)
-        if time.time() - self.lastPoke < self.pokeInterval:
+        if ((time.time() - self.lastPoke < self.pokeInterval) or
+         (len(cy.userdict) != 2)): 
             return
-        if not len(cy.userdict) == 2: # if not only Yukari and user
-            return
+        username = None
         for name in cy.userdict.iterkeys():
             if name != cy.name:
                 username = name
-            else:
-                username = None
         if not username:
             clog.error('Error at startTimer. 2 users but no non-Yukari name',
                     syst)
