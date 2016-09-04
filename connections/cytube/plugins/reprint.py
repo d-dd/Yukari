@@ -55,14 +55,15 @@ class Reprint(object):
 
     def _add_done_video(self, cy, ytid):
         #send a message saying it's done
-        cy.doSendChat('[reprint] Done uploading. The video will automatically '
-                        'be added 5 minutes later.', toIrc=False)
-        # wait 5 minutes to let Youtube finish processing
+        wait_min = 10 #minutes
+        cy.doSendChat('[reprint] Done uploading! The video will automatically '
+                        'be added %d minutes later.' % wait_min, toIrc=False)
+        # wait 10 minutes to let Youtube finish processing
         # If we add too soon, the YT API returns 0:00 duration, and Cytube will
         # think it's a livestream and will never queue to the next video.
         # Perhaps Yukari can call the YT API herself and only add if it returns
         # a valid duration #TODO
-        reactor.callLater(600, cy.sendf, {'name': 'queue', 'args': {'type': 'yt', 
+        reactor.callLater(wait_min*60, cy.sendf, {'name': 'queue', 'args': {'type': 'yt', 
                             'id': ytid, 'pos': 'end', 'temp': False}})
 
 class ReprintProtocol(protocol.ProcessProtocol):
