@@ -97,9 +97,7 @@ class Connections:
               'in %d seconds.' % self.cyRetryWait)
         #self.sendToIrc(msg)
         reactor.callLater(self.cyRetryWait, self.startCytubeClient)
-        self.cyRetryWait = (self.cyRetryWait+1)**(1+random.random())
-        # return between 2 and 300
-        return min(max(2, self.cyRetryWait), 300)
+        self.cyRetryWait = min((self.cyRetryWait+1)**(1+random.random()), 300)
 
     def startCytubeClient(self):
         """Change the profile and GET the socket io address"""
