@@ -764,6 +764,9 @@ class CyProtocol(WebSocketClientProtocol):
             # more than one userLeave frame
             clog.error('_cyCall_userLeave %s does not exist!' % username)
             return
+        except(AttributeError):
+            clog.error('userLeave called before initialization! %s' % username)
+            return
         clog.debug('_cyCall_userLeave) user %s has left. Adding callbacks' 
                    % username, syst)
         leftUser = self.userdict[username]
