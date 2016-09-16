@@ -40,3 +40,10 @@ pokereply =
 poketime = 3600
 pokeinterval = 86400
 pokerespondby = 90
+
+[twitter]
+twitter_consumer_secret = 
+twitter_consumer_key = 
+access_token = 
+access_token_secret =
+

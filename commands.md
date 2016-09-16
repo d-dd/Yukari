@@ -56,5 +56,7 @@
   -   `-p` PV match. Use this when the PV is the same as the entry in VocaDB (and not just the song). Without this the VocaDB panel will not display non-audio related artists such as illustrators and animators #TODO  
 
 
-#####**experimental - use with care **
-- `$reprint [smid]` Downloads a NicoNicoDouga video, and uploads it to Youtube. There is a delay of 5 minutes after the video has been uploaded before the video is automatically queued to the playlist, to allow Youtube to finish processing the video. Only admins who have been listed in `allowed.txt` can use this command. More information can be found at https://github.com/d-dd/Yukari/blob/master/connections/cytube/commands/loaders/README.md.
+#####**experimental commands - use with care **
+- `$reprint [smid]` Downloads a NicoNicoDouga video, and uploads it to Youtube. There is a delay of 5 minutes after the video has been uploaded before the video is automatically queued to the playlist, to allow Youtube to finish processing the video. Only admins who have been listed in `allowed.txt` can use this command. More information can be found at https://github.com/d-dd/Yukari/blob/master/connections/cytube/plugins/loaders/README.md.
+
+- `$tweet [status]` Tweets status to the channel's Twitter account. Command must be sent from Cytube chat, and the user must be listed in the `tweet.allowed` whitelist to use the command.
