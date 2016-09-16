@@ -1249,7 +1249,9 @@ class WsFactory(WebSocketClientFactory):
         if time.time() - self.handle.cyLastDisconnect > 60:
             self.handle.cyRetryWait = 0
         self.handle.cyLastDisconnect = time.time()
-        if not self.prot:
-            return
-        d = self.prot.cleanUp()
-        d.addCallback(self.doneClean)
+        if self.prot:
+            d = self.prot.cleanUp()
+            d.addCallback(self.doneClean)
+        else: # d/c before establishing protocol
+            if self.handle.cyRestart:
+                self.handle.restartConnection()
