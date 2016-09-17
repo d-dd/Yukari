@@ -297,6 +297,7 @@ def calcAccessTime(res, nameLower, isRegistered):
 def addMedia(sample, nameLower, registered, words, limit, isRecent):
     """selects up to n (limit) random non-flagged media that was ever
        queued by registered user (nameLower)"""
+    limit = max(0, limit)
     binds, sql = [], []
     # only Youtube
     providers = '("yt")'
