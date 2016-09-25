@@ -1,0 +1,8 @@
+#password for telnet
+#put :: for no user/password (insecure)
+#be sure to block ports from external access
+#if no pw is used
+#https://twistedmatrix.com/documents/current/api/twisted.cred.checkers.FilePasswordDB.html
+#####
+
+::

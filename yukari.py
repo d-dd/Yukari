@@ -10,9 +10,12 @@ import subprocess
 import textwrap
 import time
 # Twisted Library
-from twisted.internet import reactor, defer
+from twisted.application import service, strports
+from twisted.conch import manhole, manhole_tap, telnet
+from twisted.conch.insults import insults
+from twisted.cred import portal, checkers
+from twisted.internet import reactor, defer, protocol
 from twisted.internet.defer import Deferred
-from twisted.manhole import telnet
 from autobahn.twisted.websocket import connectWS
 # Yukari
 from ext.rinception import LineReceiver, LineReceiverFactory
@@ -171,12 +174,6 @@ class Connections:
             reactor.connectTCP(config['irc']['url'], int(config['irc']['port']),
                                self.ircFactory)
 
-    def rinstantiate(self, port):
-        """ Start server for Rin (steam-bot) """
-        clog.info('(rinstantiate) Starting server for Rin', sys)
-        self.rinFactory = LineReceiverFactory()
-        reactor.listenTCP(port, self.rinFactory)
-
     def recIrcMsg(self, user, channel, msg, modifier=None):
         self.lastIrcChat = time.time()
         user = user.split('!', 1)[0] # takes out the extra info in the name
@@ -319,17 +316,22 @@ class Connections:
         if not self.irc and not self.cy:
             self.done.callback(None)
 
-def createShellServer(obj):
+def createShellServer(namespace):
     """ Creates an interactive shell interface to send and receive output 
     while the program is running. Connection's instance yukari is named y.
     e.g. dir(y), will list all of yukari's names"""
 
+    # These are taken from manhole_tap module
+    checker = checkers.FilePasswordDB('telnet.pw')
+    telnetRealm = manhole_tap._StupidRealm(telnet.TelnetBootstrapProtocol,
+                                           insults.ServerProtocol,
+                                           manhole.ColoredManhole,
+                                           {"y":namespace})
+    telnetPortal = portal.Portal(telnetRealm, [checker])
+    telnetFactory = protocol.ServerFactory()
+    telnetFactory.protocol = manhole_tap.makeTelnetProtocol(telnetPortal)
     clog.info('Creating shell server instance...', sys)
-    factory = telnet.ShellFactory()
-    port = reactor.listenTCP(int(config['telnet']['port']), factory)
-    factory.namespace['y'] = obj
-    factory.username = config['telnet']['username']
-    factory.password = config['telnet']['password']
+    port = reactor.listenTCP(int(config['telnet']['port']), telnetFactory)
     return port
 
 def main():
@@ -339,7 +341,6 @@ def main():
     yukari = Connections()
     yukari.startCytubeClient()
     yukari.ircConnect()
-    #yukari.rinstantiate(int(config['rinserver']['port']))
     reactor.callWhenRunning(createShellServer, yukari)
     reactor.addSystemEventTrigger('before', 'shutdown', yukari.cleanup)
     reactor.run()
