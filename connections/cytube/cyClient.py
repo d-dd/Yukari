@@ -723,8 +723,14 @@ class CyProtocol(WebSocketClientProtocol):
         # add a reference to the deferred to the userdict
         self.userdict[user['name']]['deferred'] = d
 
-        profileText = user['profile']['text']
-        profileImgUrl = user['profile']['image']
+        try:
+            profileText = user['profile']['text']
+            profileImgUrl = user['profile']['image']
+        except:
+            p = json.loads(user['profile'])
+            clog.error(p)
+            profileText = p['text']
+            profileImgUrl = p['image']
         d.addCallback(self.updateProfile, profileText, profileImgUrl)
         
     def updateProfile(self, userId, profileText, profileImgUrl):
