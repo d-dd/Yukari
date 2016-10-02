@@ -21,11 +21,15 @@ class Reprint(object):
         if rank < 2:
             clog.debug('not enough rank for $reprint', syst)
             return
-        with open('connections/cytube/plugins/loaders/allowed.cfg') as f:
-            allowed = f.read().lower().split()
-            if username.lower() not in allowed:
-                clog.debug('not in allowed.txt for $reprint', syst)
-                return
+        try:
+            with open('connections/cytube/plugins/loaders/allowed.cfg') as f:
+                allowed = f.read().lower().split()
+        except(IOError):
+            clog.error("Reprint cancelled - No allowed.txt found", syst)
+            return
+        if username.lower() not in allowed:
+            clog.debug('not in allowed.txt for $reprint', syst)
+            return
         try:
             if cy.reprint is False:
                 clog.debug('cy.reprint is False', syst)
