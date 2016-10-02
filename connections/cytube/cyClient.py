@@ -46,6 +46,7 @@ class CyProtocol(WebSocketClientProtocol):
     start_init = []
 
     def __init__(self):
+        super(WebSocketClientProtocol, self).__init__()
         self.importCyModules()
         self.loops = []
         self.laters = []
@@ -1224,7 +1225,7 @@ class WsFactory(WebSocketClientFactory):
     protocol = CyProtocol
 
     def __init__(self, arg):
-        WebSocketClientFactory.__init__(self, arg)
+        super(WebSocketClientFactory, self).__init__(arg)
         self.prot = None
 
     def startedConnecting(self, connector):
