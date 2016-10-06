@@ -171,7 +171,10 @@ class CyProtocol(WebSocketClientProtocol):
         self.lifeline = None
         self.heartbeat.start(20.0, now=True)
         self.finalHeartbeat = None
-        self.initialize()
+	# wait one second before logging in
+        # to make sure rank is properly initialized
+        # eventually check for "rank" frame
+	reactor.callLater(1.5, self.initialize)
 
     def abandon(self):
         """
@@ -724,14 +727,10 @@ class CyProtocol(WebSocketClientProtocol):
         # add a reference to the deferred to the userdict
         self.userdict[user['name']]['deferred'] = d
 
-        try:
-            profileText = user['profile']['text']
-            profileImgUrl = user['profile']['image']
-        except:
-            p = json.loads(user['profile'])
-            clog.error(p)
-            profileText = p['text']
-            profileImgUrl = p['image']
+	profileText, profileImgUrl = (None, None)
+        if user.get('profile'):
+            profileText = user['profile'].get('text')
+            profileImgUrl = user['profile'].get('image')
         d.addCallback(self.updateProfile, profileText, profileImgUrl)
         
     def updateProfile(self, userId, profileText, profileImgUrl):

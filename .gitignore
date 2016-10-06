@@ -1,5 +1,7 @@
 *.py[cod]
 *.db
+*.db-shm
+*.db-wal
 *.swp
 *.flv
 *.json
