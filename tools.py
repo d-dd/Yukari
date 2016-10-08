@@ -36,12 +36,15 @@ class LevelFileLogObserver(log.FileLogObserver):
 class CustomLog():
     """ logging shortcut """
     def debug(self, msg, sys=None):
+        return
         msg = returnStr(msg)
         log.msg(msg, level=logging.DEBUG, system=sys)
     def info(self, msg, sys=None):
+        return
         msg = returnStr(msg)
         log.msg(msg, level=logging.INFO, system=sys)
     def warning(self, msg, sys=None):
+        return
         msg = returnStr(msg)
         log.msg(msg, level=logging.WARNING, system=sys)
     def error(self, msg, sys=None):
@@ -216,7 +219,7 @@ def commandThrottle(cost):
 
 clog = CustomLog()
 # only debug will show Twisted-produced messages
-logger = LevelFileLogObserver(sys.stdout, level=logging.DEBUG)
+logger = LevelFileLogObserver(sys.stdout, level=logging.CRITICAL)
 log.addObserver(logger.emit)
 
 h = HTMLParser.HTMLParser()
