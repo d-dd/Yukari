@@ -1,6 +1,7 @@
 import nicodl
 import youtube_upload
 from optparse import OptionParser
+from oauth2client.tools import argparser
 
 class Options:
     pass
@@ -22,7 +23,8 @@ def reprint(smid, nicouser, nicopass, dl=True):
     options.category = None
     options.privacyStatus = 'unlisted' # public, private, or unlisted
 
-    youtube_upload.initialize_upload(options)
+    youtube = youtube_upload.get_authenticated_service(options)
+    youtube_upload.initialize_upload(youtube, options)
 
 print 'import successful!'
 if __name__ == '__main__':
