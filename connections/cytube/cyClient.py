@@ -8,8 +8,11 @@ import time
 from collections import deque
 
 # Twisted Libraries
+from twisted.application import service
+from twisted.logger import Logger
 from twisted.internet import reactor, defer, task
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
+from twisted.internet.protocol import ReconnectingClientFactory
 from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 # Yukari
@@ -27,7 +30,6 @@ def importPlugins(paths):
         clog.info(str(files), 'files')
     except(OSError):
         clog.error('Plugin import error! Check that %s exists.' % paths[0],syst)
-        return []
     moduleNames = []
     for path in paths:
         moduleNames.extend([path + i[:-3] for i in os.listdir(path)
@@ -43,13 +45,16 @@ def wisp(msg):
     return '@3939%s#3939' % msg
 
 class CyProtocol(WebSocketClientProtocol):
+    log = Logger()
     start_init = []
 
     def __init__(self):
-        super(WebSocketClientProtocol, self).__init__()
+        super(CyProtocol, self).__init__()
         self.importCyModules()
         self.loops = []
         self.laters = []
+
+        clog.info("Hi, I am %s!!!!!!!!!!!!!!!!!" % random.randint(0,100), syst)
 
         # Wether to run scJs methods
         # Set this to True for media that is not going to be played
@@ -160,7 +165,11 @@ class CyProtocol(WebSocketClientProtocol):
 
     def onOpen(self):
         clog.info('(onOpen) Handshake successful!', syst)
-        self.factory.handle.cyLastConnect = time.time()
+        self.factory.con = self
+        self.factory.prot = self
+        self.factory.handle = self.factory.service.parent
+        self.factory.handle.wsFactory = self.factory
+
         self.factory.handle.cyAnnounceConnect()
         self.connectedTime = time.time()
         self.lastUserlistTime = 0
@@ -169,12 +178,13 @@ class CyProtocol(WebSocketClientProtocol):
         self.heartbeat = task.LoopingCall(self.sendHeartbeat)
         self.loops.append(self.heartbeat)
         self.lifeline = None
-        self.heartbeat.start(20.0, now=True)
+        self.heartbeat.start(21.0, now=True)
         self.finalHeartbeat = None
-	# wait one second before logging in
+        self.laters.append(reactor.callLater(30, self.factory.resetDelay))
+        # wait one second before logging in
         # to make sure rank is properly initialized
         # eventually check for "rank" frame
-	reactor.callLater(1.5, self.initialize)
+        self.laters.append(reactor.callLater(1.5, self.initialize))
 
     def abandon(self):
         """
@@ -187,6 +197,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def doSendClose(self):
         clog.error('No final heartbeat response. Disconnecting.', syst)
+        if self.heartbeat.running:
+            self.heartbeat.stop()
         self.sendClose()
 
     def sendHeartbeat(self):
@@ -195,7 +207,7 @@ class CyProtocol(WebSocketClientProtocol):
         # Remember that heavy load on the machine often causes
         # schedules to fall behind greatly
 
-        #first heartbeat
+        # new heartbeat
         if self.lifeline is None:
             self.lifeline = reactor.callLater(self.hearttime, self.abandon)
             return
@@ -219,8 +231,9 @@ class CyProtocol(WebSocketClientProtocol):
     def receiveHeartbeat(self):
         #clog.debug('Received Heartbeat!', syst)
         if self.lifeline:
+            lifeline, self.lifeline = self.lifeline, None
             try:
-                self.lifeline.cancel()
+                lifeline.cancel()
                 #self.laters.remove(self.lifeline)
             except(AlreadyCalled, AlreadyCancelled):
                 clog.warning('(lifeline reset) alreadycalled/cancelled', syst)
@@ -232,8 +245,8 @@ class CyProtocol(WebSocketClientProtocol):
                 clog.warning('Could not cancel finalHeartbeat.', syst)
 
     def onMessage(self, msg, binary):
-        clog.debug(msg, '** ')
         msg = msg.decode('utf8')
+        #self.log.debug(u"{msg!s}", msg=msg)
         if binary:
             clog.warning('Binary received: {0} bytes'.format(len(msg)))
             return
@@ -377,6 +390,9 @@ class CyProtocol(WebSocketClientProtocol):
         timeNow = getTime()
         username = args['username']
         msg = args['msg']
+
+        self.log.debug("Got chat {chat}.", chat=msg)
+
         chatCyTime = int((args['time'])/10.0)
         meta = args['meta']
         modflair = meta.get('modflair', None)
@@ -1151,7 +1167,7 @@ class CyProtocol(WebSocketClientProtocol):
         cleanDeferredList.append(self.bulkLogChat())
         # log everyone's access time before shutting down
         self.logUserInOut(cleanDeferredList)
-        return defer.DeferredList(cleanDeferredList)
+        return defer.DeferredList(cleanDeferredList).addCallback(self.factory.doneClean)
 
     def logUserInOut(self, l):
         """Add user login logout database writes deferreds to 
@@ -1214,50 +1230,155 @@ class CyProtocol(WebSocketClientProtocol):
             self.loops.append(sustainedLoop)
             sustainedLoop.start(2.05, now=True)
         
-#    def doDeleteMedia(self, mType, mId):
     def doDeleteMedia(self, uid):
         """ Delete media """
         clog.info('(doDeleteMedia) Deleting media uid %s' % uid)
         self.sendf({'name': 'delete', 'args': uid})
 
-class WsFactory(WebSocketClientFactory):
-    protocol = CyProtocol
+    def connectionLost(self, reason):
+        self.factory.service.parent.cyAnnounceLeftRoom()
+        clog.error("connection lost at protocol", syst)
+        self._connectionLost(reason)
+        self.cleanUp()
+        if self.heartbeat.running:
+            self.heartbeat.stop()
+        if self.factory.service.parent.cyRestart:
+            self.factory.service.checkChannelConfig(self.factory.ws)
 
-    def __init__(self, arg):
-        super(WebSocketClientFactory, self).__init__(arg)
+        # The reconnecting factory just works on a exponential backoff timer,
+        # so there is a chance that a new connection is established before
+        # the old one is done cleaning up.
+        # Setting initialDelay >= 3.0 should be fine. :~:
+
+class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
+    protocol = CyProtocol
+    initialDelay = 3.0
+    maxDelay = 60 * 3
+
+    def __init__(self, ws, service):
+        print "loaded wsfactory~~!"
+        super(WsFactory, self).__init__(ws)
         self.prot = None
+        self.ws= ws
+        self.service = service
 
     def startedConnecting(self, connector):
+        print "started connection~~!"
         clog.debug('WsFactory started connecting to Cytube..', syst)
 
-    def clientConnectionLost(self, connector, reason):
-        clog.warning('(clientConnectionLost) Connection lost. %s' % reason, syst)
-        self.handle.cy = False
-        self.reconnect(connector, reason)
-        self.handle.cyAnnouceLeftRoom()
+    def connectionLost(self, connector, reason):
+        clog.error("connectionLost!!, ", "!!!!!!!!!!!!!!!!!!!!!!")
+        self.service.checkChannelConfig(self.ws)
 
-
+#    def clientConnectionLost(self, connector, reason):
+#        print "lost connection~~!"
+#        clog.warning('(clientConnectionLost) Connection lost. %s' % reason, syst)
+#        self.handle.cy = False
+     #   self.reconnect(connector, reason)
+#        self.handle.cyAnnouceLeftRoom()
+ 
     def clientConnectionFailed(self, connector, reason):
         self.handle.cy = False
-        self.reconnect(connector, reason)
+     #   self.reconnect(connector, reason)
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
                     % reason, syst)
 
     def doneClean(self, res):
         if self.handle.cyRestart:
-        # service interruption - reconnect
-            self.handle.restartConnection()
+            return
         else:
         # when we are shutting down
             self.handle.doneCleanup('cy')
 
-    def reconnect(self, connector, reason):
-        if time.time() - self.handle.cyLastDisconnect > 60:
-            self.handle.cyRetryWait = 0
-        self.handle.cyLastDisconnect = time.time()
-        if self.prot:
-            d = self.prot.cleanUp()
-            d.addCallback(self.doneClean)
-        else: # d/c before establishing protocol
-            if self.handle.cyRestart:
-                self.handle.restartConnection()
+
+class WSService(service.Service):
+    log = Logger()
+    def errCatch(self, err):
+        self.log.error(err.getBriefTraceback())
+
+    def checkChannelConfig(self, currentWsUrl):
+        d = self.getWsUrl()
+        d.addCallbacks(self.cbGetWsUrl, self.errCatch)
+        d.addCallbacks(self.cbMakeWsUrl, self.errCatch)
+        d.addCallback(self.cbCompareWsUrls, currentWsUrl)
+
+    def cbCompareWsUrls(self, newWsUrl, currentWsUrl):
+        """
+        Compares the ws url currently used by factory,
+        to the one served at channel.json.
+        If they are different, we restart the factory.
+        Otherwise, if they are the same, or no response
+        from the server, do nothing and let
+        ReconnectingFactory try to reconnect.
+        """
+
+        self.log.info("comparing WSURLS!")
+        if newWsUrl != currentWsUrl and newWsUrl is not None:
+            self.log.info("The ws changed to %s!" % newWsUrl)
+            self.f.maxRetries = 0
+            self.f.stopTrying()
+            self.f = None
+            self.connectCy(newWsUrl)
+        elif newWsUrl is None:
+            self.log.info("Failed to retrieve servers from channel.json")
+        else:
+            self.log.info("The ws didn't change!")
+
+    def startService(self):
+        if self.running:
+            self.log.error("Service is already running. Only one instance allowed.")
+            return
+        self.running = 1
+        d = self.getchannelurl()
+        d.addCallbacks(self.connectCy, self.errCatch)
+
+    def getchannelurl(self):
+        d = self.getWsUrl()
+        d.addCallbacks(self.cbGetWsUrl, self.errCatch)
+        d.addCallbacks(self.cbMakeWsUrl, self.errCatch)
+        return d
+
+    def connectCy(self, ws):
+        self.log.info("the websocket address is %s" % ws)
+        from autobahn.twisted.websocket import connectWS
+        wsFactory = WsFactory(ws, self)
+        self.f = wsFactory
+        connectWS(wsFactory)
+
+    def stopService(self):
+        self.running = 0
+
+    def getWsUrl(self):
+        hostname = config['Cytube']['domain']
+        channel = config['Cytube']['channel']
+        url = "https://{}/socketconfig/{}.json".format(hostname, channel)
+        self.log.info("sending GET for ws servers url: " + url)
+        from twisted.web.client import Agent, readBody
+        from twisted.internet import reactor
+        agent = Agent(reactor)
+        d = agent.request('GET', url)
+        return d
+
+    def cbGetWsUrl(self, response):
+        from twisted.web.client import readBody
+        if response.code == 200:
+            self.log.debug('200 response')
+            return readBody(response)
+
+    def cbMakeWsUrl(self, response, secure=True):
+        """
+        response : string json list of servers
+        secure : Boolean, wss or ws
+        """
+        if not response:
+            return
+        servers = json.loads(response)
+        wsurl = None
+        for server in servers.get('servers'):
+            if server.get('secure') is secure:
+                wsurl = server.get('url')
+                wsurl = wsurl.replace('http', 'ws', 1)
+                wsurl += "/socket.io/?transport=websocket"
+                break
+        return wsurl
+

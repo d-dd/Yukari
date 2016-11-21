@@ -7,7 +7,8 @@ from conf import config
 from collections import deque
 from twisted.words.protocols import irc
 from twisted.internet import reactor, defer, task
-from twisted.internet.protocol import ClientFactory
+from twisted.internet.protocol import ReconnectingClientFactory
+from twisted.application import service
 
 # on Rizon networks, the optional part/quit message rarely works.
 class NoRowException(Exception):
@@ -199,10 +200,14 @@ class IrcProtocol(irc.IRCClient):
             self.laters.append(reactor.callLater(1, self.join, 
                                                  self.channelStatus))
         self.factory.prot = self
+        self.factory.handle = self.factory.service.parent
+        self.factory.handle.ircFactory = self.factory
+
         # send an initial ping
         self.sendLine('PING 0')
         self.laters.append(reactor.callLater(10, self.checkServerLoop.start,
                                               30, now=True))
+        self.laters.append(reactor.callLater(30, self.factory.resetDelay))
 
     def identify(self):
         self.msg('NickServ', 'IDENTIFY %s' % str(config['irc']['pass']))
@@ -399,24 +404,37 @@ class IrcProtocol(irc.IRCClient):
         sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
         binds = (None, result, status, timeNow, msg, flag)
         return database.operate(sql, binds)
-    
-class IrcFactory(ClientFactory):
+
+    def connectionLost(self, reason):
+        self.connected = 0
+        tools.cleanLaters(self.laters)
+        tools.cleanLoops(self.loops)
+        if not self.factory.service.parent.ircRestart:
+            self.factory.cleanup()
+
+
+
+class IrcFactory(ReconnectingClientFactory):
+
     protocol = IrcProtocol
+    initialDelay = 3.0
+    maxDelay = 60 * 3
 
-    def __init__(self, channel):
-        self.channel = channel
+    def __init__(self, service):
         self.laters = []
+        self.service = service
 
-    def clientConnectionLost(self, connector, reason):
-        clog.warning('Connection Lost to IRC. Reason: %s' % reason, sys)
-        self.reconnect()
+  #  def clientConnectionLost(self, connector, reason):
+  #      clog.warning('Connection Lost to IRC. Reason: %s' % reason, sys)
+  #      self.reconnect()
 
-    def clientConnectionFailed(self, connector, reason):
-        clog.warning('Connection Failed to IRC. Reason: %s' % reason, sys)
-        self.reconnect()
+  #  def clientConnectionFailed(self, connector, reason):
+  #      clog.warning('Connection Failed to IRC. Reason: %s' % reason, sys)
+  #      self.reconnect()
 
-    def reconnect(self):
+    def cleanup(self):
         # clean protocol loops/laters
+        # then tell Yukari we're done cleaning up
         try:
             tools.cleanLoops(self.prot.loops)
             tools.cleanLaters(self.prot.laters)
@@ -424,8 +442,23 @@ class IrcFactory(ClientFactory):
             pass
         # clean factory (self) laters
         tools.cleanLaters(self.laters)
-        if self.handle.ircRestart:
-            self.laters.append(reactor.callLater(5, self.handle.ircConnect))
+        self.handle.doneCleanup('irc')
+
+class IrcService(service.Service):
+    def startService(self):
+        if self.running:
+            print "Service is already running!"
+            return
+        self.running = 1
+        if config['irc']['secure'] and 0:
+            print "secure port!"
+            from twisted.internet.ssl import ClientContextFactory
+            self.r = reactor.connectSSL(config['irc']['network'],
+                                        int(config['irc']['port']),
+                                IrcFactory(self), ClientContextFactory())
         else:
-            self.handle.doneCleanup('irc')
+            print "non secure port!"
+            self.r = reactor.connectTCP(config['irc']['network'], 
+                                        int(config['irc']['port']),
+                                        IrcFactory(self))
 
