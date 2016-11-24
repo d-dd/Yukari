@@ -1,31 +1,22 @@
-
 # Standard Library
 from collections import deque
 import importlib
-import json
 import os
-import random
-import re
 import subprocess
 import sys
 import textwrap
 import time
 # Twisted Library
-from twisted.application import service, strports
-from twisted.conch import manhole, manhole_tap, telnet
-from twisted.conch.insults import insults
-from twisted.cred import portal, checkers
-from twisted.internet import reactor, defer, protocol
+from twisted.application import service
+from twisted.conch import manhole_tap
+from twisted.internet import reactor, defer
 from twisted.internet.defer import Deferred
-from autobahn.twisted.websocket import connectWS
-from twisted.application import service, internet
 # Yukari
 # add home directory to sys.path
 sys.path.append(os.getcwd())
-from connections import apiClient
-from connections.cytube.cyClient import CyProtocol, WsFactory, WSService
+from connections.cytube.cyClient import WSService
 import connections.cytube.cyProfileChange as cyProfileChange
-from connections.ircClient import IrcFactory, IrcService
+from connections.ircClient import IrcService
 from conf import config
 import database, tools
 from tools import clog
@@ -39,7 +30,6 @@ def importPlugins(path):
     importPath = path.replace('/', '.')
     moduleNames = [importPath + i[:-3] for i in files
                    if not i.startswith('_') and i.endswith('.py') and not i.startswith('test')]
-    print moduleNames
     modules = map(importlib.import_module, moduleNames)
     return modules
 
@@ -58,7 +48,6 @@ class Yukari(service.MultiService):
         self.cy = False
 
         self.cyUserdict = {}
-        #
         self.inIrcChan = False
         self.inIrcNp = False
         self.inIrcStatus = False
@@ -66,10 +55,6 @@ class Yukari(service.MultiService):
         # Wether to restart when disconnected
         self.ircRestart = True
         self.cyRestart = True
-        # Reconnect Timers
-        self.cyRetryWait = 0
-        self.cyLastConnect = 0
-        self.cyLastDisconnect = 0
 
         self.startTime = time.time()
 
@@ -98,19 +83,6 @@ class Yukari(service.MultiService):
                     self.triggers['commands'][trigger] = getattr(instance, method)
                     clog.info('Imported %s!' % trigger, sys)
 
-    def restartConnection(self, *args):
-        return
-
-    def startCytubeClient(self):
-        return
-        """Change the profile and GET the socket io address"""
-        dl = defer.DeferredList([apiClient.getCySioClientConfig(),
-                                 self.cyChangeProfile()],
-                                 consumeErrors=True)
-        dl.addCallbacks(self.connectCy, self.failedStartCytube)
-
-    def failedStartCytube(self, result):
-        return
 
     def cyChangeProfile(self):
         """ Change Yukari's profile picture and text on CyTube """
@@ -151,9 +123,6 @@ class Yukari(service.MultiService):
     def cyPostErr(self, err):
         clog.error(err, sys)
         return err
-
-    def connectCy(self, startresults):
-        return
 
     def recIrcMsg(self, user, channel, msg, modifier=None):
         self.lastIrcChat = time.time()
@@ -306,7 +275,7 @@ yukService.setServiceParent(application)
 
 from twisted.conch import manhole_tap
 manhole_service = manhole_tap.makeService({
-    "telnetPort": "tcp:9191",
+    "telnetPort": "tcp:{}".format(config['telnet']['port']),
     "sshPort": None,
     "namespace": {"y": yukService},
     "passwd": "telnet.pw",

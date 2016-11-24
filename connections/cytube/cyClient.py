@@ -54,8 +54,6 @@ class CyProtocol(WebSocketClientProtocol):
         self.loops = []
         self.laters = []
 
-        clog.info("Hi, I am %s!!!!!!!!!!!!!!!!!" % random.randint(0,100), syst)
-
         # Wether to run scJs methods
         # Set this to True for media that is not going to be played
         # and there is no need to lookup information on it.
@@ -81,7 +79,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.currentJs = {}
         self.currentLikeJs = ''
         ### Need to imporve this regex, it matches non-videos
-        # ie https://www.youtube.com/feed/subscriptions
+        # eg https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
                 (r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.'
                   '(com|be)/(watch\?v=|embed/|v/|.+\?v=)?([^&=%\?]{11})'))
