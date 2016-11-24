@@ -33,7 +33,8 @@ Set a filter: <pre>__, g, _</pre>
 Put the url of external.js into the external JS box.
 
 ##**Usage:**
-Run with <pre>python yukari.py</pre>
+`Tacfile.py` is a Twisted application file that can be run with `twistd`.
+For example, <pre>twistd -noy tacfile.py</pre>
 Yukari is being developed and tested in a Linux environment, so it may have problems running on Windows or Mac.
 
 ##**Telnet:**  
@@ -42,7 +43,7 @@ Uses Twisted's Manhole module to access Yukari's names directly.
 This is very useful for debugging. The instance of Yukari is `y`, so for example, `dir(y)` will list all of her names and `y.sendChats('Hello!')` will send messages to CyTube and IRC (if connected).
 
 ##Optional  
-Youtube v2 API key  
+Youtube v3 API key  
 IRC account
 
 ###Features
