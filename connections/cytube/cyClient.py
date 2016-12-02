@@ -1171,9 +1171,14 @@ class CyProtocol(WebSocketClientProtocol):
         """Add user login logout database writes deferreds to 
         cleanDeferredList"""
         timeNow = getTime() 
-        for name, user in self.userdict.iteritems():
-            l.append(user['deferred'].addCallback(self.userLeave, user, timeNow))
+        try:
+            for name, user in self.userdict.iteritems():
+                l.append(user['deferred'].addCallback(self.userLeave,
+                                                       user, timeNow))
+
         # no need to return anything since it is manipulating a list
+        except(AttributeError): # we don't have userdict yet
+            return
 
     def checkRegistered(self, username):
         """ Return wether a Cytube user is registered (1) or a guest (0) given
@@ -1238,8 +1243,11 @@ class CyProtocol(WebSocketClientProtocol):
         clog.error("connection lost at protocol", syst)
         self._connectionLost(reason)
         self.cleanUp()
-        if self.heartbeat.running:
-            self.heartbeat.stop()
+        try:
+            if self.heartbeat.running:
+                self.heartbeat.stop()
+        except(AttributeError):
+            return
         if self.factory.service.parent.cyRestart:
             self.factory.service.checkChannelConfig(self.factory.ws)
 
@@ -1276,17 +1284,17 @@ class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
 #        self.handle.cyAnnouceLeftRoom()
  
     def clientConnectionFailed(self, connector, reason):
-        self.handle.cy = False
+        self.service.parent.cy = False
      #   self.reconnect(connector, reason)
         clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
                     % reason, syst)
 
     def doneClean(self, res):
-        if self.handle.cyRestart:
+        if self.service.parent.cyRestart:
             return
         else:
         # when we are shutting down
-            self.handle.doneCleanup('cy')
+            self.service.parent.doneCleanup('cy')
 
 
 class WSService(service.Service):
