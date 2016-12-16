@@ -244,7 +244,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def onMessage(self, msg, binary):
         msg = msg.decode('utf8')
-        #self.log.debug(u"{msg!s}", msg=msg)
+#        self.log.debug(u"{msg!s}", msg=msg)
         if binary:
             clog.warning('Binary received: {0} bytes'.format(len(msg)))
             return
@@ -1240,6 +1240,7 @@ class CyProtocol(WebSocketClientProtocol):
 
     def connectionLost(self, reason):
         self.factory.service.parent.cyAnnounceLeftRoom()
+        self.factory.service.parent.cy = False
         clog.error("connection lost at protocol", syst)
         self._connectionLost(reason)
         self.cleanUp()
@@ -1258,36 +1259,23 @@ class CyProtocol(WebSocketClientProtocol):
 
 class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
     protocol = CyProtocol
-    initialDelay = 3.0
+    initialDelay = 3
     maxDelay = 60 * 3
+    # instance number
+    instanceId = 0
 
     def __init__(self, ws, service):
-        print "loaded wsfactory~~!"
+        print "loaded wsfactory!"
         super(WsFactory, self).__init__(ws)
+        self.instanceId += 1
         self.prot = None
         self.ws= ws
         self.service = service
 
     def startedConnecting(self, connector):
-        print "started connection~~!"
+        print "started connection!"
         clog.debug('WsFactory started connecting to Cytube..', syst)
-
-    def connectionLost(self, connector, reason):
-        clog.error("connectionLost!!, ", "!!!!!!!!!!!!!!!!!!!!!!")
-        self.service.checkChannelConfig(self.ws)
-
-#    def clientConnectionLost(self, connector, reason):
-#        print "lost connection~~!"
-#        clog.warning('(clientConnectionLost) Connection lost. %s' % reason, syst)
-#        self.handle.cy = False
-     #   self.reconnect(connector, reason)
-#        self.handle.cyAnnouceLeftRoom()
  
-    def clientConnectionFailed(self, connector, reason):
-        self.service.parent.cy = False
-     #   self.reconnect(connector, reason)
-        clog.error('(clientConnectionFailed) Connection failed to Cytube. %s'
-                    % reason, syst)
 
     def doneClean(self, res):
         if self.service.parent.cyRestart:
@@ -1310,7 +1298,7 @@ class WSService(service.Service):
 
     def cbCompareWsUrls(self, newWsUrl, currentWsUrl):
         """
-        Compares the ws url currently used by factory,
+        Compare the ws url currently used by factory,
         to the one served at channel.json.
         If they are different, we restart the factory.
         Otherwise, if they are the same, or no response
