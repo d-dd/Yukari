@@ -56,6 +56,8 @@ class Yukari(service.MultiService):
         self.ircRestart = True
         self.cyRestart = True
 
+        self.cyLastConnect = 0
+
         self.startTime = time.time()
 
         # Remember the git-hash when this instance is created (non-atomic)

@@ -24,16 +24,11 @@ class StatusPlugin(object):
     def _com_uptime(self, yuka, username, args, source):
         uptime = time.time() - yuka.startTime
         uptime = str(timedelta(seconds=round(uptime)))
-        try:
-            yuka.cyUptime
-        except(AttributeError):
-            cyUptime = 'n/a'
+        if yuka.cy:
+            cyUptime = time.time() - yuka.cyLastConnect
+            cyUptime = str(timedelta(seconds=round(cyUptime)))
         else:
-            if yuka.cy:
-                cyUptime = time.time() - yuka.cyLastConnect
-                cyUptime = str(timedelta(seconds=round(cyUptime)))
-            else:
-                cyUptime = 'n/a'
+            cyUptime = 'n/a'
         if yuka.irc:
             ircUptime = time.time() - yuka.ircFactory.prot.ircConnect
             ircUptime = str(timedelta(seconds=round(ircUptime)))

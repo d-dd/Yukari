@@ -167,7 +167,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.factory.prot = self
         self.factory.handle = self.factory.service.parent
         self.factory.handle.wsFactory = self.factory
-
+        self.factory.handle.cyLastConnect = time.time()
         self.factory.handle.cyAnnounceConnect()
         self.connectedTime = time.time()
         self.lastUserlistTime = 0
