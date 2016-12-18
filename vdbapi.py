@@ -95,7 +95,7 @@ def requestPVByTagOffset(cbInfo, tag, offset):
                     return [['yt', pv['pvId']]]
 
     agent = Agent(reactor)
-    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&preferAccurateMatches=false&nameMatchMode=Partial&tag=%s&getTotalCount=false&start=%i&fields=PVs&maxResults=1' % (tag, offset)
+    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&tagName=%s&getTotalCount=false&start=%i&fields=PVs&maxResults=1' % (tag, offset)
     url = url.encode('utf8')
     clog.warning('(requestSongByTagOffset) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
@@ -120,7 +120,7 @@ def requestSongByTagCountCallback(cbInfo, quantity, tag, body):
 
 def requestSongsByTag(cbInfo, quantity, tag):
     agent = Agent(reactor)
-    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&preferAccurateMatches=false&nameMatchMode=Partial&tag=%s&getTotalCount=true&maxResults=0' % tag
+    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&tagName=%s&getTotalCount=true&maxResults=0' % tag
     url = url.encode('utf8')
     clog.warning('(requestSongsByTag) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
