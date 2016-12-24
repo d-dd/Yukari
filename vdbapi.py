@@ -1,4 +1,9 @@
-import json, re, time, random
+import json
+import random
+import re
+import time
+import urllib
+
 from twisted.internet import reactor, defer
 from twisted.web.client import Agent, readBody
 from twisted.web.http_headers import Headers
@@ -72,8 +77,11 @@ def requestApiBySongId(res, songId, timeNow):
     """ Request video information from VocaDb API v2
     and save to the Song table """
     agent = Agent(reactor)
-    url = 'http://vocadb.net/api/songs/%s?' % songId
-    url += '&fields=artists,names&lang=romaji'
+    args = {'fields': 'Artists,Names', 
+            'lang': 'romaji'}
+    url = 'https://vocadb.net/api/songs/{}?{}'.format(songId, 
+                                                     urllib.urlencode(args))
+
     clog.warning('(requestApiBySongId) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
     d.addCallback(readBody)
@@ -95,7 +103,17 @@ def requestPVByTagOffset(cbInfo, tag, offset):
                     return [['yt', pv['pvId']]]
 
     agent = Agent(reactor)
-    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&tagName=%s&getTotalCount=false&start=%i&fields=PVs&maxResults=1' % (tag, offset)
+    args = {'query': '',
+            'onlyWithPvs': True,
+            'pvServices': 'Youtube',
+            'tagName': tag,
+            'getTotalCount': False,
+            'start': offset,
+            'fields': 'Pvs',
+            'maxResults': 1,
+            }
+
+    url = 'https://vocadb.net/api/songs?{}'.format(urllib.urlencode(args))
     url = url.encode('utf8')
     clog.warning('(requestSongByTagOffset) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
@@ -120,7 +138,15 @@ def requestSongByTagCountCallback(cbInfo, quantity, tag, body):
 
 def requestSongsByTag(cbInfo, quantity, tag):
     agent = Agent(reactor)
-    url = 'http://vocadb.net/api/songs?query=&onlyWithPvs=true&pvServices=Youtube&tagName=%s&getTotalCount=true&maxResults=0' % tag
+    args = {'query': '',
+            'onlyWithPvs': True,
+            'pvServices': 'Youtube',
+            'tagName': tag,
+            'getTotalCount': True,
+            'maxResults': 0,
+            }
+
+    url = 'https://vocadb.net/api/songs?{}'.format(urllib.urlencode(args))
     url = url.encode('utf8')
     clog.warning('(requestSongsByTag) %s' % url, syst)
     d = agent.request('GET', url, Headers({'User-Agent':[UserAgentVdb]}))
@@ -158,8 +184,13 @@ def requestApiByPv(mType, mId, timeNow):
         service = 'Youtube'
     else:
         service = 'NicoNicoDouga'
-    url = 'http://vocadb.net/api/songs?pvId=%s&pvService=%s' % (mId, service)
-    url += '&fields=artists,names&lang=romaji'
+    args = {'pvId': mId,
+            # pvService singular here (not pvServices)
+            'pvService': service,
+            'fields': 'Artists,Names',
+            'lang': 'romaji',
+            }
+    url = 'https://vocadb.net/api/songs?{}'.format(urllib.urlencode(args))
     clog.warning('(requestApiByPv) %s' % url, syst)
     dd = agent.request('GET', str(url), Headers({'User-Agent':[UserAgentVdb]}))
     dd.addCallback(readBody)
