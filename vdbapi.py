@@ -96,7 +96,7 @@ def requestPVByTagOffset(cbInfo, tag, offset):
         except(ValueError):
             return defer.fail(Exception('No video found'))
         
-        if pbody.get('items') and pbody['items'][0]:
+        if pbody.get('items') and pbody['items'][0] and pbody['items'][0]['pVs']:
             for pv in pbody['items'][0]['pVs']:
                 # TODO: soundcloud, too
                 if pv[u'service'] == "Youtube":
