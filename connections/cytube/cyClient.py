@@ -514,6 +514,15 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             clog.error('(_cyCall_pm) %s sent phantom PM: %s' % (username, msg))
 
+    def _cyCall_setLeader(self, fdict):
+        """Called when leader is set.
+        If leader is set on Yukari, unset it.
+        """
+        user = fdict['args'][0]
+        if user == self.name: 
+            clog.info('(_cyCall_setLeader) Unsetting leader from myself', syst)
+            self.sendf({'name': 'assignLeader', 'args': {'name':''}})
+
     def _cyCall_newPoll(self, fdict):
         poll = fdict['args'][0]
         self.activePoll = poll
