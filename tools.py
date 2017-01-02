@@ -215,9 +215,6 @@ def commandThrottle(cost):
     return limiter
 
 clog = CustomLog()
-# only debug will show Twisted-produced messages
-#logger = LevelFileLogObserver(sys.stdout, level=logging.CRITICAL)
-#log.addObserver(logger.emit)
 
 h = HTMLParser.HTMLParser()
 chatFormat = TagStrip()

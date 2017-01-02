@@ -634,14 +634,6 @@ class CyProtocol(WebSocketClientProtocol):
         except(KeyError):
             clog.error('(_getRank) %s not found in userdict' % username, syst)
 
-    def changeLogLevel(self, level):
-        from tools import logger
-        import logging
-        if level == 'debug':
-            logger.logLevel = logging.DEBUG
-        elif level == 'warning':
-            logger.logLevel = logging.WARNING
-
     def bulkLogChat(self):
         if self.chatLoop.running:
             #clog.debug('(bulkLogChat) stopping chatLoop', syst)
@@ -651,7 +643,6 @@ class CyProtocol(WebSocketClientProtocol):
             clog.warning('We are under spam! Blocking commands and relaxing '
                          'heartbeat timeout.', syst)
             self.underSpam = True
-            self.changeLogLevel('warning')
             self.hearttime = 60
         elif len(chatlist) > 300:
             clog.warning('We are under HEAVY SPAM! Blocking all subsequent '
@@ -660,7 +651,6 @@ class CyProtocol(WebSocketClientProtocol):
                          'been relaxed.', syst)
             self.underSpam = True
             self.underHeavySpam = True
-            self.changeLogLevel('warning')
             self.hearttime = 90 
             timeNow = getTime()
             # add a line in chat db
@@ -677,7 +667,6 @@ class CyProtocol(WebSocketClientProtocol):
                 self.spamCount = 0
                 self.underSpam = False
                 self.underHeavySpam = False
-                self.changeLogLevel('debug')
                 self.hearttime = 20 
                 clog.warning('Spam seems to have subsided. Returning to normal'
                              ' operations.', syst)
