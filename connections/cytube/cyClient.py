@@ -54,6 +54,8 @@ class CyProtocol(WebSocketClientProtocol):
         self.loops = []
         self.laters = []
 
+        self.isLoggedIn = False
+
         # Wether to run scJs methods
         # Set this to True for media that is not going to be played
         # and there is no need to lookup information on it.
@@ -182,7 +184,7 @@ class CyProtocol(WebSocketClientProtocol):
         # wait one second before logging in
         # to make sure rank is properly initialized
         # eventually check for "rank" frame
-        self.laters.append(reactor.callLater(1.5, self.initialize))
+      #  self.laters.append(reactor.callLater(1.5, self.initialize))
 
     def abandon(self):
         """
@@ -312,7 +314,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.sendf({'name': 'pm',
                    'args': {'msg': msg, 'to': username}})
 
-    def initialize(self):
+    def login(self):
         pw = config['Cytube']['password']
         self.sendf({'name': 'login',
                    'args': {'name': self.name, 'pw': pw}})
@@ -337,7 +339,11 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_login(self, fdict):
         if fdict['args'][0]['success']:
+            self.isLoggedIn = True
             self.joinRoom()
+
+        else:
+            self.sendClose()
 
     def _cyCall_setMotd(self, fdict):
         self.receivedChatBuffer = True
@@ -967,6 +973,12 @@ class CyProtocol(WebSocketClientProtocol):
             return val
         defer1.addCallback(split)
 
+    def _cyCall_rank(self, fdict):
+        self.rank = fdict['args'][0]
+        self.log.debug("Recieved and set my rank to %i" % self.rank)
+        if not self.isLoggedIn and self.rank == -1:
+            self.login()
+
     def _cyCall_delete(self, fdict):
         for key, method in self.triggers['delete'].iteritems():
             method(self, fdict)
@@ -1156,6 +1168,7 @@ class CyProtocol(WebSocketClientProtocol):
             method(self, fdict)
 
     def cleanUp(self):
+        self.isLoggedIn = False
         tools.cleanLoops(self.loops)
         tools.cleanLaters(self.laters)
         cleanDeferredList = []
