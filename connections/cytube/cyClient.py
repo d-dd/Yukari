@@ -1259,7 +1259,7 @@ class CyProtocol(WebSocketClientProtocol):
             if self.heartbeat.running:
                 self.heartbeat.stop()
         except(AttributeError):
-            return
+            pass
         if self.factory.service.parent.cyRestart:
             self.factory.service.checkChannelConfig(self.factory.ws)
 
@@ -1302,6 +1302,7 @@ class WSService(service.Service):
         self.log.error(err.getBriefTraceback())
 
     def checkChannelConfig(self, currentWsUrl):
+        clog.debug("CHECKING CHANNEL CONFIG---------------------------", syst)
         d = self.getWsUrl()
         d.addCallbacks(self.cbGetWsUrl, self.errCatch)
         d.addCallbacks(self.cbMakeWsUrl, self.errCatch)
