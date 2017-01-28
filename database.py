@@ -499,6 +499,13 @@ def getLastAnnouncement():
     sql = 'SELECT * FROM CyAnnouncement ORDER BY announceId DESC LIMIT 1'
     return query(sql, tuple())
 
+def countRecentQueuesSince(mediaType, mediaId, sinceTime):
+    sql = ('SELECT COUNT() FROM Queue WHERE mediaId= '
+           '(SELECT mediaId FROM Media WHERE type=? AND id=?) '
+           'AND time > ?')
+    binds = (mediaType, mediaId, sinceTime)
+    return query(sql, binds)
+
 
 dbpool = adbapi.ConnectionPool('sqlite3', 'data.db', check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
