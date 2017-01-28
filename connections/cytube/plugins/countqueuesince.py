@@ -13,9 +13,9 @@ class CountQueue(object):
         media = fdict['args'][0]
         mType = media['type']
         mId = media['id']
-        thirtyDays = 60 * 60 * 24 * 30
-        thirtyDaysAgo = (time.time() - thirtyDays) * 100
-        return self._countQueue(mType, mId, thirtyDaysAgo)
+        ninetyDays = 60 * 60 * 24 * 90
+        ninetyDaysAgo = (time.time() - ninetyDays) * 100
+        return self._countQueue(mType, mId, ninetyDaysAgo)
 
     def _countQueue(self, mType, mId, sinceTime):
         d = database.countRecentQueuesSince(mType, mId, sinceTime)
