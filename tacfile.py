@@ -22,12 +22,14 @@ import database, tools
 from tools import clog
 from connections.discord import dcrestclient
 
-sys = 'Yukari'
+from connections.discord import dcgatewayclient
+
+syst = 'Yukari'
 def importPlugins(path):
     try:
         files = os.listdir(path)
     except(OSError):
-        clog.error('Error importing plugins. Invalid path.', sys)
+        clog.error('Error importing plugins. Invalid path.', syst)
     importPath = path.replace('/', '.')
     moduleNames = [importPath + i[:-3] for i in files
                    if not i.startswith('_') and i.endswith('.py') and not i.startswith('test')]
@@ -79,6 +81,7 @@ class Yukari(service.MultiService):
         if self.ircChan and not self.ircChan.startswith('#'):
             self.ircChan = '#' + self.ircChan
         self.cyName = str(config['Cytube']['username'])
+        self.dcName = str(config['discord']['username'])
         self.lastIrcChat = 0
 
     def _importPlugins(self):
@@ -91,7 +94,7 @@ class Yukari(service.MultiService):
                 if method.startswith('_com_'):
                     trigger = '%s' % method[5:]
                     self.triggers['commands'][trigger] = getattr(instance, method)
-                    clog.info('Imported %s!' % trigger, sys)
+                    clog.info('Imported %s!' % trigger, syst)
 
 
     def cyChangeProfile(self):
@@ -101,9 +104,9 @@ class Yukari(service.MultiService):
         return d
 
     def cbChangeProfile(self, res):
-        #clog.debug('(cbChangeProfile) %s' % res, sys)
+        #clog.debug('(cbChangeProfile) %s' % res, syst)
         if len(res) < 2: # no flagged row
-            clog.error('(cbChangeProfile) CyProfile table incorrect.', sys)
+            clog.error('(cbChangeProfile) CyProfile table incorrect.', syst)
             return defer.fail(None)
         currentRow = res[0][0]
         maxRow = res[1][0]
@@ -116,7 +119,7 @@ class Yukari(service.MultiService):
         return d
 
     def setNewProfile(self, res, currentRow, nextRow):
-        clog.debug('(setNewProfile) %s' % res, sys)
+        clog.debug('(setNewProfile) %s' % res, syst)
         name = config['Cytube']['username']
         password = config['Cytube']['password']
         text = res[0][1]
@@ -131,7 +134,7 @@ class Yukari(service.MultiService):
         database.setProfileFlag(nextRow, 1) # set next profile flag
 
     def cyPostErr(self, err):
-        clog.error(err, sys)
+        clog.error(err, syst)
         return err
 
     def recIrcMsg(self, user, channel, msg, modifier=None):
@@ -141,7 +144,9 @@ class Yukari(service.MultiService):
         pre = ''
         if self.cy:
             max_width = 244 - (len(user) + len('[..]')*2 + 10)
-            msgd = deque(textwrap.wrap(msg, max_width))
+            msgd = deque(textwrap.wrap(msg, max_width,
+                                        replace_whitespace=False,
+                                        drop_whitespace=False))
             while msgd:
                 cont = '[..]' if len(msgd) > 1 else ''
                 line = '(%s) %s %s %s' % (user, pre, msgd.popleft(), cont)
@@ -161,8 +166,10 @@ class Yukari(service.MultiService):
                                     prot=prot)
 
     def recCyMsg(self, source, user, msg, needProcessing, action=False):
+        if user == self.cyName:
+            return
         if self.inIrcChan and user != self.cyName and source != 'pm':
-            clog.debug('recCyMsg: %s' % msg, sys)
+            clog.debug('recCyMsg: %s' % msg, syst)
             if not action:
                 cleanMsg = '(%s) %s' % (user, msg)
             else:
@@ -174,6 +181,42 @@ class Yukari(service.MultiService):
 
         if needProcessing and not action and self.cy:
             self.processCommand(source, user, msg, prot=self.wsFactory.prot)
+
+    def recDcMsg(self, msgpack):
+        msg = msgpack['content']
+        user = msgpack['author']
+        if user == self.dcName:
+            return
+
+        pre = ''
+        if self.cy:
+            max_width = 244 - (len(user) + len('[..]')*2 + 10)
+
+            # Although Cytube supports newlines, it's safer
+            # to drop it, as it can be used for
+            # spoofing username of messages
+
+            msgd = deque(textwrap.wrap(msg, max_width,
+                                        replace_whitespace=True,
+                                        drop_whitespace=True))
+            while msgd:
+                cont = '[..]' if len(msgd) > 1 else ''
+                line = '<%s> %s %s %s' % (user, pre, msgd.popleft(), cont)
+                self.wsFactory.prot.relayToCyChat(line)
+                pre = '[..]'
+
+        pre = ''
+        if self.inIrcChan and user != self.dcName:
+            max_width = 500 - (len(user) + len('[..]')*2 + 10)
+            # take out whitespace because IRC rate-limits
+            msgd = deque(textwrap.wrap(msg, max_width,
+                                        replace_whitespace=True,
+                                        drop_whitespace=True))
+            while msgd:
+                cont = '[..]' if len(msgd) > 1 else ''
+                line = '<%s> %s %s %s' % (user, pre, msgd.popleft(), cont)
+                self.sendToIrc(line)
+                pre = '[..]'
 
     def recCyChangeMedia(self, media):
         if self.inIrcNp and media:
@@ -212,7 +255,7 @@ class Yukari(service.MultiService):
                 args = None
             if command in self.triggers['commands']:
                 clog.info('triggered command: [%s] args: [%s]' %
-                           (command, args), sys)
+                           (command, args), syst)
                 self.triggers['commands'][command](self, user, args, source,
                                                    prot=prot)
 
@@ -258,13 +301,13 @@ class Yukari(service.MultiService):
     def cleanup(self):
         """ Prepares for shutdown """
         # Starts pre-shutdown cleanup
-        clog.info('(cleanup) Cleaning up for shutdown!', sys)
+        clog.info('(cleanup) Cleaning up for shutdown!', syst)
         self.done = Deferred()
         #self.done.callback(None)
        # return self.done
         # if nothing has started, shutdown immediately.
         if not self.irc and not self.cy:
-            clog.info('(cleanup) Nothing to clean!', sys)
+            clog.info('(cleanup) Nothing to clean!', syst)
             self.done.callback(None)
         if self.irc:
             self.ircFactory.prot.partLeave('Shutting down.')
@@ -278,13 +321,13 @@ class Yukari(service.MultiService):
         """ Fires the done deferred, which unpauses the shutdown sequence """
         # If the application is stuck after Ctrl+C due to a bug,
         # use telnet(manhole) to manually fire the 'done' deferred.
-        clog.warning('(doneCleanup) CLEANUP FROM %s' % protocol, sys)
+        clog.warning('(doneCleanup) CLEANUP FROM %s' % protocol, syst)
         if protocol == 'irc':
             self.irc = None
-            clog.info('(doneCleanup) Done shutting down IRC.', sys)
+            clog.info('(doneCleanup) Done shutting down IRC.', syst)
         elif protocol == 'cy':
             self.cy = None
-            clog.info('(doneCleanup) Done shutting down Cy.', sys)
+            clog.info('(doneCleanup) Done shutting down Cy.', syst)
         if not self.irc and not self.cy:
             self.done.callback(None)
 
@@ -317,5 +360,20 @@ irc_service.setServiceParent(yukService)
 #dc_service.setName("dc")
 #dc_service.setServiceParent(yukService)
 
+dc_listener_service = dcgatewayclient.DCListenerService()
+dc_listener_service.setName("dcl")
+dc_listener_service.setServiceParent(yukService)
+
+# spawning discord.py gateway relay
+
+dcProcess = dcgatewayclient.DCProcessProtocol()
+path = 'connections/discord'
+executable = '/usr/bin/python3'
+subprocess = reactor.spawnProcess(dcProcess, executable,
+                    ['python3', 'gateway_relay.py'],
+                    os.environ, path)
+
 reactor.addSystemEventTrigger('before', 'shutdown', yukService.cleanup)
+reactor.addSystemEventTrigger('before', 'shutdown', 
+        dcProcess.transport.signalProcess, "KILL")
 
