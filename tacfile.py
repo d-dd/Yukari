@@ -15,7 +15,6 @@ from twisted.internet.defer import Deferred
 # add home directory to sys.path
 sys.path.append(os.getcwd())
 from connections.cytube.cyClient import WSService
-from connections.discord.dcclient import DcService
 import connections.cytube.cyProfileChange as cyProfileChange
 from connections.ircClient import IrcService
 from conf import config
