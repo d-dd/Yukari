@@ -28,6 +28,8 @@ class DiscordRestMessenger(object):
             from_prefix = 'cyt>'
         elif source == 'irc':
             from_prefix = 'irc>' 
+        elif source == 'pm':
+            return
         else:
             from_prefix = source+'>'
         line = "({}{}): {}".format(from_prefix, user, msg)
