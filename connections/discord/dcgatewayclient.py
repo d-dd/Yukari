@@ -56,11 +56,11 @@ class DCListenerFactory(protocol.ReconnectingClientFactory):
 
     def clientConnectionFailed(self, connector, reason):
         clog.error("Connection failed - DCListener: {} : {}".format(connector,
-                                                                       reason)
+                                                                      reason))
 
     def clientConnectionLost(self, connector, reason):
         clog.error("Connection lost - DCListener: {} : {}".format(connector,
-                                                                       reason)
+                                                                      reason))
 
 class DCListenerService(service.Service):
     def startService(self):
