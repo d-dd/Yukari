@@ -15,11 +15,13 @@ from twisted.internet.defer import Deferred
 # add home directory to sys.path
 sys.path.append(os.getcwd())
 from connections.cytube.cyClient import WSService
+from connections.discord.dcclient import DcService
 import connections.cytube.cyProfileChange as cyProfileChange
 from connections.ircClient import IrcService
 from conf import config
 import database, tools
 from tools import clog
+from connections.discord import dcrestclient
 
 sys = 'Yukari'
 def importPlugins(path):
@@ -43,9 +45,13 @@ class Yukari(service.MultiService):
         # import plugins
         self._importPlugins()
 
+        # discord rest api
+        self.dcr = dcrestclient.DiscordRestMessenger()
+
         # False = Offline, True = Online, None = has shutdown
         self.irc = False
         self.cy = False
+        self.dc = False
 
         self.cyUserdict = {}
         self.inIrcChan = False
@@ -63,6 +69,9 @@ class Yukari(service.MultiService):
         # Remember the git-hash when this instance is created (non-atomic)
         self.version = subprocess.check_output(['git', 'rev-parse', 
                                                 '--short', 'HEAD']).strip()
+
+        # DiscordRest
+        self.discordRestEnabled = str(config['discord']['channel_id'])
 
         # Users in IRC chat channel
         self.ircUserCount = 0
@@ -141,6 +150,10 @@ class Yukari(service.MultiService):
                     line = '_%s _' % line
                 self.wsFactory.prot.relayToCyChat(line)
                 pre = '[..]'
+
+        if self.discordRestEnabled:
+            self.dcr.onMessage('irc', user, msg, modifier)
+        
         # don't process commands from action (/me) messages
         if not modifier:
             if self.irc:
@@ -156,6 +169,10 @@ class Yukari(service.MultiService):
             else:
                 cleanMsg = '( * %s) %s' % (user, msg)
             self.sendToIrc(cleanMsg)
+
+        if self.discordRestEnabled:
+            self.dcr.onMessage(source, user, msg, action)
+
         if needProcessing and not action and self.cy:
             self.processCommand(source, user, msg, prot=self.wsFactory.prot)
 
@@ -221,6 +238,7 @@ class Yukari(service.MultiService):
 
     def sendChats(self, msg, modflair=False, action=False):
         self.sendToIrc(msg, action)
+        self.dcr.onMessage('yuk', 'Yukari', msg, action)
         if action:
             self.sendToCy('/me %s' % msg, modflair)
         else:
@@ -294,6 +312,11 @@ ws_service.setServiceParent(yukService)
 irc_service = IrcService()
 irc_service.setName("irc")
 irc_service.setServiceParent(yukService)
+
+# discord
+#dc_service = DcService()
+#dc_service.setName("dc")
+#dc_service.setServiceParent(yukService)
 
 reactor.addSystemEventTrigger('before', 'shutdown', yukService.cleanup)
 

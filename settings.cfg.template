@@ -1,13 +1,14 @@
 [Cytube]
 domain = cytu.be
-channel = teto
+channel = 
 channelpass = #TODO#no need if rank is 2 or above
 username = 
 password = 
+loginurl = https://ssl.cytu.be:10443
 
 [irc]
-url = irc.rizon.net
-bucket = 15
+network = irc.rizon.net
+bucket = 10
 ssl = False #TODO
 port = 6667
 channel = 
@@ -16,15 +17,17 @@ offlinenick =
 pass = 
 np = 
 status = 
+secure = False
 
 [UserAgent]
 vocadb = 
+discord = 
 
 [api]
 youtubev3 = 
 
 [telnet]
-port = 9999
+port = 9988
 username =
 password =
 
@@ -47,3 +50,9 @@ twitter_consumer_key =
 access_token = 
 access_token_secret =
 
+[aws]
+snstopicarn = 
+
+[discord]
+bot_token = 
+channel_id = 
