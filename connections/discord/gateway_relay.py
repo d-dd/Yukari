@@ -17,7 +17,7 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    transmittal = {'author': message.author.name,
+    transmittal = {'author': message.author.display_name,
                    'content': message.content,
                    'channel': message.channel.name}
 
