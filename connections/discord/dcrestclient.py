@@ -23,7 +23,11 @@ class DiscordRestMessenger(object):
         self.is_queueing = False
 
     def onMessage(self, source, user, msg, action=False):
-        msg = msg.encode('utf8')
+        try:
+            msg = msg.encode('utf8')
+        except(UnicodeDecodeError):
+            # probably already unicode... i know..
+            pass
         if source == 'chat':
             from_prefix = 'cyt>'
         elif source == 'irc':
