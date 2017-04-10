@@ -49,6 +49,7 @@ class DCListenerClient(protocol.Protocol):
 
 class DCListenerFactory(protocol.ReconnectingClientFactory):
     protocol = DCListenerClient
+    initialDelay = 2
 
     def __init__(self, service):
     #    super(DCListenerFactory, self).__init__(service)
@@ -68,7 +69,8 @@ class DCListenerService(service.Service):
             clog.error("DCListenerService is already running")
         else:
             self.f = DCListenerFactory(self)
-            self._port = reactor.connectTCP("localhost", PORT, 
+            self._port = reactor.callLater(3, 
+                          reactor.connectTCP,"localhost", PORT, 
                                              self.f)
 
     def stopService(self):
