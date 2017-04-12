@@ -366,20 +366,5 @@ dc_service = dcclient.DcService()
 dc_service.setName("dc")
 dc_service.setServiceParent(yukService)
 
-#dc_listener_service = dcgatewayclient.DCListenerService()
-#dc_listener_service.setName("dcl")
-#dc_listener_service.setServiceParent(yukService)
-
-# spawning discord.py gateway relay
-
-#dcProcess = dcgatewayclient.DCProcessProtocol()
-#path = 'connections/discord'
-#executable = '/usr/bin/python3'
-#subprocess = reactor.spawnProcess(dcProcess, executable,
-#                    ['python3', 'gateway_relay.py'],
-#                    os.environ, path)
-
 reactor.addSystemEventTrigger('before', 'shutdown', yukService.cleanup)
-#reactor.addSystemEventTrigger('before', 'shutdown', 
-#        dcProcess.transport.signalProcess, "KILL")
 
