@@ -11,7 +11,7 @@ from conf import config
 
 bot_token = str(config['discord']['bot_token'])
 base = 'https://discordapp.com/api/v6/'
-CHANNEL = str(config['discord']['channel_id'])
+CHANNEL = str(config['discord']['relay_channel_id'])
 
 syst = 'dcREST'
 

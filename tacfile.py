@@ -21,6 +21,7 @@ from conf import config
 import database, tools
 from tools import clog
 from connections.discord import dcrestclient
+from connections.discord import dcclient
 
 from connections.discord import dcgatewayclient
 
@@ -72,7 +73,7 @@ class Yukari(service.MultiService):
                                                 '--short', 'HEAD']).strip()
 
         # DiscordRest
-        self.discordRestEnabled = str(config['discord']['channel_id'])
+        self.discordRestEnabled = str(config['discord']['relay_channel_id'])
 
         # Users in IRC chat channel
         self.ircUserCount = 0
@@ -182,15 +183,13 @@ class Yukari(service.MultiService):
         if needProcessing and not action and self.cy:
             self.processCommand(source, user, msg, prot=self.wsFactory.prot)
 
-    def recDcMsg(self, msgpack):
-        msg = msgpack['content']
-        user = msgpack['author']
-        if user == self.dcName:
+    def recDcMsg(self, name, msg):
+        if name == self.dcName:
             return
 
         pre = ''
         if self.cy:
-            max_width = 244 - (len(user) + len('[..]')*2 + 10)
+            max_width = 244 - (len(name) + len('[..]')*2 + 10)
 
             # Although Cytube supports newlines, it's safer
             # to drop it, as it can be used for
@@ -201,20 +200,20 @@ class Yukari(service.MultiService):
                                         drop_whitespace=True))
             while msgd:
                 cont = '[..]' if len(msgd) > 1 else ''
-                line = '<%s> %s %s %s' % (user, pre, msgd.popleft(), cont)
+                line = '<%s> %s %s %s' % (name, pre, msgd.popleft(), cont)
                 self.wsFactory.prot.relayToCyChat(line)
                 pre = '[..]'
 
         pre = ''
-        if self.inIrcChan and user != self.dcName:
-            max_width = 500 - (len(user) + len('[..]')*2 + 10)
+        if self.inIrcChan and name != self.dcName:
+            max_width = 500 - (len(name) + len('[..]')*2 + 10)
             # take out whitespace because IRC rate-limits
             msgd = deque(textwrap.wrap(msg, max_width,
                                         replace_whitespace=True,
                                         drop_whitespace=True))
             while msgd:
                 cont = '[..]' if len(msgd) > 1 else ''
-                line = '<%s> %s %s %s' % (user, pre, msgd.popleft(), cont)
+                line = '<%s> %s %s %s' % (name, pre, msgd.popleft(), cont)
                 self.sendToIrc(line)
                 pre = '[..]'
 
@@ -315,6 +314,10 @@ class Yukari(service.MultiService):
             self.cyRestart = False
             self.wsFactory.prot.sendClose()
             self.wsFactory.stopTrying()
+        if self.dc:
+            self.dcRestart = False
+            self.getServiceNamed('dc').f.con.sendClose()
+            self.getServiceNamed('dc').f.stopTrying()
         return self.done
 
     def doneCleanup(self, protocol):
@@ -322,13 +325,16 @@ class Yukari(service.MultiService):
         # If the application is stuck after Ctrl+C due to a bug,
         # use telnet(manhole) to manually fire the 'done' deferred.
         clog.warning('(doneCleanup) CLEANUP FROM %s' % protocol, syst)
-        if protocol == 'irc':
+        if protocol == 'irc': 
             self.irc = None
             clog.info('(doneCleanup) Done shutting down IRC.', syst)
         elif protocol == 'cy':
             self.cy = None
             clog.info('(doneCleanup) Done shutting down Cy.', syst)
-        if not self.irc and not self.cy:
+        elif protocol == 'dc':
+            self.dc = None
+            clog.info('(doneCleanup) Done shutting down Discord.', syst)
+        if not self.irc and not self.cy and not self.dc:
             self.done.callback(None)
 
 application = service.Application("app")
@@ -356,24 +362,24 @@ irc_service.setName("irc")
 irc_service.setServiceParent(yukService)
 
 # discord
-#dc_service = DcService()
-#dc_service.setName("dc")
-#dc_service.setServiceParent(yukService)
+dc_service = dcclient.DcService()
+dc_service.setName("dc")
+dc_service.setServiceParent(yukService)
 
-dc_listener_service = dcgatewayclient.DCListenerService()
-dc_listener_service.setName("dcl")
-dc_listener_service.setServiceParent(yukService)
+#dc_listener_service = dcgatewayclient.DCListenerService()
+#dc_listener_service.setName("dcl")
+#dc_listener_service.setServiceParent(yukService)
 
 # spawning discord.py gateway relay
 
-dcProcess = dcgatewayclient.DCProcessProtocol()
-path = 'connections/discord'
-executable = '/usr/bin/python3'
-subprocess = reactor.spawnProcess(dcProcess, executable,
-                    ['python3', 'gateway_relay.py'],
-                    os.environ, path)
+#dcProcess = dcgatewayclient.DCProcessProtocol()
+#path = 'connections/discord'
+#executable = '/usr/bin/python3'
+#subprocess = reactor.spawnProcess(dcProcess, executable,
+#                    ['python3', 'gateway_relay.py'],
+#                    os.environ, path)
 
 reactor.addSystemEventTrigger('before', 'shutdown', yukService.cleanup)
-reactor.addSystemEventTrigger('before', 'shutdown', 
-        dcProcess.transport.signalProcess, "KILL")
+#reactor.addSystemEventTrigger('before', 'shutdown', 
+#        dcProcess.transport.signalProcess, "KILL")
 
