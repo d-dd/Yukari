@@ -36,7 +36,7 @@ class DiscordRestMessenger(object):
             return
         else:
             from_prefix = source+'>'
-        line = "`{}{}:` {}".format(from_prefix, user, msg)
+        line = "**`{}{}:`** {}".format(from_prefix, user, msg)
         self.linelist.append(line)
         if self.ratelimit_remaining > 2:
             self.post_to_discord(CHANNEL)
