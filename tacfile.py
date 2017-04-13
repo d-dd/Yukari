@@ -201,12 +201,17 @@ class Yukari(service.MultiService):
                                         drop_whitespace=True))
             while msgd:
                 cont = '[..]' if len(msgd) > 1 else ''
-                line = '<%s> %s %s %s' % (name, pre, msgd.popleft(), cont)
+                line = '<%s>%s %s %s' % (name, pre, msgd.popleft(), cont)
                 self.wsFactory.prot.relayToCyChat(line)
                 pre = '[..]'
 
         pre = ''
         if self.inIrcChan and name != self.dcName:
+            # TODO - IRC seems to count characters with bytes (?)
+            # At least Rizon takes fewer JP 
+            # and if we sendline a line that is too long,
+            # the server will truncate it mid-character,
+            # making the text unencodable - msg will be gibberish
             max_width = 500 - (len(name) + len('[..]')*2 + 10)
             # take out whitespace because IRC rate-limits
             msgd = deque(textwrap.wrap(msg, max_width,
@@ -214,7 +219,7 @@ class Yukari(service.MultiService):
                                         drop_whitespace=True))
             while msgd:
                 cont = '[..]' if len(msgd) > 1 else ''
-                line = '<%s> %s %s %s' % (name, pre, msgd.popleft(), cont)
+                line = '<%s>%s %s %s' % (name, pre, msgd.popleft(), cont)
                 self.sendToIrc(line)
                 pre = '[..]'
 

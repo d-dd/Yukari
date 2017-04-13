@@ -138,9 +138,14 @@ class DcProtocol(WebSocketClientProtocol):
                 user_id = data['author']['id']
                 username = data['author']['username']
                 name = self.get_nickname(user_id)
+                attachments = data['attachments']
+                attachment_urls = []
+                space = ' ' if content else ''
+                for attachment in attachments:
+                    content = '{}{}{}'.format(content, space,
+                                              attachment.get('url', ''))
                 self.factory.service.parent.recDcMsg(name, content)
-
-
+ 
         elif t == "GUILD_CREATE":
             for member in data['members']:
                 self.update_member(member)
