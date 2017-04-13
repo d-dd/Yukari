@@ -179,8 +179,7 @@ class DcProtocol(WebSocketClientProtocol):
         return defer.DeferredList(cleanDeferredList).addCallback(self.factory.doneClean)
 
     def connectionLost(self, reason):
-        self.factory.service.parent.cyAnnounceLeftRoom()
-        self.factory.service.parent.cy = False
+        self.factory.service.parent.ds = False
         clog.error("connection lost at protocol", syst)
         self._connectionLost(reason)
         self.cleanUp()
@@ -189,7 +188,7 @@ class DcProtocol(WebSocketClientProtocol):
                 self.heartbeat.stop()
         except(AttributeError):
             pass
-        if self.factory.service.parent.cyRestart:
+        if self.factory.service.parent.dcRestart:
             self.factory.service.checkChannelConfig(self.factory.ws)
 
         # The reconnecting factory just works on a exponential backoff timer,
@@ -216,7 +215,7 @@ class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
         clog.debug('WsFactory started connecting to Discord..', syst)
 
     def doneClean(self, res):
-        if self.service.parent.cyRestart:
+        if self.service.parent.dcRestart:
             return
         else:
         # when we are shutting down

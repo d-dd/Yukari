@@ -63,6 +63,7 @@ class Yukari(service.MultiService):
         # Wether to restart when disconnected
         self.ircRestart = True
         self.cyRestart = True
+        self.dcRestart = True
 
         self.cyLastConnect = 0
 
