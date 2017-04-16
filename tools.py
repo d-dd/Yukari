@@ -4,6 +4,31 @@ from functools import wraps
 from twisted.words.protocols.irc import attributes as A
 from twisted.python import log
 from twisted.internet.error import AlreadyCalled, AlreadyCancelled
+from twisted.logger import Logger
+
+class EscapedLogger(Logger):
+    """Logger with additional log methods that escape
+    { and }, so it can display json.
+    """
+    def _unescape_curly(msg):
+        msg = msg.replace('{', '{{')
+        msg = msg.replace('}', '}}')
+        return msg
+
+    def debugz(self, msg):
+        self.debug(_unescape_curly(msg))
+
+    def infoz(self, msg):
+        self.info(_unescape_curly(msg))
+
+    def warnz(self, msg):
+        self.warn(_unescape_curly(msg))
+
+    def errorz(self, msg):
+        self.error(_unescape_curly(msg))
+
+    def criticalz(self, msg):
+        self.critical(_unescape_curly(msg))
 
 class LevelFileLogObserver(log.FileLogObserver):
     def __init__(self, f, level=logging.INFO):

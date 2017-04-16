@@ -11,6 +11,7 @@ from twisted.application import service
 from twisted.conch import manhole_tap
 from twisted.internet import reactor, defer
 from twisted.internet.defer import Deferred
+from twisted.logger import Logger
 # Yukari
 # add home directory to sys.path
 sys.path.append(os.getcwd())
@@ -25,6 +26,8 @@ from connections.discord import dcclient
 
 from connections.discord import dcgatewayclient
 
+CHANNEL = str(config['discord']['relay_channel_id'])
+STATUS_CHANNEL = str(config['discord']['status_channel_id'])
 syst = 'Yukari'
 def importPlugins(path):
     try:
@@ -44,11 +47,15 @@ class Yukari(service.MultiService):
     def __init__(self):
         super(Yukari, self).__init__()
 
+        # test logging
+  #      self.log.debug("Yukari says hi!")
+
         # import plugins
         self._importPlugins()
 
         # discord rest api
-        self.dcr = dcrestclient.DiscordRestMessenger()
+        self.dcr = dcrestclient.DiscordHttpRelay(CHANNEL)
+        self.dcnp = dcrestclient.DiscordNowPlaying(STATUS_CHANNEL)
 
         # False = Offline, True = Online, None = has shutdown
         self.irc = False
@@ -233,6 +240,12 @@ class Yukari(service.MultiService):
                 msg = '[Now Playing]: %s (%s, %s)' % (title, mType, mId)
             msg = tools.returnStr(msg)
             self.ircFactory.prot.sayNowPlaying(msg)
+
+        if self.dc and media:
+            mType, mId, title = media
+            if mType == 'yt':
+                link = 'https://youtu.be/{}'.format(mId)
+                self.dcnp.onChangeMedia(link)
 
     def recCyUserlist(self, userdict):
         # called from cyClient, when cyCall userlist

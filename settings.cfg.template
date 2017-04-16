@@ -25,6 +25,7 @@ discord =
 
 [api]
 youtubev3 = 
+discord = 
 
 [telnet]
 port = 9988
@@ -32,7 +33,7 @@ username =
 password =
 
 [rinserver]
-port = 18914
+port = 
 
 [reprinter]
 nicoid = 
@@ -51,8 +52,14 @@ access_token =
 access_token_secret =
 
 [aws]
-snstopicarn = 
+snstopicarn = ''
 
 [discord]
 bot_token = 
-channel_id = 
+relay_channel_id = 
+username = 
+gateway_relay_port = 
+status_channel_id = 
+np_msg_id = 
+userlist_msg_id = 
+first_message_id = 
