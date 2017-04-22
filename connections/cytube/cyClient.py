@@ -979,6 +979,15 @@ class CyProtocol(WebSocketClientProtocol):
         if not self.isLoggedIn and self.rank == -1:
             self.login()
 
+    def _cyCall_setUserRank(self, fdict):
+        user = fdict['args'][0]['name']
+        rank = fdict['args'][0]['rank']
+        try:
+            self.userdict[user]['rank'] = rank
+        except(KeyError):
+            self.log.warn('setUserRank failed user:{} rank:{}'.format(
+                                                        user, rank))
+
     def _cyCall_delete(self, fdict):
         for key, method in self.triggers['delete'].iteritems():
             method(self, fdict)
