@@ -29,6 +29,7 @@ from tools import clog
 
 sys = 'Yukari'
 def importPlugins(path):
+    return []
     try:
         files = os.listdir(path)
     except(OSError):
