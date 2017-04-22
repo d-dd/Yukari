@@ -25,6 +25,7 @@ vdb = config['UserAgent']['vocadb']
 
 def importPlugins(paths):
     """ Imports .py files in paths[0] as plugins"""
+    return []
     try:
         files = os.listdir(paths[0])
         clog.info(str(files), 'files')
@@ -423,7 +424,7 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             keyId = None
         if keyId:
-            self.unloggedChat.append((None, keyId, timeNow, chatCyTime, msg,
+            self.unloggedChat.append((keyId, timeNow, chatCyTime, msg,
                                           modflair, flag))
             if not self.chatLoop.running:
                 clog.debug('(_cy_chatMsg) starting chatLoop', syst)
@@ -477,7 +478,6 @@ class CyProtocol(WebSocketClientProtocol):
 
     def _cyCall_pm(self, fdict):
         args = fdict['args'][0]
-        pmTime = args['time']
         pmCyTime = int((args['time'])/10.0)
         timeNow = getTime()
         fromUser = args['username']
@@ -492,7 +492,7 @@ class CyProtocol(WebSocketClientProtocol):
             # Yukari sent the PM
             flag = 1
             username = toUser
-        self.logPmChat(username, msg, pmTime, pmCyTime, timeNow, flag)
+        self.logPmChat(username, msg, pmCyTime, timeNow, flag)
         if msg.startswith('%%'):
             source = 'ppm'
             command = msg
@@ -507,12 +507,12 @@ class CyProtocol(WebSocketClientProtocol):
         action = False
         self.checkCommands(username, msg, action, False, 'pm')
 
-    def logPmChat(self, username, msg, pmTime, pmCyTime, timeNow, flag):
+    def logPmChat(self, username, msg, pmCyTime, timeNow, flag):
         if username in self.userdict:
             keyId = self.userdict[username]['keyId']
             if keyId is not None:
                 clog.debug('(_cyCall_pm) key for %s:%s' % (username, keyId), syst)
-                database.insertPm(keyId, pmTime, pmCyTime, msg, flag)
+                database.insertPm(keyId, timeNow, pmCyTime, msg, flag)
             else:
                 # This happens frequently on join
                 # Skips PM log but otherwise okay
@@ -670,7 +670,7 @@ class CyProtocol(WebSocketClientProtocol):
             timeNow = getTime()
             # add a line in chat db
             msg = '***[SPAM BLOCK]*** trigger length = %s' % len(chatlist)
-            chatlist.append((None, 1, timeNow, timeNow, msg, None, 2))
+            chatlist.append((1, timeNow, timeNow, msg, None, 2))
             # we need to call this later here since we blocked chat processing
             reactor.callLater(5, self.bulkLogChat)
         else:
@@ -737,7 +737,7 @@ class CyProtocol(WebSocketClientProtocol):
         d = database.dbQuery(('userId',), 'cyUser',
                          nameLower=user['name'].lower(), registered=reg)
         d.addCallback(database.queryResult)
-        values = (None, user['name'].lower(), reg, user['name'], 0, 0,
+        values = (user['name'].lower(), reg, user['name'], 0, 0,
                   None, None)
         d.addErrback(database.dbInsertReturnLastRow, 'cyUser', *values)
         d.addCallback(self.cacheKey, user)
@@ -769,7 +769,7 @@ class CyProtocol(WebSocketClientProtocol):
         assert userId == keyId, ('KeyId mismatch at userleave! %s, %s' %
                                                         (userId, keyId))
         timeJoined = leftUser['timeJoined']
-        clog.debug('(userLeave) userId %s left: %d. Logging to database' %
+        clog.debug('(userLeave) userId %s left: %s. Logging to database' %
                                                          (keyId, timeNow), syst)
         d = database.insertUserInOut(keyId, timeJoined, timeNow)
         d.addCallback(lambda __: defer.succeed(keyId))
@@ -850,9 +850,10 @@ class CyProtocol(WebSocketClientProtocol):
                 entry['qDeferred'] = defer.Deferred()
                 self.playlist.append(entry)
                 if entry['media']['type'] != 'cu': # custom embed
-                    dbpl.append((None, entry['media']['type'],
+                    dbpl.append((entry['media']['type'],
                                  entry['media']['id'],entry['media']['seconds'],
-                                 entry['media']['title'], 1, 0))
+                                 entry['media']['title'], 1, 0,
+                                 entry['media']['title']))
                                 #'introduced by' Yukari
                     qpl.append((entry['media']['type'], entry['media']['id'],
                                 entry['uid']))
@@ -869,6 +870,7 @@ class CyProtocol(WebSocketClientProtocol):
             i = self.getIndexFromUid(uid)
             self.playlist[i]['qDeferred'] = d
             d.addCallback(self.obtainQueueId, mType, mId)
+            d.addCallback(lambda qid: qid[0])
             d.addCallback(self.assignQueueId, uid)
             #d.addCallback(lambda x: clog.info('obtained queueId %s' % x, syst))
 
@@ -884,10 +886,9 @@ class CyProtocol(WebSocketClientProtocol):
             return defer.succeed(res[0])
 
     def assignQueueId(self, res, uid):
-        queueId = res[0]
         i = self.getIndexFromUid(uid)
-        self.playlist[i]['qid'] = queueId 
-        return defer.succeed(queueId)
+        self.playlist[i]['qid'] = res 
+        return defer.succeed(res)
 
     def addToPlaylist(self, item, afterUid):
         if afterUid == 'prepend':
@@ -954,24 +955,23 @@ class CyProtocol(WebSocketClientProtocol):
         else:
             userId = 3
         if userId:
-            d = self.queryOrInsertMedia(media, userId)
+        #    d = self.queryOrInsertMedia(media, userId)
+            d = database.queryMedia(media['type'], media['id'])
+            d.addCallback(database.queryResult)
+            params = (media['type'], media['id'], media['seconds'],
+                  media['title'], userId, 0)
+            d.addErrback(database.insertMedia, *params)
         else:
             clog.error('(_cyCall_queue) user id not cached.', syst)
             return
         if isTemp:
             flag += 1
-        d.addCallback(self.writeQueue, userId, timeNow, flag, uid)
+        d.addCallback(database.insertQueueFromMedia, 
+                      mType, mId, userId, timeNow, flag)
+        d.addCallback(lambda qid: qid[0][0])
+        d.addCallback(self.assignQueueId, uid)
         i = self.getIndexFromUid(uid)
         self.playlist[i]['qDeferred'] = d
-
-    def splitResults(self, defer1, defer2):
-        """ Results of defer1 are sent to defer2 """
-        def split(val):
-            # pass val to defer2 chain
-            defer2.callback(val)
-            # return val to defer1 chain
-            return val
-        defer1.addCallback(split)
 
     def _cyCall_rank(self, fdict):
         self.rank = fdict['args'][0]
@@ -998,8 +998,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.nowPlayingMedia = None
 
     def queryOrInsertMedia(self, media, userId):
-        d = database.dbQuery(('mediaId',) , 'Media', type=media['type'],
-                             id=media['id'])
+        d = database.queryMedia(media['type'], media['id'])
         d.addCallback(database.queryResult)
         values = (None, media['type'], media['id'], media['seconds'],
                   media['title'], userId, 0)
@@ -1192,10 +1191,10 @@ class CyProtocol(WebSocketClientProtocol):
             return
 
     def checkRegistered(self, username):
-        """ Return wether a Cytube user is registered (1) or a guest (0) given
+        """ Return wether a Cytube user is registered or a guest given
         a username. Checks self.userdict for rank information."""
         if username == '[server]':
-            return 1
+            return True
         else:
             try:
                 user = self.userdict[username]
@@ -1203,9 +1202,9 @@ class CyProtocol(WebSocketClientProtocol):
                 clog.error('(checkRegistered): %s' % e, syst)
                 return
             if user['rank'] == 0:
-                return 0
+                return False
             else:
-                return 1
+                return True
 
     def doAddMedia(self, media, temp, pos):
         # Cytube has a throttle for queueing media

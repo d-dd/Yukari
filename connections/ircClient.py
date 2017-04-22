@@ -107,12 +107,12 @@ class IrcProtocol(irc.IRCClient):
 
     def logSay(self, channel, msg, action):
         """ Log and send out message """
-        sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
+        sql = 'INSERT INTO IrcChat VALUES(DEFAULT, %s, %s, %s, %s, %s)'
         msgd = msg.decode('utf-8')
         # flag 1 = Yukari sent (0 for receive)
         # flag 3 = Yukari sent + action (2 for action)
         flag = 1 if not action else 3
-        binds = (None, 1, 3, getTime(), msgd, flag)
+        binds = (1, 3, getTime(), msgd, flag)
         d = database.operate(sql, binds) # must be in unicode
         if not action:
             self.say(channel, msg) # must not be in unicode
@@ -383,14 +383,15 @@ class IrcProtocol(irc.IRCClient):
 
     def logIrcUser(self, nickname, username, host):
         """ logs IRC chat to IrcChat table """
-        sql = 'INSERT OR IGNORE INTO IrcUser VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, nickname.lower(), username, host, nickname, 0)
+        sql = 'INSERT OR IGNORE INTO IrcUser VALUES(DEFAULT, %s, %s, %s, %s, %s)'
+        binds = (nickname.lower(), username, host, nickname, 0)
         return database.operate(sql, binds)
 
     def queryUser(self, response, nickname, username, host):
         if nickname in self.nickdict:
             pass
-        sql = 'SELECT userId FROM IrcUser WHERE nickLower=? AND username=? AND host=?'
+        sql = ('SELECT userId FROM IrcUser WHERE nickLower=%s AND '
+                'username=%s AND host=%s')
         binds = (nickname.lower(), username, host)
         return database.query(sql, binds)
 
@@ -401,8 +402,8 @@ class IrcProtocol(irc.IRCClient):
     def logChat(self, result, status, timeNow, msg, flag):
         status = 0 # we don't really need this
         #msg = msg.decode('utf-8')
-        sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, result, status, timeNow, msg, flag)
+        sql = 'INSERT INTO IrcChat VALUES(DEFAULT, %s, %s, %s, %s, %s)'
+        binds = (result, status, timeNow, msg, flag)
         return database.operate(sql, binds)
 
     def connectionLost(self, reason):
@@ -411,8 +412,6 @@ class IrcProtocol(irc.IRCClient):
         tools.cleanLoops(self.loops)
         if not self.factory.service.parent.ircRestart:
             self.factory.cleanup()
-
-
 
 class IrcFactory(ReconnectingClientFactory):
 

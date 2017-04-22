@@ -1,3 +1,5 @@
+from datetime import datetime
+import pytz
 import HTMLParser, htmlentitydefs
 import logging, sys, time
 from functools import wraps
@@ -113,7 +115,14 @@ def strip_tag_entity(html):
     return self.get_text()
 
 def getTime():
-    return int(time.time()*100)
+    """Return timezone aware datetime object
+    in UTC.
+    e.g.
+    >>>datetime.datetime(2017, 2, 18, 7, 19, 57, 758400, tzinfo=<UTC>)
+    """
+    return datetime.now(pytz.utc)
+
+##    return int(time.time()*100)
 
 def returnStr(text):
     if isinstance(text, unicode):
