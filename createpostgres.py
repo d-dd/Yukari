@@ -1,9 +1,14 @@
 """ Creates the initial tables required for operation."""
+import getpass
+
 import psycopg2
 import time
 from conf import config
 from psycopg2 import IntegrityError
-con = psycopg2.connect('dbname=yukdatadb user=yuk')
+
+user = getpass.getuser()
+
+con = psycopg2.connect('dbname=yukdb user={}'.format(user))
 cur = con.cursor()
 #con.execute('pragma foreign_keys=ON')
 
