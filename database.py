@@ -1,3 +1,4 @@
+import getpass
 from twisted.internet import defer, reactor, task
 from twisted.enterprise import adbapi
 from tools import clog
@@ -125,6 +126,31 @@ def insertChat(*args):
     sql = 'INSERT INTO CyChat VALUES(%s, %s, %s, %s, %s, %s, %s)'
     #return dbpool.runOperation(sql, args)
     return operate(sql, args)
+
+def queryCyuser(nameLower, isRegistered):
+    sql = 'SELECT userid FROM CyUser WHERE namelower=%s AND registered=%s'
+    binds = (nameLower, isRegistered)
+    return query(sql, binds)
+
+def insertCyuser(nameLower, isRegistered, name, level, flag,
+        profiletext, profileimgurl):
+    sql = ('INSERT INTO CyUser VALUES(DEFAULT, %s, %s, %s, %s, %s, %s, %s) '
+           'RETURNING userid')
+    binds = (nameLower, isRegistered, name, level, flag, 
+            profiletext, profileimgurl)
+    return query(sql, binds)
+
+def queryIrcuser(nickLower, username, host):
+    sql = ('SELECT userid FROM ircuser WHERE nicklower=%s AND username=%s '
+           'AND host=%s')
+    binds = (nickLower, username, host)
+    return query(sql, binds)
+
+def insertIrcuser(nameLower, username, host, nick, flag):
+    sql = ('INSERT INTO IrcUser VALUES(DEFAULT, %s, %s, %s, %s, %s) '
+           'RETURNING userid')
+    binds = (nameLower, username, host, nick, flag)
+    return query(sql, binds)
 
 def bulkLogMedia(playlist):
     return dbpool.runInteraction(_bulkLogMedia, playlist)
@@ -522,7 +548,8 @@ def countRecentQueuesSince(mediaType, mediaId, sinceTime):
     return query(sql, binds)
 
 
-dbpool = adbapi.ConnectionPool('psycopg2', 'dbname=yukdatadb user=yuk',
+user = getpass.getuser()
+dbpool= adbapi.ConnectionPool('psycopg2', 'dbname=yukdb user={}'.format(user),
                       #         check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 #dbpool.runInteraction(turnOnFK)

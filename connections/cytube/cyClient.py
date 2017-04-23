@@ -734,12 +734,14 @@ class CyProtocol(WebSocketClientProtocol):
         self.userdict[user['name']] = user
         self.userdict[user['name']]['subscribeLike'] = False
         reg = self.checkRegistered(user['name'])
-        d = database.dbQuery(('userId',), 'cyUser',
-                         nameLower=user['name'].lower(), registered=reg)
-        d.addCallback(database.queryResult)
+        d = database.queryCyuser(user['name'].lower(), reg)
+#        d = database.dbQuery(('userId',), 'cyUser',
+#                         nameLower=user['name'].lower(), registered=reg)
+#        d.addCallback(database.queryResult)
         values = (user['name'].lower(), reg, user['name'], 0, 0,
                   None, None)
-        d.addErrback(database.dbInsertReturnLastRow, 'cyUser', *values)
+    #    d.addErrback(database.insertCyuser, *values)
+        d.addCallback(self.cbQueryCyuser, values)
         d.addCallback(self.cacheKey, user)
         d.addErrback(self.errcatch)
         # add a reference to the deferred to the userdict
@@ -749,7 +751,19 @@ class CyProtocol(WebSocketClientProtocol):
         if user.get('profile'):
             profileText = user['profile'].get('text')
             profileImgUrl = user['profile'].get('image')
-        d.addCallback(self.updateProfile, profileText, profileImgUrl)
+      #  d.addCallback(self.updateProfile, profileText, profileImgUrl)
+
+    def cbQueryCyuser(self, res, values):
+        """ Check if query returns an id.
+        If no id, we insert it.
+        Return a deferred success with keyId"""
+        try:
+            keyId = res[0][0]
+            return defer.succeed(keyId)
+        except(IndexError):
+            d = database.insertCyuser(*values)
+            d.addCallback(lambda res: defer.succeed(res[0][0]))
+            return d
         
     def updateProfile(self, userId, profileText, profileImgUrl):
         d = database.updateProfile(userId, profileText, profileImgUrl)
@@ -757,12 +771,14 @@ class CyProtocol(WebSocketClientProtocol):
         return d
 
     def cacheKey(self, res, user):
+        clog.warning('res is {}'.format(res), syst)
         assert res, 'no res at cacheKey'
-        if res[0]:
-            clog.debug("(cacheKey) cached %s's key %s" % (user['name'], res[0]),
+        keyId = res
+        if keyId:
+            clog.debug("(cacheKey) cached %s's key %s" % (user['name'], keyId),
                       syst)
-            self.userdict[user['name']]['keyId'] = res[0]
-        return defer.succeed(res[0])
+            self.userdict[user['name']]['keyId'] = keyId
+        return defer.succeed(keyId)
 
     def userLeave(self, keyId, leftUser, timeNow):
         userId = leftUser['keyId']
