@@ -148,7 +148,7 @@ class DiscordHttpRelay(DiscordRestApiLoop):
                 self._is_collecting = True
 
     def delayed_relay(self, url):
-        lines = '+\n'.join(self.linelist)
+        lines = '\n'.join(self.linelist)
         self.linelist = []
         self.stack_queue('post', url, lines)
         self._is_collecting = False
