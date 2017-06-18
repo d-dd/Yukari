@@ -25,7 +25,6 @@ vdb = config['UserAgent']['vocadb']
 
 def importPlugins(paths):
     """ Imports .py files in paths[0] as plugins"""
-    return []
     try:
         files = os.listdir(paths[0])
         clog.info(str(files), 'files')
@@ -286,8 +285,8 @@ class CyProtocol(WebSocketClientProtocol):
 
     def doSendChat(self, msg, source='chat', username=None, modflair=False,
                    toIrc=True):
-        clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, 
-                   source, username), syst)
+     #   clog.debug('(doSendChat) msg:%s, source:%s, username:%s' % (msg, 
+     #              source, username), syst)
         if not toIrc:
             msg = '^' + msg
         if source == 'chat':
@@ -1057,6 +1056,7 @@ class CyProtocol(WebSocketClientProtocol):
                 self.currentJs[resultname] = strjs
                 js.append(strjs)
         #self.doSendChat((';'.join(js)+';'))
+        clog.info('emitbulkjs - sent JS to cytube results: %s' % len(results), syst)
         self.doSendJs((';'.join(js)+';'))
 
     def _cyCall_setCurrent(self, fdict):

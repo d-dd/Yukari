@@ -33,7 +33,7 @@ class Points(object):
         reg = cy.checkRegistered(username)
         if reg is None:
             # assume registered
-            reg = 1
+            reg = True
         d1 = self.calculatePoints(username, reg)
         d2 = self.calculateStats(username, reg)
         dl = defer.DeferredList([d1, d2])

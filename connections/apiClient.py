@@ -105,7 +105,6 @@ def cbGetCySioClientConfig(response):
         return readBody(response)
     else:
         return defer.fail(response)
-
     
 
 #d = requestYtApi('Dxt3OonUmFY', 'check')

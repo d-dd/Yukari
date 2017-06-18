@@ -1,12 +1,15 @@
 """ Creates the initial tables required for operation."""
 import getpass
+import json
 
 import psycopg2
 import time
+from tools import getTime
 from conf import config
 from psycopg2 import IntegrityError
 
 user = getpass.getuser()
+now = getTime()
 
 con = psycopg2.connect('dbname=yukdb user={}'.format(user))
 cur = con.cursor()
@@ -109,16 +112,18 @@ cur.execute("""
 # Song (VocaDB) table
 cur.execute("""
         CREATE TABLE IF NOT EXISTS Song(
-        songId SERIAL PRIMARY KEY,
-        data TEXT NOT NULL,
-        lastUpdate INTEGER NOT NULL);""")
+        songId INTEGER PRIMARY KEY,
+        data JSONB NOT NULL,
+        lastUpdate TIMESTAMPTZ NOT NULL);""")
 
 # Put a row for -1 and 0
 # -1 is server (connection) error
 # 0 is null/invalid response
+err = json.dumps({'error': 'connection error'})
+nul = json.dumps({'null': None})
 try:
-    cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (-1, 'connection error', 0))
-    cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (0, 'null', 0))
+    cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (-1, err, now))
+    cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (0, nul, now))
     con.commit()
 except IntegrityError as e:
     print e
