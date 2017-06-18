@@ -6,6 +6,7 @@ from tools import clog
 #from sqlite3 import OperationalError
 sys = 'database'
 _USERIDSQL = '(SELECT userId FROM CyUser WHERE nameLower=%s AND registered=%s)'
+_MEDIASQL = '(SELECT mediaId FROM Media WHERE type=%s AND id=%s)'
 
 #def turnOnFK(txn):
 #    txn.execute('pragma foreign_keys=ON')
@@ -14,20 +15,21 @@ class NoRowException(Exception):
     pass
 
 def operate(sql, binds, attempt=0):
+    return dbpool.runOperation(sql, binds)
+###
     d = task.deferLater(reactor, attempt * 1, dbpool.runOperation,  sql, binds)
     #d = task.deferLater(reactor, attempt * 1, raise_error, sql, binds)
     attempt += 1
     d.addErrback(retryDatabase, 'operate', sql, binds, attempt)
     return d
 
-def query(sql, binds, attempt=0):
+def query(sql, binds, attempt=0): 
+    return dbpool.runQuery(sql, binds)
+###
     d = task.deferLater(reactor, attempt * 1, dbpool.runQuery,  sql, binds)
     attempt += 1
     d.addErrback(retryDatabase, 'query', sql, binds, attempt)
     return d
-
-#def raise_error(*args, **kwargs):
-#    raise OperationalError('teto')
 
 def retryDatabase(error, operation, sql, binds, attempt):
     if attempt >= 5:
@@ -199,6 +201,25 @@ def queryLastQueue(mType, mId):
     binds = (mType, mId)
     return query(sql, binds)
 
+def querySong(mType, mId):
+    pass
+
+def upsertSong(songId, data, timeNow):
+    sql = ('INSERT INTO Song VALUES (%s, %s, %s) ON CONFLICT (songId) '
+           'DO UPDATE SET songid=%s, data=%s, lastupdate=%s '
+           'RETURNING songid')
+    binds = (songId, data, timeNow) * 2
+    return query(sql, binds).addCallback(returning)
+
+def upsertMediaSong(songId, mType, mId, nameLower, registered, 
+                                                timeNow, method):
+    sql = ('INSERT INTO MediaSong VALUES ({}, %s, {}, %s, %s) '
+           'ON CONFLICT (mediaid) DO UPDATE SET '
+           'mediaid={}, songid=%s, userid={}, time=%s, method=%s'.format(
+                   _MEDIASQL, _USERIDSQL, _MEDIASQL, _USERIDSQL))
+    binds = (mType, mId, songId, nameLower, registered, timeNow, method) * 2
+    return operate(sql, binds)
+
 def insertSong(res, lastUpdate):
     if res == 0:
         clog.warning('(insertSong) VocaDB returned null. Skipping.', sys)
@@ -206,30 +227,37 @@ def insertSong(res, lastUpdate):
     return dbpool.runInteraction(_insertSong, res, lastUpdate)
 
 def _insertSong(txn, res, lastUpdate):
-    sql = 'INSERT OR REPLACE INTO Song VALUES (%s, %s, %s)'
+    sql = ('INSERT INTO Song VALUES (%s, %s, %s) '
+           'ON CONFLICT (songId) DO UPDATE SET songid=%s, data=%s, lastupdate=%s')
     data, songId = res
-    binds = (songId, data, lastUpdate)
+    binds = (songId, data, lastUpdate) * 2
     txn.execute(sql, binds)
     return [txn.lastrowid]
 
 def insertMediaSong(res, mType, mId, songId, userId, timeNow, method):
-    sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
-           ' ((SELECT mediaId FROM Media WHERE type=%s AND id=%s), %s, %s, %s, %s)')
-    binds = (mType, mId, songId, userId, timeNow, method)
+    sql = ('INSERT INTO MediaSong VALUES'
+           ' ((SELECT mediaId FROM Media WHERE type=%s AND id=%s), %s, %s, %s, %s) '
+           'ON CONFLICT (mediaId) DO UPDATE SET '
+           'mediaid=(SELECT mediaID FROM Media WHERE type=%s AND id=%s), '
+           'songid=%s, userid=%s, time=%s, method=%s')
+    binds = (mType, mId, songId, userId, timeNow, method) * 2
     return operate(sql, binds)
     
 def insertMediaSongPv(songIdl, mType, mId, userId, timeNow):
     if songIdl:
         #clog.debug('(insertMediaSongPv)', sys)
-        sql = ('INSERT OR REPLACE INTO MediaSong VALUES'
-               ' ((SELECT mediaId FROM Media WHERE type=%s AND id=%s), %s, %s, %s, %s)')
-        binds = (mType, mId, songIdl[1], userId, timeNow, songIdl[0])
+        sql = ('INSERT INTO MediaSong VALUES'
+             ' ((SELECT mediaId FROM Media WHERE type=%s AND id=%s), %s, %s, %s, %s) '
+             'ON CONFLICT (mediaId) DO UPDATE SET '
+              'mediaid=(SELECT mediaID FROM Media WHERE type=%s AND id=%s), '
+              'songid=%s, userid=%s, time=%s, method=%s')
+        binds = (mType, mId, songIdl[1], userId, timeNow, songIdl[0]) * 2
         #clog.debug('%s, %s' % (sql, binds), sys)
         return operate(sql, binds)
 
 def queryMediaSongRow(mType, mId):
     clog.debug('(queryMediaSongData)', sys)
-    sql = ('SELECT * FROM MediaSong WHERE mediaId IS'
+    sql = ('SELECT * FROM MediaSong WHERE mediaId ='
            ' (SELECT mediaId FROM Media WHERE type=%s AND id=%s)')
     binds = (mType, mId)
     return query(sql, binds)
@@ -257,7 +285,7 @@ def _bulkQueryMediaSong(txn, playlist):
     clog.debug('(_queryBulkMediaSong)', sys)
     songlessMedia = []
     for media in playlist:
-        sql = ('SELECT songId FROM MediaSong WHERE mediaId IS'
+        sql = ('SELECT songId FROM MediaSong WHERE mediaId ='
                ' (SELECT mediaId FROM Media WHERE type=%s AND id=%s)')
         binds = (media[1], media[2])
         txn.execute(sql, binds)
@@ -309,13 +337,14 @@ def unflagUser(flag, nameLower, isRegistered):
     return operate(sql, binds)
 
 def insertReplaceLike(mediaId, queueId, userId, timeNow, value):
-    sql = 'INSERT OR REPLACE INTO Like VALUES (%s, %s, %s, %s, %s)'
-    binds = (mediaId, queueId, userId, timeNow, value)
+    sql = ('INSERT INTO Liked VALUES (%s, %s, %s, %s, %s) '
+           'ON CONFLICT (queueId, userId) DO UPDATE SET value=%s')
+    binds = (mediaId, queueId, userId, timeNow, value, value)
     return operate(sql, binds)
 
 def getLikes(queueId):
-    sql = ('SELECT nameOriginal, like.value FROM CyUser JOIN Like ON '
-          'CyUser.userId = Like.userId WHERE Like.queueId=%s')
+    sql = ('SELECT nameOriginal, liked.value FROM CyUser JOIN Liked ON '
+          'CyUser.userId = Liked.userId WHERE Liked.queueId=%s')
     binds = (queueId,) 
     return query(sql, binds)
 
@@ -328,10 +357,13 @@ def calcUserPoints(res, nameLower, isRegistered):
     return query(sql, binds)
 
 def calcAccessTime(res, nameLower, isRegistered):
-    sql = ('SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid=%s)'
-           '- (SELECT SUM(enter) FROM userinout WHERE userid = %s)) * 0.00002'
-        % ((_USERIDSQL,) * 2))
-    binds = (nameLower, isRegistered) * 2
+    # seconds * 0.002
+    sql = ("SELECT EXTRACT('epoch' FROM (SELECT SUM(leave-enter) FROM "
+           "Userinout WHERE userid={})) * 0.002".format(_USERIDSQL))
+ #   sql = ('SELECT (SELECT (SELECT SUM(leave) FROM userinout WHERE userid=%s)'
+ #          '- (SELECT SUM(enter) FROM userinout WHERE userid = %s)) * 0.00002'
+ #       % ((_USERIDSQL,) * 2))
+    binds = (nameLower, isRegistered)
     return query(sql, binds)
 
 #def addByUserQueue(sample, nameLower, registered, words, limit, isRecent):
@@ -341,7 +373,7 @@ def addMedia(sample, nameLower, registered, words, limit, isRecent):
     limit = max(0, limit)
     binds, sql = [], []
     # only Youtube
-    providers = '("yt")'
+    providers = "('yt')"
     if nameLower and sample == 'q':
         name = ('AND Queue.userId = %s' % _USERIDSQL)
         binds.extend((nameLower, int(registered)))
@@ -349,33 +381,33 @@ def addMedia(sample, nameLower, registered, words, limit, isRecent):
         name = ('AND by = %s' % _USERIDSQL)
         binds.extend((nameLower, int(registered)))
     elif nameLower and sample == 'l':
-        name = ('AND Like.userId = %s' % _USERIDSQL)
+        name = ('AND Liked.userId = %s' % _USERIDSQL)
         binds.extend((nameLower, int(registered)))
     else:
         name = ''
     if words:
-        title = 'AND Media.title LIKE %s '
+        title = 'AND Media.title LIKED %s '
         binds.append('%%%s%%' % words) # %% is escaped %
     else:
         title = ''
     if not isRecent: # by default exclude last 200 queued media from pool
         recent = ('AND Media.mediaId NOT IN (SELECT mediaId FROM Queue '
-                'ORDER BY queueId DESC LIMIT 200)')
+                'ORDER BY queueId DESC LIMIT 5)')
     else:
         recent = ''
     if sample == 'q':
-        sql = ('SELECT type, id FROM Media WHERE type IN %s AND mediaId IN '
+        sql = ('SELECT type, id FROM Media WHERE type IN {} AND mediaId IN '
                '(SELECT DISTINCT Media.mediaId FROM Media, Queue WHERE '
-               'Media.mediaId = Queue.mediaId AND Media.flag=0 %s %s %s '
-               'ORDER BY RANDOM() LIMIT %s)' % (providers, name, title, recent))
+               'Media.mediaId = Queue.mediaId AND Media.flag=0 {} {} {} '
+               ')ORDER BY RANDOM() LIMIT %s'.format(providers, name, title, recent))
     elif sample == 'a':
         sql = ('SELECT type, id FROM Media WHERE type IN %s AND flag=0 %s %s %s'
-              'ORDER BY RANDOM() LIMIT %s' % (providers, name, title, recent))
+              'ORDER BY RANDOM() LIMIT %s'.format(providers, name, title, recent))
     elif sample == 'l':
-        sql = ('SELECT type, id FROM Media CROSS JOIN Like ON Media.mediaId '
-               '=Like.mediaId GROUP BY Media.mediaId HAVING type IN %s AND '
-               'value=1 %s %s %s ORDER BY RANDOM() LIMIT %s' %
-               (providers, name, title, recent))
+        sql = ('SELECT type, id FROM Media CROSS JOIN Liked ON Media.mediaId '
+               '=Liked.mediaId GROUP BY Media.mediaId HAVING type IN {} AND '
+               'value=1 {} {} {} ORDER BY RANDOM() LIMIT %s'.format(
+               providers, name, title, recent))
 
     binds.append(limit)
     binds = tuple(binds)
@@ -451,14 +483,15 @@ def getUserAddSum(nameLower, isRegistered):
 def getUserLikesReceivedSum(nameLower, isRegistered, value):
     """ Queries the total number of Likes the user's queues received 
         For a list of those queues, use #####TODO """
-    sql = ('SELECT COUNT(*) FROM (SELECT Queue.queueId, Like.userId '
-           'FROM Queue JOIN Like ON Queue.queueId = Like.queueId WHERE '
-           'Queue.userId = %s AND Like.value=%s)' % _USERIDSQL)
+    sql = ('SELECT COUNT(*) FROM (SELECT Queue.queueId, Liked.userId '
+           'FROM Queue JOIN Liked ON Queue.queueId = Liked.queueId WHERE '
+           'Queue.userId = {} AND Liked.value=%s) AS foo'.format(_USERIDSQL))
     binds = (nameLower, isRegistered, value)
     return query(sql, binds)
 
 def getUserLikedSum(nameLower, isRegistered, value):
-    sql = 'SELECT COUNT(*) FROM LIKE WHERE userId=%s AND value=%s' % _USERIDSQL
+    sql = 'SELECT COUNT(*) FROM LIKED WHERE userId={} AND value=%s'.format(
+            _USERIDSQL)
     binds = (nameLower, isRegistered, value)
     return query(sql, binds)
 
@@ -490,8 +523,8 @@ def getChannelPopularMedia(limit, direction):
     else:
         _sub = ('<', 'ASC')
     sql = ('SELECT * FROM (SELECT Queue.mediaId AS mid, '
-           'SUM(Like.value) AS agg FROM Queue INNER JOIN Like ON Queue.queueId '
-           '= Like.queueId WHERE Queue.queueId IN (SELECT queueId FROM Like) '
+           'SUM(Liked.value) AS agg FROM Queue INNER JOIN Liked ON Queue.queueId '
+           '= Liked.queueId WHERE Queue.queueId IN (SELECT queueId FROM Liked) '
            'GROUP BY Queue.MediaId HAVING agg %s 0 ORDER BY agg %s LIMIT %s) '
            'JOIN Media ON Media.mediaId = mid' % _sub)
     binds = (limit,)
@@ -541,11 +574,35 @@ def getLastAnnouncement():
     return query(sql, tuple())
 
 def countRecentQueuesSince(mediaType, mediaId, sinceTime):
-    sql = ('SELECT COUNT() FROM Queue WHERE mediaId= '
+    sql = ('SELECT COUNT(*) FROM Queue WHERE mediaId= '
            '(SELECT mediaId FROM Media WHERE type=%s AND id=%s) '
            'AND time > %s')
     binds = (mediaType, mediaId, sinceTime)
     return query(sql, binds)
+
+
+
+
+#####
+def getVocadbData(mType, mId):
+    sql = ("SELECT data FROM Song WHERE songid="
+           "(SELECT songid FROM Mediasong WHERE mediaid="
+           "(SELECT mediaid FROM Media WHERE type=%s AND id=%s))")
+    binds = (mType, mId)
+    return query(sql, binds)
+
+def getVocadbBySongId(songId):
+    sql = "SELECT data FROM Song WHERE songid=%s"
+    binds = (songId,)
+    return query(sql, binds)
+
+def returning(result):
+    try:
+        return result[0][0]
+    except(IndexError, TypeError):
+        return
+
+
 
 
 user = getpass.getuser()

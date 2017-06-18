@@ -1,6 +1,9 @@
 from twisted.internet import defer
+import time
 import json
+from datetime import datetime
 import database
+
 class FirstQueued(object):
     def __init__(self):
         self.jsName = 'firstQueued'
@@ -14,9 +17,13 @@ class FirstQueued(object):
         return d
 
     def _cbFirstQueued(self, results, cy):
-        time = results[0][0]/100
+        dt = results[0][0] # datetime obj
+        # utc time = local time              - utc offset
+        # https://stackoverflow.com/questions/8777753
+        utc_naive  = dt.replace(tzinfo=None) - dt.utcoffset()
+        timestamp = (utc_naive - datetime(1970, 1, 1)).total_seconds()
         username = results[0][1]
-        strjs = 'first_queued=' + json.dumps({'time':time, 'username':username})
+        strjs = 'first_queued=' + json.dumps({'time':timestamp, 'username':username})
         return defer.succeed((self.jsName, strjs))
 
     def _getFirstQueuedByTime(self, mType, mId):
@@ -24,7 +31,7 @@ class FirstQueued(object):
         sql = ('SELECT Queue.time, CyUser.nameOriginal FROM Queue, CyUser, '
                'Media WHERE Queue.mediaId = Media.mediaId AND Queue.userId = '
                'CyUser.userId AND Media.mediaId =(SELECT mediaId FROM Media '
-               'WHERE type=? AND id=?);')
+               'WHERE type=%s AND id=%s) ORDER BY time LIMIT 1;')
         binds = (mType, mId)
         return database.query(sql, binds)
 

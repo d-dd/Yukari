@@ -1,7 +1,8 @@
 """
 Count how many times a media has been queued recently.
 """
-import time
+import pytz
+import datetime
 from twisted.internet import defer
 import database
 
@@ -13,8 +14,8 @@ class CountQueue(object):
         media = fdict['args'][0]
         mType = media['type']
         mId = media['id']
-        ninetyDays = 60 * 60 * 24 * 90
-        ninetyDaysAgo = (time.time() - ninetyDays) * 100
+        ninetyDays = datetime.timedelta(days=90)
+        ninetyDaysAgo = datetime.datetime.now(pytz.utc) - ninetyDays
         return self._countQueue(mType, mId, ninetyDaysAgo)
 
     def _countQueue(self, mType, mId, sinceTime):
