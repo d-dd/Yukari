@@ -167,3 +167,19 @@ class DiscordNowPlaying(DiscordRestApiLoop):
         url = '{}/channels/{}/messages/{}'.format(HOST, STATUS_CHANNEL,
                                                    STATUS_MSG_USERLIST)
 
+def bulkDelete(msg_ids):
+    """
+    bulk delete messages
+    msg_ids: list of msg_ids
+ https://discordapp.com/developers/docs/resources/channel#bulk-delete-messages
+    """
+    #TODO - put in rate limiting pool
+    if len(msg_ids) <= 1:
+        # Can't use Bulk delete for just one message
+        #clog.info('no messages to bulk delete', 'dcresclient')
+        return
+    clog.info('bulk deleting %s messages' % json.dumps(msg_ids), 'dcrestclient')
+    payload = {'messages': msg_ids}
+    url = '{}/channels/{}/messages/bulk-delete'.format(HOST, CHANNEL)
+    d = treq.post(url, json.dumps(payload), headers=HEADERS)
+    return d

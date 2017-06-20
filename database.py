@@ -604,6 +604,33 @@ def returning(result):
 
 
 
+### Discord
+
+def insertDiscordMsg(msgid, userid, channelid, timestamp, data, isDeleted):
+    sql = ('INSERT INTO DiscordMsg VALUES (%s, %s, %s, %s, %s, %s)')
+    binds = msgid, userid, channelid, timestamp, data, isDeleted
+    return operate(sql, binds)
+
+def queryDiscordMsgToBulkDelete(messageHistoryLimit):
+    """ Return list of msg_id's that are less than 14 days old, not deleted, 
+        and above the limit count of the the message history"""
+    sql = ("SELECT msg_id FROM discordmsg WHERE deleted = 'f' AND "
+           "timestamp BETWEEN CURRENT_TIMESTAMP - INTERVAL '13 days' AND "
+           "NOW() ORDER BY TIMESTAMP LIMIT (SELECT GREATEST(0 , "
+           "(SELECT COUNT(msg_id) FROM discordmsg WHERE deleted = 'f')-%s));")
+    binds = (messageHistoryLimit,)
+    return query(sql, binds)
+
+def discordMsgFlagDeletion(msgid):
+    sql = 'UPDATE DiscordMsg SET deleted = %s WHERE msg_id = %s'
+    binds = (True, msgid)
+    return operate(sql, binds)
+
+def discordMsgFlagDeletionBulk(msgids):
+    sql = "UPDATE DiscordMsg SET deleted = 't' WHERE msg_id = ANY(%s)"
+    binds = (msgids,)
+    return operate(sql, binds)
+
 
 user = getpass.getuser()
 dbpool= adbapi.ConnectionPool('psycopg2', 'dbname=yukdb user={}'.format(user),

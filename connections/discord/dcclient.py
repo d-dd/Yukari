@@ -17,6 +17,7 @@ from autobahn.twisted.websocket import WebSocketClientProtocol,\
 import database, tools
 from tools import clog, getTime
 from conf import config
+from connections.discord import dcrestclient
 
 syst = 'DiscordClient'
 agent = config['UserAgent']['discord']
@@ -70,13 +71,15 @@ class DcProtocol(WebSocketClientProtocol):
             msg = zlib.decompress(msg).decode('utf-8')
             clog.debug('Binary received: {0} bytes'.format(len(msg)))
 
-        self.log.debug(u"{msg!s}", msg=msg)
+        #self.log.debug(u"{msg!s}", msg=msg)
     
         msg = json.loads(msg)
         op = msg.get('op')
         data = msg.get('d')
         seq = msg.get('s')
         t = msg.get('t')
+
+        self.log.debug(u"Received a Discord Gateway frame: {op!s}", op=op)
 
         if seq:
             self.factory.series = seq
@@ -87,7 +90,7 @@ class DcProtocol(WebSocketClientProtocol):
                                                              self.beatHeart))
 
         elif op == self.HEARTBEAT_ACK:
-            self.log.debug('Received HEARTBEAT_ACK')
+       #     self.log.debug('Received HEARTBEAT_ACK')
             return
 
         elif op == self.HELLO:
@@ -131,10 +134,15 @@ class DcProtocol(WebSocketClientProtocol):
         if t == "READY":
             self.user = data['user']
             self.session_id = data['session_id']
+            self.bulk_delete_loop = task.LoopingCall(self.bulk_delete_msg)
+            self.bulk_delete_loop.start(60.0, now=False)
+            self.loops.append(self.bulk_delete_loop)
 
         elif t == "MESSAGE_CREATE":
             content = data['content']
             channel_id = data['channel_id']
+            self.saveDiscordMsg(data)
+
             if channel_id == RELAY_CHANNEL_ID:
                 user_id = data['author']['id']
                 username = data['author']['username']
@@ -146,6 +154,17 @@ class DcProtocol(WebSocketClientProtocol):
                     content = '{}{}{}'.format(content, space,
                                               attachment.get('url', ''))
                 self.factory.service.parent.recDcMsg(name, content)
+
+        elif t == "MESSAGE_DELETE":
+            msg_id = data['id']
+            database.discordMsgFlagDeletion(msg_id)
+
+        elif t == "MESSAGE_DELETE_BULK":
+            msg_ids = data['ids']
+            msg_ids = [int(x) for x in msg_ids]
+            database.discordMsgFlagDeletionBulk(msg_ids)
+            #for msg_id in msg_ids:
+            #    database.discordMsgFlagDeletion(msg_id)
  
         elif t == "GUILD_CREATE":
             for member in data['members']:
@@ -156,6 +175,14 @@ class DcProtocol(WebSocketClientProtocol):
 
         elif t == "GUILD_MEMBER_UPDATE":
             self.update_member(data)
+
+    def saveDiscordMsg(self, data):
+        msg_id = data['id']
+        user_id = data['author']['id']
+        channel_id = data['channel_id']
+        timestamp = data['timestamp']
+        database.insertDiscordMsg(msg_id, user_id, channel_id, 
+                                    timestamp, json.dumps(data), False)
 
     def update_member(self, user):
         user_id = user['user']['id']
@@ -169,6 +196,17 @@ class DcProtocol(WebSocketClientProtocol):
     def get_nickname(self, user_id):
         user = self.members.get(user_id)
         return user['nick'] or user['username']
+
+    def bulk_delete_msg(self):
+        """
+        Query the messages that need to be deleted, and 
+        POST bulk delete to delete messages.
+        Run this in a loop periodically.
+        """
+        d = database.queryDiscordMsgToBulkDelete(500)
+        d.addCallback(lambda x: [msg[0] for msg in x])
+        d.addCallback(dcrestclient.bulkDelete)
+        return
 
     def onClose(self, wasClean, code, reason):
         clog.info('(onClose) Closed Protocol connection. wasClean:%s '

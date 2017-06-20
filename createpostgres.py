@@ -224,6 +224,17 @@ cur.execute("""
         title TEXT,
         text TEXT);""")
 
+cur.execute("""
+        CREATE TABLE IF NOT EXISTS DiscordMsg(
+        msg_id BIGINT NOT NULL,
+        user_id BIGINT NOT NULL,
+        channel_id BIGINT NOT NULL,
+        timestamp TIMESTAMPTZ NOT NULL,
+        data JSONB NOT NULL,
+        deleted boolean NOT NULL,
+        UNIQUE (msg_id)
+        );""")
+
 con.commit()
 print "Tables created."
 
