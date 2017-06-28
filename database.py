@@ -1,35 +1,24 @@
+import itertools
 import getpass
 from twisted.internet import defer, reactor, task
 from twisted.enterprise import adbapi
 from tools import clog
-#from psycopg2 import sql as psql
-#from sqlite3 import OperationalError
+from conf import config
+
 sys = 'database'
 _USERIDSQL = '(SELECT userId FROM CyUser WHERE nameLower=%s AND registered=%s)'
 _MEDIASQL = '(SELECT mediaId FROM Media WHERE type=%s AND id=%s)'
-
-#def turnOnFK(txn):
-#    txn.execute('pragma foreign_keys=ON')
+dbname = config['Database']['dbname']
+user = config['Database']['user']
 
 class NoRowException(Exception):
     pass
 
 def operate(sql, binds, attempt=0):
     return dbpool.runOperation(sql, binds)
-###
-    d = task.deferLater(reactor, attempt * 1, dbpool.runOperation,  sql, binds)
-    #d = task.deferLater(reactor, attempt * 1, raise_error, sql, binds)
-    attempt += 1
-    d.addErrback(retryDatabase, 'operate', sql, binds, attempt)
-    return d
 
 def query(sql, binds, attempt=0): 
     return dbpool.runQuery(sql, binds)
-###
-    d = task.deferLater(reactor, attempt * 1, dbpool.runQuery,  sql, binds)
-    attempt += 1
-    d.addErrback(retryDatabase, 'query', sql, binds, attempt)
-    return d
 
 def retryDatabase(error, operation, sql, binds, attempt):
     if attempt >= 5:
@@ -154,6 +143,19 @@ def insertIrcuser(nameLower, username, host, nick, flag):
     binds = (nameLower, username, host, nick, flag)
     return query(sql, binds)
 
+def queryMediaNotInDb(playlist):
+    """playlist : list of media (type, id)
+     Returns a deferred of a list of (type, id)"
+     """
+    s = "(%s, %s)"
+    # flatten playlist
+    binds = tuple(itertools.chain.from_iterable(playlist))
+    params = ", ".join([s]*len(playlist))
+    sql = ("SELECT type, id FROM (VALUES{}) V(type, id) EXCEPT "
+           "SELECT type, id FROM media").format(params)
+    print sql
+    return query(sql, binds)
+
 def bulkLogMedia(playlist):
     return dbpool.runInteraction(_bulkLogMedia, playlist)
 
@@ -179,6 +181,13 @@ def insertQueueFromMedia(ignored, mType, mId, userId, timeNow, flag):
     return query(sql, binds)
 
 def insertQueue(mediaId, userId, timeNow, flag):
+    sql = ('INSERT INTO Queue VALUES (DEFAULT, %s, %s, %s, %s) '
+           'RETURNING queueid')
+    binds = (mediaId, userId, timeNow, flag)
+    clog.debug('(insertQueue) binds: {}'.format(binds))
+    return query(sql, binds)
+
+def insertQueue_old(mediaId, userId, timeNow, flag):
     return dbpool.runInteraction(_insertQueue, mediaId, userId, timeNow, flag)
 
 def _insertQueue(txn, mediaId, userId, timeNow, flag):
@@ -277,23 +286,6 @@ def getSongId(mType, mId):
             'FROM MEDIA WHERE type=%s AND id=%s)')
     binds = (mType, mId)
     return query(sql, binds)
-
-def bulkQueryMediaSong(res, playlist):
-    return dbpool.runInteraction(_bulkQueryMediaSong, playlist)
-
-def _bulkQueryMediaSong(txn, playlist):
-    clog.debug('(_queryBulkMediaSong)', sys)
-    songlessMedia = []
-    for media in playlist:
-        sql = ('SELECT songId FROM MediaSong WHERE mediaId ='
-               ' (SELECT mediaId FROM Media WHERE type=%s AND id=%s)')
-        binds = (media[1], media[2])
-        txn.execute(sql, binds)
-        row = txn.fetchone()
-        if not row:
-            songlessMedia.append(binds)
-    clog.info(songlessMedia, '[database] bulkquerymedia')
-    return songlessMedia
 
 # media flags
 # 1<<0: invalid media
@@ -631,9 +623,8 @@ def discordMsgFlagDeletionBulk(msgids):
     binds = (msgids,)
     return operate(sql, binds)
 
-
-user = getpass.getuser()
-dbpool= adbapi.ConnectionPool('psycopg2', 'dbname=yukdb user={}'.format(user),
+dbpool= adbapi.ConnectionPool('psycopg2', 'dbname={} user={}'.format(
+                                                            dbname, user),
                       #         check_same_thread=False,
                                cp_max=1) # one thread max; avoids db locks
 #dbpool.runInteraction(turnOnFK)

@@ -1,7 +1,7 @@
 from collections import deque
 from twisted.internet import defer
 from twisted.internet.task import LoopingCall
-import database, vdbapi, vdbapi3
+import database, vdbapi3
 import json
 from conf import config
 from tools import clog, commandThrottle, getTime
@@ -35,8 +35,6 @@ class VocaDB(object):
         $vocadb 0 - set as 'no match found'
         $vocadb {vocadb song id} - manually set vocadb to specific song
         """
-        print args
-        print '^^^^^^^^'
         if not vdb or not cy.nowPlayingMedia:
             clog.warning('no nowPlayingMedia', syst)
             return

@@ -203,7 +203,7 @@ class DcProtocol(WebSocketClientProtocol):
         POST bulk delete to delete messages.
         Run this in a loop periodically.
         """
-        d = database.queryDiscordMsgToBulkDelete(500)
+        d = database.queryDiscordMsgToBulkDelete(5000)
         d.addCallback(lambda x: [msg[0] for msg in x])
         d.addCallback(dcrestclient.bulkDelete)
         return

@@ -99,6 +99,10 @@ def _cbYtDesc(result, mType, mId, nameLower, isReg):
         d = getVdbByPvId('nico', nicoId)
         d.addCallback(saveSongResults, mType, mId, nameLower, isReg, 1)
         return d
+    else:
+        clog.info('did not find nicoid in description', syst)
+        return saveSongResults(None, mType, mId, nameLower, isReg, 0)
+
 
 def saveSongResults(results, mType, mId, nameLower, isReg, method):
     """

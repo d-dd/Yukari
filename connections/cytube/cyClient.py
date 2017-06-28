@@ -17,7 +17,7 @@ from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 # Yukari
 import database, tools
-from tools import clog, getTime
+from tools import clog, getTime, EscapedLogger
 from conf import config
 
 syst = 'CytubeClient'
@@ -45,7 +45,7 @@ def wisp(msg):
     return '@3939%s#3939' % msg
 
 class CyProtocol(WebSocketClientProtocol):
-    log = Logger()
+    log = EscapedLogger()
     start_init = []
 
     def __init__(self):
@@ -80,6 +80,7 @@ class CyProtocol(WebSocketClientProtocol):
         self.err = []
         self.currentJs = {}
         self.currentLikeJs = ''
+        self.lastPlaylist = 0
         ### Need to imporve this regex, it matches non-videos
         # eg https://www.youtube.com/feed/subscriptions
         self.ytUrl = re.compile(
@@ -852,8 +853,14 @@ class CyProtocol(WebSocketClientProtocol):
         # We don't add all media to the queue table automatically since it'll
         # end up adding multiple times each join/restart during shuffle.
         # Cytube also re-sends the playlist when the permission is changed
-        self.playlist = []
+        lastPlaylist = self.lastPlaylist
+        self.lastPlaylist = time.time()
+        if time.time() - lastPlaylist < 1.0:
+            clog.error("Received duplicate playlist - skipping")
+            return
         pl = fdict['args'][0]
+        clog.info('received playlist! of length:{}'.format(len(pl)))
+        self.playlist = []
         if not pl:
             clog.warning('(_cyCall_playlist) The playlist was cleared!', syst)
             self.nowPlayingUid = -1
@@ -872,14 +879,28 @@ class CyProtocol(WebSocketClientProtocol):
                                 #'introduced by' Yukari
                     qpl.append((entry['media']['type'], entry['media']['id'],
                                 entry['uid']))
-            d = database.bulkLogMedia(dbpl)
-            self.findQueueId(qpl)
+            x = [(x[0], x[1]) for x in dbpl]
+            d = database.queryMediaNotInDb(x)
+            d.addCallback(self.addMissingMedia)
+            d.addCallback(self.findQueueId, qpl)
 
         # for playlist plugins
         for key, method in self.triggers['playlist'].iteritems():
             method(self, pl)
 
-    def findQueueId(self, qpl):
+    def addMissingMedia(self, results):
+        for result in results:
+            print result
+            mType = result[0]
+            mId = result[1]
+            clog.debug('Adding missing media from cytube playlist: {}, {}'.format(mType, mId), syst)
+            idx = self.getIndexFromUid(self.getUidFromTypeId(mType, mId))
+            title = self.playlist[idx]['media'].get('title')
+            dur = self.playlist[idx]['media'].get('seconds')
+            database.insertMedia(None, mType, mId, dur, title, 1, 0)
+        return 
+
+    def findQueueId(self, ignored, qpl):
         for mType, mId, uid in qpl:
             d = database.queryLastQueue(mType, mId)
             i = self.getIndexFromUid(uid)
@@ -1134,7 +1155,7 @@ class CyProtocol(WebSocketClientProtocol):
         # everything has to be encoded to utf-8 or it errors
         s = mTitle.encode('utf-8') + ' (%s, %s)' % (mType.encode('utf-8'),
                           mId.encode('utf-8'))
-        clog.debug('(cy_changeMedia): %s' %s, syst)
+        self.log.debugz('(cy_changeMedia): %s' %s)
 
         # reset remaining time
         self.mediaRemainingTime = fdict['args'][0]['seconds']
@@ -1381,7 +1402,8 @@ class WSService(service.Service):
     def getWsUrl(self):
         hostname = config['Cytube']['domain']
         channel = config['Cytube']['channel']
-        url = "https://{}/socketconfig/{}.json".format(hostname, channel)
+        #url = "https://{}/socketconfig/{}.json".format(hostname, channel)
+        url = "http://{}/socketconfig/{}.json".format(hostname, channel)
         self.log.info("sending GET for ws servers url: " + url)
         from twisted.web.client import Agent, readBody
         from twisted.internet import reactor
@@ -1395,7 +1417,7 @@ class WSService(service.Service):
             self.log.debug('200 response')
             return readBody(response)
 
-    def cbMakeWsUrl(self, response, secure=True):
+    def cbMakeWsUrl(self, response, secure=False):
         """
         response : string json list of servers
         secure : Boolean, wss or ws

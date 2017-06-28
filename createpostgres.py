@@ -11,9 +11,14 @@ from psycopg2 import IntegrityError
 user = getpass.getuser()
 now = getTime()
 
-con = psycopg2.connect('dbname=yukdb user={}'.format(user))
+#host = config['Database']['host']
+dbname = config['Database']['dbname']
+user = config['Database']['user']
+#password = config['Database']['password']
+
+con = psycopg2.connect('dbname={} user={}'.format(
+                            dbname, user))
 cur = con.cursor()
-#con.execute('pragma foreign_keys=ON')
 
 ircNick = config['irc']['nick']
 cyName = config['Cytube']['username']
@@ -32,20 +37,6 @@ cur.execute("""
         profileImgUrl TEXT,
         UNIQUE (nameLower, registered));""")
 con.commit()
-
-# insert server
-try:
-    cur.execute("INSERT INTO CyUser VALUES (default, %s, %s, %s, %s, %s, %s, %s)",
-            (cyName.lower(), True, cyName, 3, 1, None, None))
-    cur.execute("INSERT INTO CyUser VALUES (default, %s, %s, %s, %s, %s, %s, %s)",
-            ('[server]', True, '[server]', 0, 2, None, None))
-    cur.execute("INSERT INTO CyUser VALUES (default, %s, %s, %s, %s, %s, %s, %s)",
-            ('[anonymous]', True, '[anonymous]', 0, 4, None, None))
-    con.commit()
-except IntegrityError as e:
-    print e
-    print "IntegrityError 1"
-    con.rollback()
 
 # User in/out
 cur.execute("""
@@ -66,14 +57,6 @@ cur.execute("""
         nickOriginal TEXT NOT NULL,
         flag INTEGER NOT NULL DEFAULT 0,
         UNIQUE (nickLower, username, host));""")
-try:
-    cur.execute("INSERT INTO IrcUser VALUES (default, %s, %s, %s, %s, %s)",
-                (ircNick.lower(), 'cybot', 'Yuka.rin.rin', ircNick, 1))
-    con.commit()
-except IntegrityError as e:
-    print e
-    print "IntegrityError 2"
-    con.rollback()
 
 # Cy Chat table
 cur.execute("""
@@ -116,19 +99,6 @@ cur.execute("""
         data JSONB NOT NULL,
         lastUpdate TIMESTAMPTZ NOT NULL);""")
 
-# Put a row for -1 and 0
-# -1 is server (connection) error
-# 0 is null/invalid response
-err = json.dumps({'error': 'connection error'})
-nul = json.dumps({'null': None})
-try:
-    cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (-1, err, now))
-    cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (0, nul, now))
-    con.commit()
-except IntegrityError as e:
-    print e
-    print "IntegrityError 3"
-    con.rollback()
 
 # media table
 cur.execute("""
@@ -144,18 +114,6 @@ cur.execute("""
         FOREIGN KEY (by) REFERENCES CyUser(userId));""")
 con.commit()
 
-title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
-         '\x82\x8a\xe3\x80\x91Mahou \xe9\xad\x94\xe6\xb3\x95\xe3\x80\x90\xe3'
-         '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
-title = title.decode('utf-8')
-try:
-    cur.execute("INSERT INTO media VALUES (default, %s, %s, %s, %s, %s, %s)",
-           ('yt', '01uN4MCsrCE', 248, title, 1, 0))
-    con.commit()
-except IntegrityError as e:
-    print e
-    print "IntegrityError 4"
-    con.rollback()
 
 
 # queue table
@@ -238,5 +196,59 @@ cur.execute("""
 con.commit()
 print "Tables created."
 
+def insertDefaults():
+    try:
+        cur.execute("INSERT INTO CyUser VALUES (default, %s, %s, %s, %s, %s, %s, %s)",
+                (cyName.lower(), True, cyName, 3, 1, None, None))
+        cur.execute("INSERT INTO CyUser VALUES (default, %s, %s, %s, %s, %s, %s, %s)",
+                ('[server]', True, '[server]', 0, 2, None, None))
+        cur.execute("INSERT INTO CyUser VALUES (default, %s, %s, %s, %s, %s, %s, %s)",
+                ('[anonymous]', True, '[anonymous]', 0, 4, None, None))
+        con.commit()
+    except IntegrityError as e:
+        print e
+        print "IntegrityError 1"
+        con.rollback()
+
+    try:
+        cur.execute("INSERT INTO IrcUser VALUES (default, %s, %s, %s, %s, %s)",
+                    (ircNick.lower(), 'cybot', 'Yuka.rin.rin', ircNick, 1))
+        con.commit()
+    except IntegrityError as e:
+        print e
+        print "IntegrityError 2"
+        con.rollback()
+
+    # Put a row for -1 and 0
+    # -1 is server (connection) error
+    # 0 is null/invalid response
+    err = json.dumps({'error': 'connection error'})
+    nul = json.dumps({'null': None})
+    try:
+        pass
+        cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (-1, err, now))
+        nomatch = {'data': 'no match'}
+        cur.execute('INSERT INTO Song VALUES (%s, %s, %s)', (0, json.dumps(nomatch), now))
+        con.commit()
+    except IntegrityError as e:
+        print e
+        print "IntegrityError 3"
+        con.rollback()
+
+    title = ('\xe3\x80\x90\xe7\xb5\x90\xe6\x9c\x88\xe3\x82\x86\xe3\x81\x8b\xe3'
+             '\x82\x8a\xe3\x80\x91Mahou \xe9\xad\x94\xe6\xb3\x95\xe3\x80\x90\xe3'
+             '\x82\xab\xe3\x83\x90\xe3\x83\xbc\xe3\x80\x91')
+    title = title.decode('utf-8')
+    try:
+        pass
+        cur.execute("INSERT INTO media VALUES (default, %s, %s, %s, %s, %s, %s)",
+               ('yt', '01uN4MCsrCE', 248, title, 1, 0))
+        con.commit()
+    except IntegrityError as e:
+        print e
+        print "IntegrityError 4"
+        con.rollback()
+
+insertDefaults()
 cur.close()
 con.close()
