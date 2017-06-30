@@ -200,6 +200,7 @@ def setSerial():
 #migrateMediasong()
 #migrateUsercount()
 #migrateUserinout()
+migrateCypm()
 
 setSerial()
 

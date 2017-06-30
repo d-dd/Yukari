@@ -1403,7 +1403,7 @@ class WSService(service.Service):
         hostname = config['Cytube']['domain']
         channel = config['Cytube']['channel']
         #url = "https://{}/socketconfig/{}.json".format(hostname, channel)
-        url = "http://{}/socketconfig/{}.json".format(hostname, channel)
+        url = "https://{}/socketconfig/{}.json".format(hostname, channel)
         self.log.info("sending GET for ws servers url: " + url)
         from twisted.web.client import Agent, readBody
         from twisted.internet import reactor
@@ -1417,7 +1417,7 @@ class WSService(service.Service):
             self.log.debug('200 response')
             return readBody(response)
 
-    def cbMakeWsUrl(self, response, secure=False):
+    def cbMakeWsUrl(self, response, secure=True):
         """
         response : string json list of servers
         secure : Boolean, wss or ws
