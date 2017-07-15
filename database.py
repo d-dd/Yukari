@@ -11,6 +11,8 @@ _MEDIASQL = '(SELECT mediaId FROM Media WHERE type=%s AND id=%s)'
 dbname = config['Database']['dbname']
 user = config['Database']['user']
 
+RELAY_CHANNEL_ID = config['discord']['relay_channel_id']
+
 class NoRowException(Exception):
     pass
 
@@ -605,12 +607,14 @@ def insertDiscordMsg(msgid, userid, channelid, timestamp, data, isDeleted):
 
 def queryDiscordMsgToBulkDelete(messageHistoryLimit):
     """ Return list of msg_id's that are less than 14 days old, not deleted, 
-        and above the limit count of the the message history"""
-    sql = ("SELECT msg_id FROM discordmsg WHERE deleted = 'f' AND "
+        and above the limit count of the the message history and is from
+        the relay channel"""
+    sql = ("SELECT msg_id FROM discordmsg WHERE "
+           "channel_id = %s AND deleted = 'f' AND "
            "timestamp BETWEEN CURRENT_TIMESTAMP - INTERVAL '13 days' AND "
            "NOW() ORDER BY TIMESTAMP LIMIT (SELECT GREATEST(0 , "
            "(SELECT COUNT(msg_id) FROM discordmsg WHERE deleted = 'f')-%s));")
-    binds = (messageHistoryLimit,)
+    binds = (RELAY_CHANNEL_ID, messageHistoryLimit)
     return query(sql, binds)
 
 def discordMsgFlagDeletion(msgid):
