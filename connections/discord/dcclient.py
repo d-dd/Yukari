@@ -22,6 +22,7 @@ from connections.discord import dcrestclient
 syst = 'DiscordClient'
 agent = config['UserAgent']['discord']
 
+MAX_CHAT_BUFFER = int(config['discord']['max_chat_buffer'])
 TOKEN = config['discord']['bot_token']
 RELAY_CHANNEL_ID = config['discord']['relay_channel_id']
 
@@ -203,7 +204,7 @@ class DcProtocol(WebSocketClientProtocol):
         POST bulk delete to delete messages.
         Run this in a loop periodically.
         """
-        d = database.queryDiscordMsgToBulkDelete(5000)
+        d = database.queryDiscordMsgToBulkDelete(MAX_CHAT_BUFFER)
         d.addCallback(lambda x: [msg[0] for msg in x])
         d.addCallback(dcrestclient.bulkDelete)
         return
