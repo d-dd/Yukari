@@ -195,7 +195,7 @@ class DiscordSearchUnsavedMessages(DiscordRestApiLoop):
         super(DiscordSearchUnsavedMessages, self).__init__(channel_id,
                                                             loop_now)
         self.dbquery_loop = task.LoopingCall(self._getDiscordMsgs)
-        self.dbquery_loop.start(100, now=True)
+        self.dbquery_loop.start(10, now=True)
 
     def _getDiscordMsgs(self):
         url = '{}/channels/{}/messages?'.format(HOST, self.channel_id)
@@ -207,6 +207,7 @@ class DiscordSearchUnsavedMessages(DiscordRestApiLoop):
         d.addCallback(self._insertMsgs)
 
     def _insertMsgs(self, results):
+        self.log.debug('API returned {} messages'.format(len(results)))
         for msg in results:
             self.saveDiscordMsg(msg)
 
