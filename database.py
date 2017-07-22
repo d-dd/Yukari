@@ -626,7 +626,7 @@ def queryOldDiscordMsg(channelid):
            "deleted='f' AND "
            "timestamp BETWEEN DATE '1991-01-01' "
            "AND CURRENT_TIMESTAMP - INTERVAL '13 days' "
-           "LIMIT 50")
+           "LIMIT 100")
     binds = (channelid,)
     return query(sql, binds)
 
