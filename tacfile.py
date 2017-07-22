@@ -24,7 +24,6 @@ from tools import clog
 from connections.discord import dcrestclient
 from connections.discord import dcclient
 
-from connections.discord import dcgatewayclient
 
 CHANNEL = str(config['discord']['relay_channel_id'])
 STATUS_CHANNEL = str(config['discord']['status_channel_id'])
@@ -54,8 +53,15 @@ class Yukari(service.MultiService):
         self._importPlugins()
 
         # discord rest api
-        self.dcr = dcrestclient.DiscordHttpRelay(CHANNEL)
+        self.dcr = dcrestclient.DiscordHttpRelay(CHANNEL, loop_now=True)
         self.dcnp = dcrestclient.DiscordNowPlaying(STATUS_CHANNEL)
+
+        # discord single delete
+        self.dcSingleDelete = dcrestclient.DiscordSingleDelete(CHANNEL,
+                                                               loop_now=False)
+
+        # discord log unlogged msgs
+        self.dcMsgSearch = dcrestclient.DiscordSearchUnsavedMessages(CHANNEL)
 
         # False = Offline, True = Online, None = has shutdown
         self.irc = False

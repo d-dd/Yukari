@@ -601,9 +601,35 @@ def returning(result):
 ### Discord
 
 def insertDiscordMsg(msgid, userid, channelid, timestamp, data, isDeleted):
-    sql = ('INSERT INTO DiscordMsg VALUES (%s, %s, %s, %s, %s, %s)')
+    """
+    Insert discord message and return msg_id of inserted rows.
+    When there is a conflict, no msg_id is returned.
+    """
+
+    sql = ('INSERT INTO DiscordMsg VALUES (%s, %s, %s, %s, %s, %s)'
+           ' ON CONFLICT (msg_id) DO NOTHING RETURNING msg_id')
     binds = msgid, userid, channelid, timestamp, data, isDeleted
-    return operate(sql, binds)
+    return query(sql, binds)
+
+def queryOldDiscordMsg(channelid):
+    """
+    Returns a list of discord msg_id that are:
+        - older than 13 days
+        - not deleted (deleted = 'f')
+    [(msg_id1,), (msg_id2,), ... ]
+
+    This is used to single delete old messages that can't be
+    bulk deleted.
+    """
+    sql = ("SELECT msg_id FROM discordmsg WHERE "
+           "channel_id = %s AND "
+           "deleted='f' AND "
+           "timestamp BETWEEN DATE '1991-01-01' "
+           "AND CURRENT_TIMESTAMP - INTERVAL '13 days' "
+           "LIMIT 50")
+    binds = (channelid,)
+    return query(sql, binds)
+
 
 def queryDiscordMsgToBulkDelete(messageHistoryLimit):
     """ Return list of msg_id's that are less than 14 days old, not deleted, 
@@ -613,8 +639,9 @@ def queryDiscordMsgToBulkDelete(messageHistoryLimit):
            "channel_id = %s AND deleted = 'f' AND "
            "timestamp BETWEEN CURRENT_TIMESTAMP - INTERVAL '13 days' AND "
            "NOW() ORDER BY TIMESTAMP LIMIT (SELECT GREATEST(0 , "
-           "(SELECT COUNT(msg_id) FROM discordmsg WHERE deleted = 'f')-%s));")
-    binds = (RELAY_CHANNEL_ID, messageHistoryLimit)
+           "(SELECT COUNT(msg_id) FROM discordmsg "
+           "WHERE channel_id =%s AND deleted = 'f')-%s));")
+    binds = (RELAY_CHANNEL_ID, RELAY_CHANNEL_ID, messageHistoryLimit)
     return query(sql, binds)
 
 def discordMsgFlagDeletion(msgid):
