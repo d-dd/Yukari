@@ -46,9 +46,6 @@ class Yukari(service.MultiService):
     def __init__(self):
         super(Yukari, self).__init__()
 
-        # test logging
-  #      self.log.debug("Yukari says hi!")
-
         # import plugins
         self._importPlugins()
 

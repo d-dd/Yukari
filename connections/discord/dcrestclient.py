@@ -58,7 +58,7 @@ class DiscordRestApiLoop(object):
                                'url': url,
                                 'content': content})
         if not self.request_loop.running:
-            self.request_loop.start(1.0, now=self.loop_now)
+            self.request_loop.start(2.0, now=self.loop_now)
 
     def _send_request(self):
         if not self.queue:
@@ -94,16 +94,23 @@ class DiscordRestApiLoop(object):
         if response.code == 429:
             self.log.error('----------429 TOO MANY REQUESTS!!!!!!!!!!!!!!!', )
             treq.json_content(response).addCallback(self.handle_too_many_req)
-
+        elif response.code == 404:
+            self.log.error('Received 404')
+            return
         h = response.headers
-        self.rate_limit = int(h.getRawHeaders('x-ratelimit-limit')[0])
-        self.rate_remaining = int(h.getRawHeaders('x-ratelimit-remaining')[0])
-        self.rate_reset = int(h.getRawHeaders('x-ratelimit-reset')[0])
-        self.log.debug('channel:{} remaining: {} reset {}'.format(
-                        self.channel_id, self.rate_remaining,
+        try:
+            self.rate_limit = int(h.getRawHeaders('x-ratelimit-limit')[0])
+            self.rate_remaining = int(h.getRawHeaders('x-ratelimit-remaining')[0])
+            self.rate_reset = int(h.getRawHeaders('x-ratelimit-reset')[0])
+        except(TypeError):
+            self.log.debug('header values were empty')
+            self.rate_remaining = 0
+            self.rate_reset = time.time() + 10
+        self.log.debug('response:{} channel:{} remaining: {} reset:{}'.format(
+                        response.code, self.channel_id, self.rate_remaining,
                         self.rate_reset))
         if not self.request_loop.running:
-            self.request_loop.start(1.0, now=self.loop_now)
+            self.request_loop.start(2.0, now=self.loop_now)
 
     def handle_too_many_req(self, body):
         retry_after_ms = body.get('retry_after', 5000)/1000
@@ -195,7 +202,7 @@ class DiscordSearchUnsavedMessages(DiscordRestApiLoop):
         super(DiscordSearchUnsavedMessages, self).__init__(channel_id,
                                                             loop_now)
         self.dbquery_loop = task.LoopingCall(self._getDiscordMsgs)
-        self.dbquery_loop.start(10, now=True)
+        self.dbquery_loop.start(60*60, now=loop_now)
 
     def _getDiscordMsgs(self):
         url = '{}/channels/{}/messages?'.format(HOST, self.channel_id)
@@ -236,7 +243,18 @@ class DiscordSingleDelete(DiscordRestApiLoop):
     def __init__(self, channel_id, loop_now=False):
         super(DiscordSingleDelete, self).__init__(channel_id, loop_now)
         self.dbquery_loop = task.LoopingCall(self._queryDiscordMsg)
-        self.dbquery_loop.start(100, now=True)
+        self.dbquery_loop.start(60*10, now=loop_now)
+
+    def stack_queue(self, method, url, content):
+        url_in_stack = next((di for di in self.queue if di['url'] == url), None)
+        if url_in_stack:
+            self.log.debug('url {} is already in the stack'.format(url))
+            return
+        self.queue.appendleft({'method': method,
+                               'url': url,
+                                'content': content})
+        if not self.request_loop.running:
+            self.request_loop.start(2.0, now=self.loop_now)
 
     def _queryDiscordMsg(self):
         d = database.queryOldDiscordMsg(self.channel_id)
@@ -252,7 +270,7 @@ class DiscordSingleDelete(DiscordRestApiLoop):
     def delete_msg_id(self, msg_id):
         url = '{}/channels/{}/messages/{}'.format(HOST, self.channel_id,
                                                    msg_id)
-        self.stack_queue('delete', url, None)
+        self.stack_queue('delete', url, msg_id)
 
 def bulkDelete(msg_ids):
     """

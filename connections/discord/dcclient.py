@@ -136,7 +136,7 @@ class DcProtocol(WebSocketClientProtocol):
             self.user = data['user']
             self.session_id = data['session_id']
             self.bulk_delete_loop = task.LoopingCall(self.bulk_delete_msg)
-            self.bulk_delete_loop.start(60.0, now=False)
+            self.bulk_delete_loop.start(10.0, now=False)
             self.loops.append(self.bulk_delete_loop)
 
         elif t == "MESSAGE_CREATE":
