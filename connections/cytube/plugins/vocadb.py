@@ -96,6 +96,8 @@ class VocaDB(object):
             return self.displayResults(res, mType, mId, nameLower, isReg)
 
     def packageVocadb(self, vdbjson):
+        if not vdbjson:
+            vdbjson = {}
         vocadbId = vdbjson.get('id')
         if not vocadbId:
             vocapack = {'res': False}
