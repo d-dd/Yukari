@@ -63,7 +63,7 @@ class DcProtocol(WebSocketClientProtocol):
         self.log.info('(onOpen) - success)')
         self.factory.con = self
         self.factory.service.parent.dc = True
-        self.factory.resetDelay()
+        self.laters.append(reactor.callLater(60, self.factory.resetDelay))
 
     def onMessage(self, msg, binary):
         if binary:
@@ -281,7 +281,7 @@ class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
     log = EscapedLogger()
 
     protocol = DcProtocol
-    initialDelay = 0
+    initialDelay = 1.0
     maxDelay = 60 * 2
     # instance number
     instanceId = 0
