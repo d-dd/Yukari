@@ -15,7 +15,7 @@ from autobahn.twisted.websocket import WebSocketClientProtocol,\
                                        WebSocketClientFactory
 # Yukari
 import database, tools
-from tools import clog, getTime
+from tools import clog, getTime, EscapedLogger
 from conf import config
 from connections.discord import dcrestclient
 
@@ -38,20 +38,18 @@ class DcProtocol(WebSocketClientProtocol):
     RESUME             = 6
     RECONNECT          = 7
     REQUEST_MEMBERS    = 8
-    INVALIDATE_SESSION = 9
+    INVALID_SESSION    = 9
     HELLO              = 10
     HEARTBEAT_ACK      = 11
     GUILD_SYNC         = 12
 
 
-    log = Logger()
+    log = EscapedLogger()
 
     def __init__(self):
         super(DcProtocol, self).__init__()
         self.loops = []
         self.laters = []
-
-        self.members = {}
 
     def errcatch(self, err):
         clog.error('caught something')
@@ -83,7 +81,7 @@ class DcProtocol(WebSocketClientProtocol):
         self.log.debug(u"Received a Discord Gateway frame: {op!s}", op=op)
 
         if seq:
-            self.factory.series = seq
+            self.factory.session['seq'] = seq
 
         if op == self.HEARTBEAT:
             heartbeat_interval_seconds = data['heartbeat_interval'] / 1000.0
@@ -94,6 +92,13 @@ class DcProtocol(WebSocketClientProtocol):
        #     self.log.debug('Received HEARTBEAT_ACK')
             return
 
+        elif op == self.INVALID_SESSION:
+            # wait 5 seconds before sending OP2 IDENTIFY
+            self.log.error('Received OP 9 INVALID SESSION - maybe '
+                           'we are reconnected too soon. '
+                           'Will send IDENTIFY in 5 seconds.')
+            reactor.callLater(5.0, self.identify)
+
         elif op == self.HELLO:
             # start the heartbeat loop
             self.heart_beat_interval = data['heartbeat_interval']
@@ -101,7 +106,10 @@ class DcProtocol(WebSocketClientProtocol):
             self.heart_beat_loop.start(self.heart_beat_interval/1000.0,
                                                                now=True)
             self.loops.append(self.heart_beat_loop)
-            self.identify()
+            if self.factory.session.get('session_id'):
+                self.resume()
+            else:
+                self.identify()
 
         elif op == self.DISPATCH:
             self.dispatch(t, data)
@@ -129,12 +137,31 @@ class DcProtocol(WebSocketClientProtocol):
                    }
                }
         self.sendMessage(json.dumps(payload))
-        return
+
+    def resume(self):
+        session_id = self.factory.session.get('session_id')
+        seq = self.factory.session.get('seq')
+        self.log.info('Attempting to resume gateway connection. '
+               'session_id: {}, sequence: {}'.format(session_id, seq))
+
+        payload = {
+                'op': self.RESUME,
+                'd' : {
+                        'token': TOKEN,
+                        'session_id': session_id,
+                        'seq': seq,
+                        }
+                }
+        self.sendMessage(json.dumps(payload))
+
 
     def dispatch(self, t, data):
+        self.log.debugz('Received {}: {}'.format(t, data))
+
         if t == "READY":
             self.user = data['user']
-            self.session_id = data['session_id']
+            self.factory.session['session_id'] = data['session_id']
+
             self.bulk_delete_loop = task.LoopingCall(self.bulk_delete_msg)
             self.bulk_delete_loop.start(10.0, now=False)
             self.loops.append(self.bulk_delete_loop)
@@ -189,13 +216,13 @@ class DcProtocol(WebSocketClientProtocol):
         user_id = user['user']['id']
         username = user['user']['username']
         nick = user.get('nick', '')
-        self.members[user_id] = {
+        self.factory.session['members'][user_id] = {
                 'username': username,
                 'nick': nick
                 }
 
     def get_nickname(self, user_id):
-        user = self.members.get(user_id)
+        user = self.factory.session['members'].get(user_id)
         return user['nick'] or user['username']
 
     def bulk_delete_msg(self):
@@ -242,6 +269,8 @@ class DcProtocol(WebSocketClientProtocol):
         # Setting initialDelay >= 3.0 should be fine. :~:
 
 class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
+    log = EscapedLogger()
+
     protocol = DcProtocol
     initialDelay = 0
     maxDelay = 60 * 2
@@ -249,12 +278,22 @@ class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
     instanceId = 0
 
     def __init__(self, ws, service):
+        self.log.error('NEW INSTANCE OF WSFACTORY')
         super(WsFactory, self).__init__(ws)
         self.instanceId += 1
         self.prot = None
         self.ws= ws
         self.service = service
-        self.series = 0
+
+        # factory.session stores data that should persist through
+        # reconnect->RESUMEs cycle
+
+        self.session = {
+                        'session_id': 0,
+                        'seq': 0,
+                        'members': {},
+
+                        }
 
     def startedConnecting(self, connector):
         clog.debug('WsFactory started connecting to Discord..', syst)
@@ -267,7 +306,7 @@ class WsFactory(WebSocketClientFactory, ReconnectingClientFactory):
             self.service.parent.doneCleanup('dc')
 
 class DcService(service.Service):
-    log = Logger()
+    log = EscapedLogger()
     def errCatch(self, err):
         self.log.error(err.getBriefTraceback())
 
