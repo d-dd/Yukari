@@ -181,6 +181,15 @@ class DcProtocol(WebSocketClientProtocol):
                 for attachment in attachments:
                     content = '{}{}{}'.format(content, space,
                                               attachment.get('url', ''))
+                for mention in data['mentions']:
+                    user_id = mention.get('id', 0)
+                   # looks like it's <@{user_id}> for original name and
+                   # <@!{user_id}> for nicks
+                    content = content.replace('<@!{}>'.format(user_id), 
+                                     '@{}'.format(self.get_nickname(user_id)))
+                    content = content.replace('<@{}>'.format(user_id), 
+                                     '@{}'.format(self.get_nickname(user_id)))
+
                 self.factory.service.parent.recDcMsg(name, content)
 
         elif t == "MESSAGE_DELETE":
@@ -223,7 +232,7 @@ class DcProtocol(WebSocketClientProtocol):
 
     def get_nickname(self, user_id):
         user = self.factory.session['members'].get(user_id)
-        return user['nick'] or user['username']
+        return user.get('nick') or user.get('username')
 
     def bulk_delete_msg(self):
         """
