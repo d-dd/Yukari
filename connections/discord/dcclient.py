@@ -166,6 +166,12 @@ class DcProtocol(WebSocketClientProtocol):
             self.bulk_delete_loop.start(10.0, now=False)
             self.loops.append(self.bulk_delete_loop)
 
+        elif t == "RESUMED":
+            self.bulk_delete_loop = task.LoopingCall(self.bulk_delete_msg)
+            self.bulk_delete_loop.start(10.0, now=False)
+            self.loops.append(self.bulk_delete_loop)
+
+
         elif t == "MESSAGE_CREATE":
             content = data['content']
             channel_id = data['channel_id']
