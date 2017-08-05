@@ -634,13 +634,14 @@ def queryOldDiscordMsg(channelid):
 def queryDiscordMsgToBulkDelete(messageHistoryLimit):
     """ Return list of msg_id's that are less than 14 days old, not deleted, 
         and above the limit count of the the message history and is from
-        the relay channel"""
+        the relay channel
+        With max 100 (BULK_DELETE can only do 100)"""
     sql = ("SELECT msg_id FROM discordmsg WHERE "
            "channel_id = %s AND deleted = 'f' AND "
            "timestamp BETWEEN CURRENT_TIMESTAMP - INTERVAL '13 days' AND "
-           "NOW() ORDER BY TIMESTAMP LIMIT (SELECT GREATEST(0 , "
+           "NOW() ORDER BY TIMESTAMP LIMIT (SELECT LEAST(GREATEST(0 , "
            "(SELECT COUNT(msg_id) FROM discordmsg "
-           "WHERE channel_id =%s AND deleted = 'f')-%s));")
+           "WHERE channel_id =%s AND deleted = 'f')-%s),100));")
     binds = (RELAY_CHANNEL_ID, RELAY_CHANNEL_ID, messageHistoryLimit)
     return query(sql, binds)
 
