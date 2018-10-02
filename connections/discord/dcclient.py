@@ -404,5 +404,5 @@ class DcService(service.Service):
             return
         clog.debug(response)
         servers = json.loads(response)
-        return servers['url']+'?v=5&encoding=json'
+        return servers['url']+'?v=6&encoding=json'
 
