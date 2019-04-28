@@ -417,7 +417,7 @@ class CyProtocol(WebSocketClientProtocol):
     def logChatMsg(self, username, chatCyTime, msg, modflair, flag, timeNow):
         # logging chat to database
         keyId = None
-        if username == '[server]':
+        if username in ('[server]', '[voteskip]'):
             keyId = 2
         elif username in self.userdict:
             keyId = self.userdict[username]['keyId']
@@ -434,7 +434,7 @@ class CyProtocol(WebSocketClientProtocol):
             self.userdict[username]['deferred'].addCallback(self.deferredChat,
                                                                 chatArgs)
     def checkCommands(self, username, msg, action, shadow, source):
-        if username == self.name or username == '[server]':
+        if username == self.name or username in ('[server]', '[voteskip]'):
             return
        # needProcessing = False if action else True
         method = None
