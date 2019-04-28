@@ -1,3 +1,8 @@
+[Database]
+# postgres database to connect to 
+dbname = 
+user =
+
 [Cytube]
 domain = cytu.be
 channel = 
@@ -63,3 +68,6 @@ status_channel_id =
 np_msg_id = 
 userlist_msg_id = 
 first_message_id = 
+
+[misc]
+links_url = 

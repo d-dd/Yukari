@@ -18,7 +18,10 @@ from twisted.internet import reactor
 from tools import clog
 from conf import config
 
-PORT = int(config['discord']['gateway_relay_port'])
+try:
+    PORT = int(config['discord']['gateway_relay_port'])
+except ValueError:
+    PORT = 0
 
 class DCProcessProtocol(protocol.ProcessProtocol):
     """

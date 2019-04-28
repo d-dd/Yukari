@@ -16,7 +16,7 @@ class BasicCommands(object):
             return
         # people who read the readme/this
         if cy.checkRegistered(username):
-            database.flagUser(2, username.lower(), 1)
+            database.flagUser(2, username.lower(), True)
 
     @commandThrottle(1)
     def _com_enroll(self, cy, username, args, source):
@@ -24,7 +24,7 @@ class BasicCommands(object):
             return
             # people who have read this
         if cy.checkRegistered(username):
-            database.flagUser(4, username.lower(), 1)
+            database.flagUser(4, username.lower(), True)
 
 
 def setup():

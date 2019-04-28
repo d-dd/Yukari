@@ -107,12 +107,12 @@ class IrcProtocol(irc.IRCClient):
 
     def logSay(self, channel, msg, action):
         """ Log and send out message """
-        sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
+        sql = 'INSERT INTO IrcChat VALUES(DEFAULT, %s, %s, %s, %s, %s)'
         msgd = msg.decode('utf-8')
         # flag 1 = Yukari sent (0 for receive)
         # flag 3 = Yukari sent + action (2 for action)
         flag = 1 if not action else 3
-        binds = (None, 1, 3, getTime(), msgd, flag)
+        binds = (1, 3, getTime(), msgd, flag)
         d = database.operate(sql, binds) # must be in unicode
         if not action:
             self.say(channel, msg) # must not be in unicode
@@ -348,23 +348,42 @@ class IrcProtocol(irc.IRCClient):
         else:
             self.nickdict[nickname] = {'keyId': None, 'deferred': None}
             clog.debug('(logProcess) added %s to nickdict' % nickname, sys)
-            dd = self.queryOrAddUser(nickname, username, host)
-            dd.addCallback(self.logChat, 3, timeNow, msg, flag)
-            self.nickdict[nickname]['deferred'] = dd
+            values = (nickname.lower(), username, host, nickname, 0)
+            d = database.queryIrcuser(nickname.lower(), username, host)
+            d.addCallback(self.cbQueryIrcuser, values)
+            d.addCallback(self.cacheKey, nickname)
+            d.addCallback(self.logChat, 3, timeNow, msg, flag)
+            #dd = self.queryOrAddUser(nickname, username, host)
+            #dd.addCallback(self.logChat, 3, timeNow, msg, flag)
+            self.nickdict[nickname]['deferred'] = d
 
     def queryOrAddUser(self, nickname, username, host):
         clog.debug('(queryOrAddUser) Quering %s:%s:%s' % (nickname, username, host), sys)
-        d = database.dbQuery(('userId', 'flag'), 'ircUser',
-               nickLower=nickname.lower(), username=username, host=host)
-        d.addCallback(database.queryResult)
-        values = (None, nickname.lower(), username, host, nickname, 0)
-        d.addErrback(database.dbInsertReturnLastRow, 'ircUser', *values)
+        #d = database.dbQuery(('userId', 'flag'), 'ircUser',
+        #       nickLower=nickname.lower(), username=username, host=host)
+       # d.addCallback(database.queryResult)
+        values = (nickname.lower(), username, host, nickname, 0)
+        d.addCallback(self.cbQueryIrcuser, values)
+      #  d.addErrback(database.dbInsertReturnLastRow, 'ircUser', *values)
         clog.debug('(queryOrAddUser) Adding %s' % username, sys)
         d.addErrback(self.dbErr)
         d.addCallback(self.cacheKey, nickname)
         d.addErrback(self.dbErr)
         return d
-        
+
+    def cbQueryIrcuser(self, res, values):
+        try:
+            keyId = res[0][0]
+            if keyId is None:
+                clog.error('received a NONE')
+                raise IndexError
+            else:
+                return defer.succeed(keyId)
+        except(IndexError):
+            d = database.insertIrcuser(*values)
+            d.addCallback(lambda resp: defer.succeed(resp[0][0]))
+            return d
+
     def dbErr(self, err):
         clog.error('(dbErr): %s' % err.value, sys)
         clog.error('(dbErr): %s' % dir(err), sys)
@@ -377,20 +396,21 @@ class IrcProtocol(irc.IRCClient):
         #clog.error('the key is %s:' % res[0], sys)
         assert res, 'no res at cacheKey'
         if res:
-            clog.info("(cacheKey) cached %s's key %s" % (nickname, res[0]))
-            self.nickdict[nickname]['keyId'] = res[0]
-            return defer.succeed(res[0])
+            clog.info("(cacheKey) cached %s's key %s" % (nickname, res))
+            self.nickdict[nickname]['keyId'] = res
+            return defer.succeed(res)
 
     def logIrcUser(self, nickname, username, host):
         """ logs IRC chat to IrcChat table """
-        sql = 'INSERT OR IGNORE INTO IrcUser VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, nickname.lower(), username, host, nickname, 0)
+        sql = 'INSERT OR IGNORE INTO IrcUser VALUES(DEFAULT, %s, %s, %s, %s, %s)'
+        binds = (nickname.lower(), username, host, nickname, 0)
         return database.operate(sql, binds)
 
     def queryUser(self, response, nickname, username, host):
         if nickname in self.nickdict:
             pass
-        sql = 'SELECT userId FROM IrcUser WHERE nickLower=? AND username=? AND host=?'
+        sql = ('SELECT userId FROM IrcUser WHERE nickLower=%s AND '
+                'username=%s AND host=%s')
         binds = (nickname.lower(), username, host)
         return database.query(sql, binds)
 
@@ -401,9 +421,11 @@ class IrcProtocol(irc.IRCClient):
     def logChat(self, result, status, timeNow, msg, flag):
         status = 0 # we don't really need this
         #msg = msg.decode('utf-8')
-        sql = 'INSERT INTO IrcChat VALUES(?, ?, ?, ?, ?, ?)'
-        binds = (None, result, status, timeNow, msg, flag)
-        return database.operate(sql, binds)
+        sql = 'INSERT INTO IrcChat VALUES(DEFAULT, %s, %s, %s, %s, %s)'
+        binds = (result, status, timeNow, msg, flag)
+        database.operate(sql, binds)
+        # we need to return the keyId for the next deferred (if any)
+        return defer.succeed(result)
 
     def connectionLost(self, reason):
         self.connected = 0
@@ -411,8 +433,6 @@ class IrcProtocol(irc.IRCClient):
         tools.cleanLoops(self.loops)
         if not self.factory.service.parent.ircRestart:
             self.factory.cleanup()
-
-
 
 class IrcFactory(ReconnectingClientFactory):
 
@@ -450,15 +470,16 @@ class IrcService(service.Service):
             print "Service is already running!"
             return
         self.running = 1
+        self.f = IrcFactory(self)
         if config['irc']['secure'] and 0:
             print "secure port!"
             from twisted.internet.ssl import ClientContextFactory
             self.r = reactor.connectSSL(config['irc']['network'],
                                         int(config['irc']['port']),
-                                IrcFactory(self), ClientContextFactory())
+                                self.f, ClientContextFactory())
         else:
             print "non secure port!"
             self.r = reactor.connectTCP(config['irc']['network'], 
                                         int(config['irc']['port']),
-                                        IrcFactory(self))
+                                        self.f)
 

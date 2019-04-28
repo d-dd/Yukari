@@ -1,3 +1,5 @@
+from datetime import datetime
+import pytz
 import HTMLParser, htmlentitydefs
 import logging, sys, time
 from functools import wraps
@@ -10,25 +12,25 @@ class EscapedLogger(Logger):
     """Logger with additional log methods that escape
     { and }, so it can display json.
     """
-    def _unescape_curly(msg):
+    def _unescape_curly(self, msg):
         msg = msg.replace('{', '{{')
         msg = msg.replace('}', '}}')
         return msg
 
     def debugz(self, msg):
-        self.debug(_unescape_curly(msg))
+        self.debug(self._unescape_curly(msg))
 
     def infoz(self, msg):
-        self.info(_unescape_curly(msg))
+        self.info(self._unescape_curly(msg))
 
     def warnz(self, msg):
-        self.warn(_unescape_curly(msg))
+        self.warn(self._unescape_curly(msg))
 
     def errorz(self, msg):
-        self.error(_unescape_curly(msg))
+        self.error(self._unescape_curly(msg))
 
     def criticalz(self, msg):
-        self.critical(_unescape_curly(msg))
+        self.critical(self._unescape_curly(msg))
 
 class LevelFileLogObserver(log.FileLogObserver):
     def __init__(self, f, level=logging.INFO):
@@ -138,7 +140,12 @@ def strip_tag_entity(html):
     return self.get_text()
 
 def getTime():
-    return int(time.time()*100)
+    """Return timezone aware datetime object
+    in UTC.
+    e.g.
+    >>>datetime.datetime(2017, 2, 18, 7, 19, 57, 758400, tzinfo=<UTC>)
+    """
+    return datetime.now(pytz.utc)
 
 def returnStr(text):
     if isinstance(text, unicode):

@@ -1,13 +1,26 @@
+import time
 from tools import clog, commandThrottle
+from twisted.internet import reactor
+from twisted.internet.error import AlreadyCalled, AlreadyCancelled
+
 syst = 'AnnounceQueue'
 class AnnounceQueue(object):
     """Plugin object.
     Announces in Cytube chat when a user queues media to the
     playlist. Toggle with $announcequeue.
+
+    To prevent too many lines, waits queueThreshold seconds to collect
+    multiple queues into a single message.
     """
 
     def __init__(self):
         self.announce = True
+
+        # last time cycall transmitted "queue"
+        self.lastCycallQueue = time.time()
+        self.queueThreshold = 1.0
+        self.queueCounter = 0
+
         
     @commandThrottle(0)
     def _com_announcequeue(self, cy, username, args, source):
@@ -30,20 +43,46 @@ class AnnounceQueue(object):
         except(KeyError):
             clog.error('KeyError unpacking frame.', syst)
             return
+
         # if the 2nd to last (becuase last is the one we just added) media's
         # UID is same as after, then it means it as placed at the end
         try:
             last = cy.playlist[-2]['uid']
         except(IndexError):
             # when the playlist is empty (before this queue)
-            cy.sendCyWhisper('%s added: %s!!!' % (queueby, title))
-            return
+            last = 0
 
         if last == after:
             next = ':'
         else:
             next = 'next:'
-        cy.sendCyWhisper('%s added %s %s!' % (queueby, next, title))
+
+        if time.time() - self.lastCycallQueue < self.queueThreshold:
+            self.queueCounter += 1
+            try:
+                self.later.reset(self.queueThreshold)
+            except(AlreadyCalled, AlreadyCancelled,
+                        NameError, TypeError, AttributeError):
+                self.queueCounter = 1
+                self.later = reactor.callLater(self.queueThreshold,
+                                               self.sendAnnounce,
+                                               cy, title, queueby, next)
+        else:
+            self.queueCounter = 0
+            self.sendAnnounce(cy, title, queueby, next)
+        self.lastCycallQueue = time.time()
+
+    def sendAnnounce(self, cy, title, queueby, next):
+
+        if self.queueCounter == 1:
+            andmore = " and %s more video" % self.queueCounter
+            
+        elif self.queueCounter >1:
+            andmore = " and %s more videos" % self.queueCounter
+        else:
+            andmore = ""
+
+        cy.sendCyWhisper('%s added %s %s%s!' % (queueby, next, title, andmore))
 
 def setup():
     return AnnounceQueue()
