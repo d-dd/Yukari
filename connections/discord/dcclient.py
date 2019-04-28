@@ -1,6 +1,7 @@
 # Standard Library
 import json
 import os
+import re
 import sys
 import time
 import zlib
@@ -45,6 +46,7 @@ class DcProtocol(WebSocketClientProtocol):
 
 
     log = EscapedLogger()
+    dc_emoji_pattern = re.compile('(<(:\w{2,22}:)\d{18,21}>)')
 
     def __init__(self):
         super(DcProtocol, self).__init__()
@@ -196,6 +198,9 @@ class DcProtocol(WebSocketClientProtocol):
                     content = content.replace('<@{}>'.format(user_id), 
                                      '@{}'.format(self.get_nickname(user_id)))
 
+                content = self.replace_discord_emoji(content, 
+                                                     self.dc_emoji_pattern)
+
                 self.factory.service.parent.recDcMsg(name, content)
 
         elif t == "MESSAGE_DELETE":
@@ -218,6 +223,13 @@ class DcProtocol(WebSocketClientProtocol):
 
         elif t == "GUILD_MEMBER_UPDATE":
             self.update_member(data)
+
+    def replace_discord_emoji(self, text, pattern):
+        matches = set(re.findall(pattern, text))
+        while matches:
+            match = matches.pop()
+            text = re.sub(match[0], match[1], text)
+        return text
 
     def saveDiscordMsg(self, data):
         msg_id = data['id']

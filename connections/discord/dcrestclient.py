@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import urllib
 from collections import deque
@@ -16,6 +17,7 @@ from conf import config
 
 bot_token = str(config['discord']['bot_token'])
 HOST = 'https://discordapp.com/api/v6'
+SERVER = str(config['discord']['server_id'])
 CHANNEL = str(config['discord']['relay_channel_id'])
 STATUS_CHANNEL = str(config['discord']['status_channel_id'])
 STATUS_MSG_NP = str(config['discord']['np_msg_id'])
@@ -27,6 +29,26 @@ HEADERS = Headers({
     })
 
 syst = 'dcREST'
+pattern = re.compile(':\w{2,20}:')
+
+
+def convert_emoji(text, pattern, emoji):
+    """
+    Look through text and replace :emote: with proper
+    Discord <:emote:emote_id> formatting.
+    """
+    matches = set(re.findall(pattern, text))
+    while matches:
+        emoji_name_colon = matches.pop()
+        emoji_name = emoji_name_colon[1:-1]
+        try:
+            d = next(item for item in emoji if item["name"] == emoji_name)
+        except StopIteration:
+            pass
+        else:
+            dc_emoji = '<:{}:{}>'.format(emoji_name, d.get('id'))
+            text = re.sub(emoji_name_colon, dc_emoji, text)
+    return text
 
 class DiscordRestApiLoop(object):
     """
@@ -129,6 +151,25 @@ class DiscordHttpRelay(DiscordRestApiLoop):
         super(DiscordHttpRelay, self).__init__(channel_id, loop_now)
         self.linelist = []
         self._is_collecting = False
+        self.emoji = []
+        self.get_server_emoji(SERVER)
+
+    def get_server_emoji(self, serverid):
+        """
+        https://discordapp.com/developers/docs/resources/emoji#list-guild-emojis
+
+        The emoji list is used to translate :emote: message from source to
+        the appropriate <:emote:emote_id> for Discord.
+        """
+        url = '{host}/guilds/{server_id}/emojis'.format(host=HOST, server_id=SERVER)
+        d = treq.get(url, headers=HEADERS).addCallback(treq.json_content)
+        d.addCallback(self.done_emoji)
+
+    def done_emoji(self, json_response):
+        self.emoji = json_response
+        if json_response.get('code'):
+            self.log.error("Error retreiving Emoji list: {}".format(self.emoji))
+            self.emoji = []
 
     def onMessage(self, source, user, msg, action=False):
         """
@@ -155,6 +196,7 @@ class DiscordHttpRelay(DiscordRestApiLoop):
             return
         else:
             from_prefix = source+'>'
+        msg = convert_emoji(msg, pattern, self.emoji)
         line = "**`{}{}:`** {}".format(from_prefix, user, msg)
         if self.rate_remaining > 2:
             self.stack_queue('post', url, line)
