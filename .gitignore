@@ -8,3 +8,5 @@
 *.cfg
 *.allowed
 *.pw
+*.pid
+*.log

@@ -249,6 +249,6 @@ def insertDefaults():
         print "IntegrityError 4"
         con.rollback()
 
-#insertDefaults()
+insertDefaults()
 cur.close()
 con.close()
