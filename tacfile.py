@@ -24,6 +24,11 @@ from tools import clog
 from connections.discord import dcrestclient
 from connections.discord import dcclient
 
+IRC = str(config['irc']['network'])
+DISCORD = str(config['discord']['bot_token'])
+CYTUBE = str(config['Cytube']['domain'])
+        
+
 
 CHANNEL = str(config['discord']['relay_channel_id'])
 STATUS_CHANNEL = str(config['discord']['status_channel_id'])
@@ -51,7 +56,6 @@ class Yukari(service.MultiService):
 
         # discord rest api
         self.dcr = dcrestclient.DiscordHttpRelay(CHANNEL, loop_now=True)
-        self.dcr = None
         if STATUS_CHANNEL:
             self.dcnp = dcrestclient.DiscordNowPlaying(STATUS_CHANNEL)
         else:
@@ -379,19 +383,22 @@ manhole_service.setName("manhole")
 manhole_service.setServiceParent(yukService)
 
 # cytube
-ws_service = WSService()
-ws_service.setName("cy")
-ws_service.setServiceParent(yukService)
+if CYTUBE:
+    ws_service = WSService()
+    ws_service.setName("cy")
+    ws_service.setServiceParent(yukService)
 
 # irc
-irc_service = IrcService()
-irc_service.setName("irc")
-irc_service.setServiceParent(yukService)
+if IRC:
+    irc_service = IrcService()
+    irc_service.setName("irc")
+    irc_service.setServiceParent(yukService)
 
 # discord
-dc_service = dcclient.DcService()
-dc_service.setName("dc")
-dc_service.setServiceParent(yukService)
+if DISCORD:
+    dc_service = dcclient.DcService()
+    dc_service.setName("dc")
+    dc_service.setServiceParent(yukService)
 
 reactor.addSystemEventTrigger('before', 'shutdown', yukService.cleanup)
 
