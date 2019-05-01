@@ -51,7 +51,12 @@ class Yukari(service.MultiService):
 
         # discord rest api
         self.dcr = dcrestclient.DiscordHttpRelay(CHANNEL, loop_now=True)
-        self.dcnp = dcrestclient.DiscordNowPlaying(STATUS_CHANNEL)
+        self.dcr = None
+        if STATUS_CHANNEL:
+            self.dcnp = dcrestclient.DiscordNowPlaying(STATUS_CHANNEL)
+        else:
+            self.dcnp = None
+
 
         # discord single delete
         self.dcSingleDelete = dcrestclient.DiscordSingleDelete(CHANNEL,
@@ -244,7 +249,7 @@ class Yukari(service.MultiService):
             msg = tools.returnStr(msg)
             self.ircFactory.prot.sayNowPlaying(msg)
 
-        if self.dc and media:
+        if self.dcnp and media:
             mType, mId, title = media
             if mType == 'yt':
                 link = 'https://youtu.be/{}'.format(mId)
