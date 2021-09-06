@@ -190,7 +190,7 @@ def requestApiByPv(mType, mId, timeNow):
             'fields': 'Artists,Names',
             'lang': 'romaji',
             }
-    url = 'https://vocadb.net/api/songs?{}'.format(urllib.urlencode(args))
+    url = 'https://vocadb.net/api/songs/byPv?{}'.format(urllib.urlencode(args))
     clog.warning('(requestApiByPv) %s' % url, syst)
     dd = agent.request('GET', str(url), Headers({'User-Agent':[UserAgentVdb]}))
     dd.addCallback(readBody)

@@ -144,7 +144,7 @@ def getVdbByPvId(mType, mId):
             'fields': 'Artists,Names',
             'lang': 'romaji',
             }
-    url = 'https://vocadb.net/api/songs/?{}'.format(urllib.urlencode(args))
+    url = 'https://vocadb.net/api/songs/byPv?{}'.format(urllib.urlencode(args))
     clog.info('requesting vocadb API by pv search: {}'.format(url), syst)
     d = treq.get(url, headers=HEADERS)
     d.addCallback(cbResponse)
